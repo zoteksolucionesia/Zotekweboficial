@@ -90,30 +90,74 @@ def get_client_by_phone_id(phone_number_id):
     conn.close()
     return client
 
-def get_client_knowledge(client_id):
-    """Obtiene toda la base de conocimientos asociada a un cliente."""
+def list_clients():
+    """Retorna una lista de todos los clientes."""
     conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT content FROM knowledge_base WHERE client_id = ?", (client_id,))
+    cursor.execute("SELECT * FROM clients")
     rows = cursor.fetchall()
     conn.close()
-    return "\n".join([row[0] for row in rows])
+    return [dict(row) for row in rows]
 
-def guardar_cita(client_id, nombre, fecha_hora, motivo, telefono):
-    """Guarda una cita asociada a un cliente específico."""
+def update_client(client_id, data):
+    """Actualiza los datos de un cliente."""
+    fields = []
+    values = []
+    for key, value in data.items():
+        if key != 'id' and key != 'created_at':
+            fields.append(f"{key} = ?")
+            values.append(value)
+    
+    if not fields:
+        return False
+        
+    values.append(client_id)
+    query = f"UPDATE clients SET {', '.join(fields)} WHERE id = ?"
+    
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO citas (client_id, paciente_nombre, fecha_hora, motivo, cliente_telefono) VALUES (?, ?, ?, ?, ?)",
-            (client_id, nombre, fecha_hora, motivo, telefono)
-        )
+        cursor.execute(query, values)
         conn.commit()
         conn.close()
         return True
     except Exception as e:
-        print(f"❌ ERROR GUARDAR CITA: {e}")
+        print(f"❌ ERROR UPDATE CLIENT: {e}")
         return False
+
+def add_client(data):
+    """Agrega un nuevo cliente."""
+    columns = []
+    placeholders = []
+    values = []
+    for key, value in data.items():
+        columns.append(key)
+        placeholders.append("?")
+        values.append(value)
+        
+    query = f"INSERT INTO clients ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
+    
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute(query, values)
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR ADD CLIENT: {e}")
+        return False
+
+def get_client_by_id(client_id):
+    """Obtiene un cliente por su ID numérico."""
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+    client = cursor.fetchone()
+    conn.close()
+    return dict(client) if client else None
 
 if __name__ == "__main__":
     init_db()

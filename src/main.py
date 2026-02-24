@@ -1,6 +1,8 @@
 import os
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from collections import deque
 from dotenv import load_dotenv
 
@@ -84,6 +86,41 @@ async def recibir_mensaje(request: Request):
         print(f"🔥 Error en Webhook: {e}")
 
     return {"status": "ok"}
+
+# --- Admin API ---
+
+@app.get("/admin")
+async def admin_dashboard():
+    return FileResponse("admin/index.html")
+
+@app.get("/api/clients")
+async def list_clients():
+    return database.list_clients()
+
+@app.post("/api/clients")
+async def create_client(request: Request):
+    data = await request.json()
+    if database.add_client(data):
+        return {"status": "created"}
+    raise HTTPException(status_code=400, detail="Error creating client")
+
+@app.put("/api/clients/{client_id}")
+async def update_client(client_id: int, request: Request):
+    data = await request.json()
+    if database.update_client(client_id, data):
+        return {"status": "updated"}
+    raise HTTPException(status_code=400, detail="Error updating client")
+
+@app.get("/api/clients/{client_id}")
+async def get_client(client_id: int):
+    client = database.get_client_by_id(client_id)
+    if client:
+        return client
+    raise HTTPException(status_code=404, detail="Client not found")
+
+# Serve static files for admin (CSS, JS)
+app.mount("/admin", StaticFiles(directory="admin"), name="admin")
+app.mount("/", StaticFiles(directory="."), name="root") # Serving landing page from root
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
