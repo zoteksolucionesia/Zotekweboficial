@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+
+# Database
+data/*.db
+data/*.db-journal
+
+# Logs
+*.log
+webhook_log.txt
+
+# OS
+.DS_Store
+Thumbs.db
