@@ -47,6 +47,7 @@ async function fetchClients() {
                 <td>${new Date(client.created_at).toLocaleDateString()}</td>
                 <td>
                     <button class="btn" onclick="editClient(${client.id})">Editar</button>
+                    <button class="btn btn-primary" onclick="triggerPDFUpload(${client.id})" title="Subir PDF de conocimientos">📄 PDF</button>
                 </td>
             </tr>
         `;
@@ -220,6 +221,55 @@ function copyWebhook() {
             btn.textContent = '✓';
             setTimeout(() => { btn.textContent = '📋'; }, 2000);
         });
+    }
+}
+
+
+let currentClientIdForUpload = null;
+
+function triggerPDFUpload(clientId) {
+    currentClientIdForUpload = clientId;
+    document.getElementById('pdfInput').click();
+}
+
+async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file || !currentClientIdForUpload) return;
+
+    if (file.type !== 'application/pdf') {
+        alert('Por favor selecciona un archivo PDF válido.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const btn = event.target;
+    // Set loading state... (could be improved with a spinner)
+    console.log(`Subiendo PDF para cliente ${currentClientIdForUpload}...`);
+
+    try {
+        const response = await fetch(`/api/clients/${currentClientIdForUpload}/upload-pdf`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+            alert(`✅ ¡Éxito! Se extrajo el contenido de ${file.name}.`);
+            if (document.getElementById('section-docs').classList.contains('hidden') === false) {
+                loadDocuments();
+            }
+        } else {
+            alert(`❌ Error: ${result.detail || 'No se pudo subir el PDF'}`);
+        }
+    } catch (error) {
+        console.error('Error al subir PDF:', error);
+        alert('Error de conexión al subir el PDF');
+    } finally {
+        document.getElementById('pdfInput').value = ''; // Reset input
+        currentClientIdForUpload = null;
     }
 }
 

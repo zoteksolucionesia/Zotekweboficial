@@ -101,6 +101,18 @@ def get_client_knowledge(client_id):
         return "Sin base de conocimiento configurada."
     return "\n\n".join(row[0] for row in rows)
 
+def add_knowledge_entry(client_id, content, source_file=None):
+    """Agrega una nueva entrada a la base de conocimientos de un cliente."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO knowledge_base (client_id, content, source_file)
+        VALUES (?, ?, ?)
+    ''', (client_id, content, source_file))
+    conn.commit()
+    conn.close()
+    return True
+
 
 def list_clients():
     """Retorna una lista de todos los clientes."""

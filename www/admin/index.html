@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zotek IA | Panel de Control</title>
-    <link rel="stylesheet" href="/admin-assets/style.css">
+    <link rel="stylesheet" href="style.css">
     <script>
         // In-line security check to avoid caching issues
         if (!localStorage.getItem('zotek_token')) {
@@ -225,7 +225,8 @@
         </div>
     </div>
 
-    <script src="/admin-assets/script.js"></script>
+    <input type="file" id="pdfInput" accept="application/pdf" style="display: none;" onchange="handleFileSelect(event)">
+    <script src="script.js"></script>
 </body>
 
 </html>

@@ -13,6 +13,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from dotenv import load_dotenv
+import io
+
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
 
 # Local imports
 from . import database
@@ -93,82 +99,8 @@ async def verify_webhook(request: Request):
     return "Error auth", 403
 
 
-@app.get("/api/debug-env")
-async def debug_env():
-    """Temporary diagnostic endpoint."""
-    return {
-        "GEMINI_API_KEY": f"{GEMINI_API_KEY[:10]}..." if GEMINI_API_KEY else "NOT SET",
-        "VERIFY_TOKEN": f"{VERIFY_TOKEN[:5]}..." if VERIFY_TOKEN else "NOT SET",
-        "SECRET_KEY": "SET" if SECRET_KEY and SECRET_KEY != "ZOTEK_SECRET_DEFAULT_CHANGE_ME" else "DEFAULT",
-        "ADMIN_EMAIL": ADMIN_EMAIL,
-        "EMAIL_PASSWORD_SET": bool(EMAIL_PASSWORD),
-        "gemini_initialized": gemini is not None,
-    }
 
 
-@app.get("/api/test-bot")
-async def test_bot():
-    """Diagnostic endpoint: runs full Gemini+WhatsApp flow and returns the trace."""
-    trace = {}
-    try:
-        phone_number_id = "980996958435648"
-        numero_usuario = "5213351380285"
-        texto_usuario = "Hola, esto es una prueba de funcionamiento del bot"
-
-        # 1. Client lookup
-        client_data = database.get_client_by_phone_id(phone_number_id)
-        trace["client_found"] = client_data is not None
-        trace["client_name"] = client_data.get("name") if client_data else None
-
-        if not client_data:
-            trace["error"] = "Client not found in DB"
-            return trace
-
-        # 2. Gemini
-        trace["gemini_initialized"] = gemini is not None
-        if gemini is None:
-            trace["error"] = "Gemini not initialized"
-            return trace
-
-        try:
-            respuesta_ai = gemini.generar_respuesta(texto_usuario, client_data, numero_usuario)
-            trace["gemini_response"] = respuesta_ai[:200] if respuesta_ai else None
-        except Exception as e:
-            import traceback
-            trace["gemini_error"] = str(e)
-            trace["gemini_traceback"] = traceback.format_exc()
-            return trace
-
-        # 3. WhatsApp send
-        try:
-            token = client_data.get("whatsapp_token", "")
-            pid = client_data.get("phone_number_id", "")
-            trace["whatsapp_token_preview"] = token[:15] + "..." if token else "MISSING"
-            trace["phone_number_id"] = pid
-
-            import requests as rq
-            url = f"https://graph.facebook.com/v22.0/{pid}/messages"
-            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": numero_usuario,
-                "type": "text",
-                "text": {"body": respuesta_ai}
-            }
-            resp = rq.post(url, json=payload, headers=headers, timeout=15)
-            trace["whatsapp_status"] = resp.status_code
-            trace["whatsapp_response"] = resp.json()
-        except Exception as e:
-            import traceback
-            trace["whatsapp_error"] = str(e)
-            trace["whatsapp_traceback"] = traceback.format_exc()
-
-    except Exception as e:
-        import traceback
-        trace["fatal_error"] = str(e)
-        trace["fatal_traceback"] = traceback.format_exc()
-
-    return trace
 
 
 @app.post("/webhook")
@@ -383,3 +315,51 @@ if os.path.exists(WWW_DIR):
     app.mount("/", StaticFiles(directory=WWW_DIR, html=True), name="root")
 else:
     print(f"Skipping static files mount (Directory not found: {WWW_DIR})")
+@app.post("/api/clients/{client_id}/upload-pdf")
+async def upload_pdf(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+    """Endpoint para subir un PDF, extraer su texto y guardarlo en la base de conocimientos."""
+    global PdfReader
+    if not PdfReader:
+        # Intentar re-importar por si se instaló después del inicio
+        try:
+            from pypdf import PdfReader as PR
+            PdfReader = PR
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Biblioteca pypdf no instalada en el servidor.")
+    
+    try:
+        form = await request.form()
+        file = form.get("file")
+        
+        if not file or not hasattr(file, 'filename'):
+            raise HTTPException(status_code=400, detail="No se recibió ningún archivo.")
+
+        if not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF.")
+
+        # Read the file into memory
+        contents = await file.read()
+        f = io.BytesIO(contents)
+        
+        reader = PdfReader(f)
+        text_content = ""
+        for page in reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                text_content += extracted + "\n"
+        
+        if not text_content.strip():
+            raise HTTPException(status_code=400, detail="No se pudo extraer texto del PDF (podría ser una imagen).")
+
+        # Save to database
+        database.add_knowledge_entry(client_id, text_content, source_file=file.filename)
+        
+        return {
+            "status": "success",
+            "message": f"Contenido de '{file.filename}' procesado y guardado correctamente.",
+            "extracted_length": len(text_content)
+        }
+    except Exception as e:
+        import traceback
+        print(f"Error procesando PDF: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
