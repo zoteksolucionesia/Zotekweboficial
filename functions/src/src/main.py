@@ -260,22 +260,6 @@ async def get_client(client_id: int, current_user: str = Depends(get_current_use
 async def list_documents(client_id: int, current_user: str = Depends(get_current_user)):
     return database.list_client_documents(client_id)
 
-@app.get("/api/settings")
-async def get_settings(request: Request, current_user: str = Depends(get_current_user)):
-    """Returns public system configuration for the Settings panel."""
-    is_production = bool(os.environ.get('K_SERVICE') or os.environ.get('FIREBASE_CONFIG'))
-    base_url = str(request.base_url).rstrip('/')
-    
-    return {
-        "environment": "production" if is_production else "development",
-        "webhook_url": f"{base_url}/webhook",
-        "gemini_api_key_set": bool(GEMINI_API_KEY),
-        "admin_email": ADMIN_EMAIL,
-        "twofa_enabled": True,
-        "api_version": "1.0.0",
-        "total_clients": len(database.list_clients()),
-    }
-
 # Static Files Mounts (After all specific routes)
 if os.path.exists(WWW_DIR):
     print(f"✅ Mounting static files from {WWW_DIR}")

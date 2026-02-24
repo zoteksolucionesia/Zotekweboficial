@@ -1,0 +1,44 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "venv",
+        ".git",
+        "firebase-debug.log",
+        "firebase-adminsdk-*.json"
+      ]
+    }
+  ],
+  "hosting": {
+    "public": "www",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/login",
+        "destination": "/admin/login.html"
+      },
+      {
+        "source": "/admin-control",
+        "destination": "/admin/index.html"
+      },
+      {
+        "source": "/dashboard",
+        "destination": "/admin/index.html"
+      },
+      {
+        "source": "/api/**",
+        "function": "api_handler"
+      },
+      {
+        "source": "/webhook",
+        "function": "api_handler"
+      }
+    ]
+  }
+}

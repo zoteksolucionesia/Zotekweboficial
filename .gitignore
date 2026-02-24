@@ -5,10 +5,14 @@ __pycache__/
 .venv/
 venv/
 .env
+functions/.env
 
 # Database
 data/*.db
 data/*.db-journal
+*.db
+*.db-journal
+
 
 # Logs
 *.log

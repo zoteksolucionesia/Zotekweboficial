@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zotek Admin | Login</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card-bg: #161b22;
+            --border: #30363d;
+            --primary: #58a6ff;
+            --text: #c9d1d9;
+            --text-muted: #8b949e;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: var(--bg);
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text);
+        }
+
+        .login-card {
+            background: var(--card-bg);
+            padding: 3rem;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo-login {
+            height: 80px;
+            margin-bottom: 2.5rem;
+            filter: drop-shadow(0 0 15px rgba(88, 166, 255, 0.3));
+        }
+
+        .form-group {
+            margin-bottom: 2rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 1rem;
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 1.1rem;
+            box-sizing: border-box;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 8px;
+            width: 100%;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.1);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .error-msg {
+            background: rgba(255, 123, 114, 0.1);
+            color: #ff7b72;
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255, 123, 114, 0.2);
+        }
+
+        .success-msg {
+            background: rgba(126, 231, 135, 0.1);
+            color: #7ee787;
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            border: 1px solid rgba(126, 231, 135, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-card">
+        <img src="/assets/logo.svg" alt="Zotek Logo" class="logo-login">
+        <h2 style="margin-bottom: 0.5rem; font-weight: 800; color: white;">Zotek Acceso Seguro</h2>
+        <div id="feedback" class="hidden"></div>
+
+        <div id="step-1">
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">Ingresa el correo administrativo para recibir tu
+                llave de acceso.</p>
+            <div class="form-group">
+                <input type="email" id="email" value="zoteksolucionesia@gmail.com" readonly class="form-control"
+                    style="background: transparent; border-color: transparent; border-bottom: 1px solid var(--border); border-radius: 0; font-weight: bold;">
+            </div>
+            <button class="btn-primary" onclick="requestCode(this)">Enviar Código</button>
+        </div>
+
+        <div id="step-2" class="hidden">
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">Código de segurdad enviado. Revisa tu bandeja de
+                entrada.</p>
+            <div class="form-group">
+                <input type="text" id="code" placeholder="------" class="form-control" maxlength="6"
+                    style="font-size: 2rem; letter-spacing: 0.8rem; font-family: 'Courier New', Courier, monospace;">
+            </div>
+            <button class="btn-primary" onclick="verifyCode(this)">Verificar Acceso</button>
+            <p style="margin-top: 2rem;">
+                <a href="#" onclick="location.reload()"
+                    style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">← Volver a intentar</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function showFeedback(msg, isError = true) {
+            const el = document.getElementById('feedback');
+            el.textContent = msg;
+            el.className = isError ? 'error-msg' : 'success-msg';
+            el.classList.remove('hidden');
+        }
+
+        async function requestCode(btn) {
+            const email = document.getElementById('email').value;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Procesando...';
+
+            try {
+                const res = await fetch('/api/auth/request-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                if (res.ok) {
+                    document.getElementById('step-1').classList.add('hidden');
+                    document.getElementById('step-2').classList.remove('hidden');
+                    showFeedback('Código enviado exitosamente.', false);
+                } else {
+                    const data = await res.json();
+                    showFeedback(data.detail || 'Error en la configuración del servidor.');
+                }
+            } catch (e) {
+                showFeedback('Error de conexión. ¿El servidor está corriendo?');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        async function verifyCode(btn) {
+            const email = document.getElementById('email').value;
+            const code = document.getElementById('code').value;
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/verify-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, code })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('zotek_token', data.access_token);
+                    window.location.href = '/admin-control';
+                } else {
+                    showFeedback(data.detail || 'Código incorrecto o expirado.');
+                }
+            } catch (e) {
+                showFeedback('Error de conexión.');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+
+</html>
