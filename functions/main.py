@@ -1,6 +1,7 @@
 """
 Firebase Functions entry point.
 Bridges Firebase Functions WSGI-style requests to FastAPI ASGI app.
+# Trigger redeploy: Dynamic WhatsApp Redirection support.
 """
 import sys
 import os

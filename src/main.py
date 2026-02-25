@@ -283,7 +283,4 @@ if os.path.exists(WWW_DIR):
 else:
     print(f"ℹ️ Skipping static files mount (Directory not found: {WWW_DIR})")
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    # Note: When running as a package, use `python -m src.main` or `uvicorn src.main:app`
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# Production entry point handled by Firebase or Uvicorn from shell

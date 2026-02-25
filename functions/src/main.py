@@ -1,4 +1,5 @@
 import os
+# Triggering redeploy for dynamic prompt fix
 import random
 import threading
 import smtplib
@@ -9,11 +10,12 @@ from collections import deque
 from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 import io
+import sqlite3
 
 try:
     from pypdf import PdfReader
@@ -32,6 +34,10 @@ VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 SECRET_KEY = os.getenv("SECRET_KEY", "ZOTEK_SECRET_DEFAULT_CHANGE_ME")
 ALGORITHM = "HS256"
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "zoteksolucionesia@gmail.com")
+ADMIN_EMAILS = [
+    ADMIN_EMAIL,
+    "morentinomar@gmail.com"
+]
 EMAIL_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
 
 # Security
@@ -43,33 +49,19 @@ verification_codes = {}  # {email: {"code": str, "expiry": datetime}}
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WWW_DIR = os.path.join(BASE_DIR, "www")
-ADMIN_DIR = os.path.join(WWW_DIR, "admin")
-
-print("--- SERVER STARTUP DIAGNOSTICS ---")
-print(f"BASE_DIR: {BASE_DIR}")
-print(f"WWW_DIR: {WWW_DIR}")
-print(f"ADMIN_DIR: {ADMIN_DIR}")
-print("----------------------------------")
+# En Firebase, el código está en /workspace/functions, por lo que BASE_DIR es /workspace/functions
+# Pero el hosting sirve desde el root /workspace/www
+# Es mejor no depender de archivos estáticos en FastAPI si usamos Firebase Hosting.
 
 app = FastAPI()
 
-@app.exception_handler(404)
-async def custom_404_handler(request: Request, __):
-    print(f"404 Error: {request.url.path}")
-    return JSONResponse(status_code=404, content={"detail": f"Ruta {request.url.path} no encontrada"})
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
-@app.get("/ping")
-async def ping():
-    return {"message": "pong"}
+# El resto de rutas de UI (/login, /admin-control) han sido eliminadas
+# ya que Firebase Hosting las maneja mediante rewrites en firebase.json
 
-@app.get("/login")
-async def login_page():
-    return FileResponse(os.path.join(ADMIN_DIR, "login.html"))
-
-@app.get("/admin-control")
-async def admin_dashboard():
-    return FileResponse(os.path.join(ADMIN_DIR, "index.html"))
 
 # Cache for WhatsApp retries
 PROCESSED_MESSAGES = deque(maxlen=100)
@@ -101,61 +93,166 @@ async def verify_webhook(request: Request):
 
 
 
-
-
 @app.post("/webhook")
 async def recibir_mensaje(request: Request):
     try:
         data = await request.json()
+        print(f"DEBUG: Webhook data received: {data}")
+        
+        if data.get('object') == 'whatsapp_business_account':
+            for entry in data.get('entry', []):
+                for change in entry.get('changes', []):
+                    value = change.get('value', {})
+                    if 'messages' in value:
+                        message = value['messages'][0]
+                        message_id = message.get('id')
+                        
+                        if message_id in PROCESSED_MESSAGES:
+                            print(f"DEBUG: Message {message_id} already processed.")
+                            return {"status": "already_processed"}
+                        
+                        PROCESSED_MESSAGES.append(message_id)
+                        if len(PROCESSED_MESSAGES) > 100: PROCESSED_MESSAGES.pop(0)
 
-        entry = data.get('entry', [{}])[0]
-        changes = entry.get('changes', [{}])[0]
-        value = changes.get('value', {})
+                        numero_usuario = message['from']
+                        phone_number_id = value['metadata']['phone_number_id']
+                        
+                        print(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}")
+                        
+                        client_data = database.get_client_by_phone_id(phone_number_id)
+                        if not client_data:
+                            print(f"❌ ERROR: No client found for phoneID {phone_number_id}")
+                            return {"status": "error", "message": "Client not found"}
+                        
+                        print(f"✅ Client Found: {client_data.get('name')}")
+                        
+                        # 1. Detectar tipo de mensaje
+                        texto_usuario = ""
+                        if message.get('type') == 'text':
+                            texto_usuario = message.get('text', {}).get('body', "")
+                        elif message.get('type') == 'interactive':
+                            interactive = message.get('interactive', {})
+                            if interactive.get('type') == 'button_reply':
+                                texto_usuario = interactive.get('button_reply', {}).get('title', "")
+                            elif interactive.get('type') == 'list_reply':
+                                texto_usuario = interactive.get('list_reply', {}).get('title', "")
+                        
+                        print(f"DEBUG: Texto de usuario detectado: '{texto_usuario}'")
+                        
+                        if not client_data.get('is_active', True):
+                            print(f"[Webhook] Bot is INACTIVE for '{client_data['name']}'. Skipping AI.")
+                            return {"status": "bot_inactive"}
 
-        if 'messages' in value:
-            message = value['messages'][0]
-            message_id = message.get('id')
+                        # Helper para enviar el menú
+                        def send_menu_followup():
+                            menu_data = None
+                            try:
+                                menu_doc = database.get_db().collection('clients').document(str(client_data['id'])).collection('config').document('menu').get()
+                                if menu_doc.exists:
+                                    menu_data = menu_doc.to_dict()
+                            except Exception as e:
+                                print(f"Error cargando menú: {e}")
 
-            if message_id in PROCESSED_MESSAGES:
-                return {"status": "already_processed"}
+                            if menu_data:
+                                texto_menu = menu_data.get('text', f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte?")
+                                opciones_raw = menu_data.get('options', [])
+                                opciones = []
+                                for opt in opciones_raw:
+                                    if isinstance(opt, dict):
+                                        opciones.append(opt.get('title', 'Opción'))
+                                    else:
+                                        opciones.append(str(opt))
+                            else:
+                                texto_menu = f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte hoy?"
+                                opciones = ["Servicios", "Agendar Cita", "Contacto"]
+                            
+                            if len(opciones) > 3:
+                                whatsapp_service.enviar_menu_lista(numero_usuario, texto_menu, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], phone_number_id)
+                            else:
+                                whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu, opciones, client_data['whatsapp_token'], phone_number_id)
 
-            PROCESSED_MESSAGES.append(message_id)
+                        # Función para enviar con opciones/botones dinámicos
+                        def enviar_respuesta_con_opciones(numero, texto_completo, token, phone_id):
+                            texto_para_enviar = texto_completo
+                            opciones_dinamicas = []
+                            if "[OPCIONES]:" in texto_completo:
+                                partes = texto_completo.split("[OPCIONES]:")
+                                texto_para_enviar = partes[0].strip()
+                                dict_opciones = partes[1].split("|")
+                                opciones_dinamicas = [o.strip() for o in dict_opciones if o.strip()]
 
-            numero_usuario = message['from']
-            texto_usuario = message.get('text', {}).get('body', "")
-            phone_number_id = value['metadata']['phone_number_id']
+                            success = whatsapp_service.enviar_mensaje_whatsapp(numero, texto_para_enviar, token, phone_id)
+                            if success and opciones_dinamicas:
+                                if len(opciones_dinamicas) > 3:
+                                    whatsapp_service.enviar_menu_lista(numero, "Selecciona:", "Opciones", "Menú", opciones_dinamicas, token, phone_id)
+                                else:
+                                    whatsapp_service.enviar_menu_botones(numero, "Selecciona:", opciones_dinamicas, token, phone_id)
+                            return success
 
-            # NOTE: Do NOT normalize Mexican numbers. Meta sends the wa_id in the
-            # exact format needed to reply. Normalizing it breaks delivery.
+                        # Intercepción de Opciones del Menú Personalizado
+                        menu_data = None
+                        try:
+                            menu_doc = database.get_db().collection('clients').document(str(client_data['id'])).collection('config').document('menu').get()
+                            if menu_doc.exists: menu_data = menu_doc.to_dict()
+                        except: pass
 
-            print(f"[Webhook] Msg from {numero_usuario}, phone_id={phone_number_id}: '{texto_usuario}'")
+                        if menu_data:
+                            def buscar_opcion(opciones, texto):
+                                for opt in opciones:
+                                    title = opt.get('title') if isinstance(opt, dict) else opt
+                                    if str(title).lower().strip() == texto.lower().strip(): return opt
+                                    if isinstance(opt, dict) and opt.get('submenu') and opt['submenu'].get('options'):
+                                        found = buscar_opcion(opt['submenu']['options'], texto)
+                                        if found: return found
+                                return None
 
-            client_data = database.get_client_by_phone_id(phone_number_id)
-            print(f"[Webhook] Client lookup: {'FOUND' if client_data else 'NOT FOUND'}")
+                            match = buscar_opcion(menu_data.get('options', []), texto_usuario)
+                            if match and isinstance(match, dict):
+                                if match.get('submenu') and match['submenu'].get('options'):
+                                    sub = match['submenu']
+                                    titles = [o.get('title', 'Opción') if isinstance(o, dict) else str(o) for o in sub['options']]
+                                    if len(titles) > 3:
+                                        whatsapp_service.enviar_menu_lista(numero_usuario, sub.get('text', 'Opciones:'), "Ver", match['title'], titles, client_data['whatsapp_token'], phone_number_id)
+                                    else:
+                                        whatsapp_service.enviar_menu_botones(numero_usuario, sub.get('text', 'Opciones:'), titles, client_data['whatsapp_token'], phone_number_id)
+                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, sub.get('text', 'Opciones:'))
+                                    return {"status": "submenu_sent"}
+                                elif match.get('response'):
+                                    res_text = match['response']
+                                    cal_url = client_data.get('calendly_url')
+                                    if cal_url:
+                                        res_text = res_text.replace("{{calendly_url}}", cal_url)
+                                        if "agendar cita" in str(match.get('title')).lower():
+                                            if cal_url not in res_text: res_text += f"\n\nLink: {cal_url}"
+                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_text)
+                                    enviar_respuesta_con_opciones(numero_usuario, res_text, client_data['whatsapp_token'], phone_number_id)
+                                    return {"status": "predefined_sent"}
 
-            if not client_data:
-                return {"status": "unrecognized_client"}
+                        # Keywords de menú
+                        if texto_usuario.lower().strip() in ["hola", "menu", "menú", "inicio", "opciones"]:
+                            database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, texto_menu)
+                            send_menu_followup()
+                            return {"status": "menu_sent"}
 
-            if gemini is None:
-                print("[Webhook] Gemini not initialized")
-                return {"status": "gemini_unavailable"}
-
-            print(f"[Webhook] Calling Gemini for '{client_data['name']}'...")
-            respuesta_ai = gemini.generar_respuesta(texto_usuario, client_data, numero_usuario)
-            print(f"[Webhook] Gemini OK: '{respuesta_ai[:80] if respuesta_ai else None}'")
-
-            print(f"[Webhook] Sending WhatsApp to {numero_usuario}...")
-            success = whatsapp_service.enviar_mensaje_whatsapp(
-                numero=numero_usuario,
-                texto=respuesta_ai,
-                whatsapp_token=client_data['whatsapp_token'],
-                phone_number_id=client_data['phone_number_id']
-            )
-            print(f"[Webhook] Send result: {'OK' if success else 'FAILED'}")
-
+                        # Proceso con Gemini
+                        if gemini is None: return {"status": "no_gemini"}
+                        
+                        prompt = texto_usuario
+                        if message.get('type') == 'interactive':
+                            prompt = f"[Menú]: {texto_usuario}"
+                        
+                        res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
+                        print(f"DEBUG: Gemini response preview: {res_ai[:50]}")
+                        
+                        success = enviar_respuesta_con_opciones(numero_usuario, res_ai, client_data['whatsapp_token'], phone_number_id)
+                        if success:
+                            database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_ai)
+                            
     except Exception as e:
         import traceback
-        print(f"[Webhook] Error: {e}\n{traceback.format_exc()}")
+        print(f"❌ WEBHOOK CRITICAL ERROR: {e}\n{traceback.format_exc()}")
+
+    return {"status": "ok"}
 
     return {"status": "ok"}
 
@@ -188,8 +285,8 @@ def send_security_code(email: str, code: str):
     print(f"Intentando enviar email a {email}...")
 
     try:
-        msg = MIMEText(f"Tu codigo de acceso para Zotek Admin es: {code}\nExpira en 10 minutos.")
-        msg['Subject'] = f"{code} es tu codigo de verificacion de Zotek"
+        msg = MIMEText(f"Tu codigo de acceso para el panel administrativo es: {code}\nExpira en 10 minutos.")
+        msg['Subject'] = f"{code} es tu código de verificación"
         msg['From'] = ADMIN_EMAIL
         msg['To'] = email
 
@@ -225,8 +322,18 @@ async def debug_paths():
 async def request_code(request: Request):
     data = await request.json()
     email = data.get("email")
-    if email != ADMIN_EMAIL:
-        return JSONResponse(status_code=403, content={"detail": "Acceso restringido"})
+    if not email:
+        raise HTTPException(status_code=400, detail="Email requerido")
+    
+    # SaaS Phase 3: Permitir admin O email de cliente registrado
+    normalized_email = email.lower().strip()
+    is_admin = normalized_email in [e.lower().strip() for e in ADMIN_EMAILS]
+    
+    client = None
+    if not is_admin:
+        client = database.get_client_by_email(normalized_email)
+        if not client:
+            return JSONResponse(status_code=403, content={"detail": f"Acceso restringido: Email {email} no registrado"})
 
     code = f"{random.randint(100000, 999999)}"
     verification_codes[email] = {
@@ -252,8 +359,76 @@ async def verify_code(request: Request):
 
     del verification_codes[email]
 
-    access_token = create_access_token(data={"sub": email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    # SaaS Phase 3: Determinar rol y client_id
+    normalized_email = email.lower().strip()
+    is_admin = normalized_email in [e.lower().strip() for e in ADMIN_EMAILS]
+    role = "admin" if is_admin else "client"
+    client_id = None
+    if role == "client":
+        client = database.get_client_by_email(normalized_email)
+        client_id = str(client['id']) if client else None
+
+    access_token = create_access_token(data={"sub": email, "role": role, "client_id": client_id})
+    return {"access_token": access_token, "token_type": "bearer", "role": role}
+
+@app.get("/api/me")
+async def get_me(token: str = Depends(oauth2_scheme)):
+    """Retorna el perfil del usuario actual basado en el JWT."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub", "").lower().strip()
+        
+        # Calcular el rol dinámicamente para que los cambios en ADMIN_EMAILS 
+        # surtan efecto incluso si el token tiene un rol viejo.
+        is_admin = email in [e.lower().strip() for e in ADMIN_EMAILS]
+        role = "admin" if is_admin else "client"
+        
+        client_id = payload.get("client_id")
+        if role == "client" and not client_id:
+            # Re-vincular si es necesario
+            client = database.get_client_by_email(email)
+            client_id = str(client['id']) if client else None
+        
+        return {
+            "email": email,
+            "role": role,
+            "client_id": client_id
+        }
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# === Dynamic Redirections ===
+
+@app.get("/api/redirect/whatsapp")
+async def whatsapp_redirect():
+    """Redirige dinamicamente al WhatsApp del cliente principal configurado."""
+    clients = database.list_clients()
+    
+    def sanitize_mx_number(raw_number):
+        """Normaliza números mexicanos: quita el viejo prefijo '1' después del '52'."""
+        digits = "".join(filter(str.isdigit, str(raw_number)))
+        # Si es un número mexicano con 13 dígitos (52 + 1 + 10), quitar el '1'
+        if digits.startswith("521") and len(digits) == 13:
+            digits = "52" + digits[3:]
+        return digits
+
+    # Intentar encontrar un cliente que tenga número configurado
+    target_number = None
+    for client in clients:
+        num = client.get('whatsapp_number')
+        if num:
+            target_number = sanitize_mx_number(num)
+            break
+            
+    if target_number:
+        print(f"[Redirect] Redirecting to client number: {target_number}")
+        return RedirectResponse(url=f"https://wa.me/{target_number}?text=Hola,%20quisiera%20mas%20informacion")
+
+    # Fallback de seguridad (Bot Zotek: 3123775877)
+    fallback_url = "https://wa.me/523123775877?text=Hola,%20quisiera%20mas%20informacion"
+    print(f"[Redirect] No numbers found in DB, using fallback: 523123775877")
+    return RedirectResponse(url=fallback_url)
 
 
 # === Protected Admin API ===
@@ -272,15 +447,22 @@ async def create_client(request: Request, current_user: str = Depends(get_curren
 
 
 @app.put("/api/clients/{client_id}")
-async def update_client(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+async def update_client(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     data = await request.json()
+    
+    # Separar el menú si viene incluido para guardarlo en su propia ruta
+    menu_data = data.pop('menu', None)
+    
     if database.update_client(client_id, data):
+        if menu_data:
+            # Guardar el menú en la subcolección config/menu
+            database.get_db().collection('clients').document(client_id).collection('config').document('menu').set(menu_data)
         return {"status": "updated"}
     raise HTTPException(status_code=400, detail="Error updating client")
 
 
 @app.get("/api/clients/{client_id}")
-async def get_client(client_id: int, current_user: str = Depends(get_current_user)):
+async def get_client(client_id: str, current_user: str = Depends(get_current_user)):
     client = database.get_client_by_id(client_id)
     if client:
         return client
@@ -288,8 +470,88 @@ async def get_client(client_id: int, current_user: str = Depends(get_current_use
 
 
 @app.get("/api/clients/{client_id}/documents")
-async def list_documents(client_id: int, current_user: str = Depends(get_current_user)):
+async def list_documents(client_id: str, current_user: str = Depends(get_current_user)):
     return database.list_client_documents(client_id)
+
+
+@app.delete("/api/clients/{client_id}/documents/{doc_id}")
+async def delete_document(client_id: str, doc_id: str, current_user: str = Depends(get_current_user)):
+    """Elimina un documento (entrada de conocimiento) de un cliente."""
+    if database.delete_knowledge_entry(client_id, doc_id):
+        return {"status": "deleted"}
+    raise HTTPException(status_code=404, detail="Documento no encontrado o no se pudo eliminar")
+
+
+@app.get("/api/clients/{client_id}/menu")
+async def get_client_menu(client_id: str, current_user: str = Depends(get_current_user)):
+    """Obtiene la configuración del menú de un cliente."""
+    doc = database.get_db().collection('clients').document(client_id).collection('config').document('menu').get()
+    if doc.exists:
+        return doc.to_dict()
+    return {"text": "", "options": ["Servicios", "Agendar Cita", "Contacto"]}
+
+@app.post("/api/clients/{client_id}/menu")
+async def update_client_menu(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
+    """Actualiza la configuración del menú de un cliente."""
+    data = await request.json()
+    database.get_db().collection('clients').document(client_id).collection('config').document('menu').set(data)
+    return {"status": "updated"}
+
+@app.get("/api/clients/{client_id}/chats")
+async def list_chats(client_id: str, limit: int = 50, current_user: str = Depends(get_current_user)):
+    """Obtiene el historial de chats de un cliente."""
+    return database.get_client_chats(client_id, limit=limit)
+
+@app.post("/api/migrate")
+async def migrate_sqlite_to_firestore(current_user: str = Depends(get_current_user)):
+    """Migra los datos de SQLite local (en el servidor) a Firestore."""
+    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "consultorio.db")
+    if not os.path.exists(db_path):
+        return {"status": "error", "message": f"SQLite DB not found at {db_path}"}
+    
+    try:
+        print(f"[Migration] SQLite DB found at {db_path}. Opening connection...")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Migrar Clientes
+        print("[Migration] Extracting clients from SQLite...")
+        cursor.execute("SELECT * FROM clients")
+        clients = cursor.fetchall()
+        print(f"[Migration] Found {len(clients)} clients to migrate.")
+        migrated_clients = 0
+        for client in clients:
+            client_dict = dict(client)
+            old_id = client_dict.pop('id')
+            
+            print(f"[Migration] Migrating client {old_id} ({client_dict.get('name')})...")
+            # Subir a Firestore usando el ID anterior como nombre de doc para mantener refs
+            doc_ref = database.get_db().collection('clients').document(str(old_id))
+            doc_ref.set(client_dict)
+            
+            # Migrar Conocimiento
+            print(f"[Migration]   Extracting knowledge for client {old_id}...")
+            cursor.execute("SELECT * FROM knowledge_base WHERE client_id = ?", (old_id,))
+            knowledge = cursor.fetchall()
+            print(f"[Migration]   Found {len(knowledge)} entries.")
+            for k in knowledge:
+                k_dict = dict(k)
+                k_id = k_dict.pop('id')
+                k_dict.pop('client_id', None) # Avoid error if column name is actually client_id
+                doc_ref.collection('knowledge').document(str(k_id)).set(k_dict)
+            
+            migrated_clients += 1
+            print(f"[Migration]   Client {old_id} migrated successfully.")
+        
+        conn.close()
+        print(f"[Migration] Success! Total migrated: {migrated_clients}")
+        return {"status": "success", "migrated_clients": migrated_clients}
+    except Exception as e:
+        import traceback
+        error_msg = f"Error en migración: {str(e)}\n{traceback.format_exc()}"
+        print(f"[Migration] FATAL ERROR: {error_msg}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/api/settings")
@@ -309,14 +571,10 @@ async def get_settings(request: Request, current_user: str = Depends(get_current
     }
 
 
-# Static Files Mounts (After all specific routes)
-if os.path.exists(WWW_DIR):
-    print(f"Mounting static files from {WWW_DIR}")
-    app.mount("/", StaticFiles(directory=WWW_DIR, html=True), name="root")
-else:
-    print(f"Skipping static files mount (Directory not found: {WWW_DIR})")
+# Static file mounting is handled by Firebase Hosting rewrites, 
+# so we don't need to mount it here if we are only an API.
 @app.post("/api/clients/{client_id}/upload-pdf")
-async def upload_pdf(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+async def upload_pdf(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     """Endpoint para subir un PDF, extraer su texto y guardarlo en la base de conocimientos."""
     global PdfReader
     if not PdfReader:

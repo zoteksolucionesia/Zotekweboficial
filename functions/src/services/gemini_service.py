@@ -20,12 +20,20 @@ class GeminiEngine:
         conocimiento = database.get_client_knowledge(client_id)
         
         # 2. Configurar la instrucción maestra con el contexto dinámico
-        prompt_sistema = f"""
-        Eres un experto de Zotek Soluciones IA. Proporciona información sobre nuestros servicios de forma clara y profesional.
-        Sé amable, breve y usa el siguiente conocimiento para responder.
+        # Si el cliente tiene instrucciones personalizadas, las usamos. Si no, usamos una por defecto.
+        instrucciones_base = client_data.get('system_instruction') or f"Eres un asistente para {nombre_cliente}. Sé amable, breve y profesional."
         
-        CONOCIMIENTO:
-        {conocimiento}
+        prompt_sistema = f"""
+        {instrucciones_base}
+        
+        Usa el siguiente CONOCIMIENTO para responder si es relevante:
+        
+        REGLAS IMPORTANTES:
+        1. Si la respuesta contiene varios puntos, servicios o categorías que el usuario puede elegir, NO escribas una lista larga. 
+        2. En su lugar, escribe una breve introducción y luego añade el tag [OPCIONES] seguido de las opciones separadas por '|'.
+        3. Cada opción debe ser corta (máximo 20 caracteres).
+        4. Ejemplo: "Claro, estos son nuestros servicios: [OPCIONES]: Limpieza | Ortodoncia | Blanqueamiento"
+        5. Máximo 10 opciones. SIEMPRE prioriza brevedad.
         """
 
         max_retries = 3

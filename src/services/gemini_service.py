@@ -20,11 +20,13 @@ class GeminiEngine:
         conocimiento = database.get_client_knowledge(client_id)
         
         # 2. Configurar la instrucción maestra con el contexto dinámico
-        prompt_sistema = f"""
-        Eres un experto de Zotek Soluciones IA. Proporciona información sobre nuestros servicios de forma clara y profesional.
-        Sé amable, breve y usa el siguiente conocimiento para responder.
+        # Si el cliente tiene instrucciones personalizadas, las usamos. Si no, usamos una por defecto.
+        instrucciones_base = client_data.get('system_instruction') or f"Eres un asistente para {nombre_cliente}. Sé amable, breve y profesional."
         
-        CONOCIMIENTO:
+        prompt_sistema = f"""
+        {instrucciones_base}
+        
+        Usa el siguiente CONOCIMIENTO para responder si es relevante:
         {conocimiento}
         """
 
