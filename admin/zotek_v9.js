@@ -88,6 +88,9 @@ function showSection(sectionId) {
         } else {
             populateClientSelector();
         }
+        // Forzar recarga si ya hay un cliente seleccionado (para persistencia visual)
+        if (sectionId === 'docs') loadDocuments();
+        if (sectionId === 'chats') loadChats();
     }
     if (sectionId === 'settings') {
         loadSettings();
@@ -121,12 +124,45 @@ async function fetchClients() {
                 <td><code>${client.phone_number_id}</code></td>
                 <td>${client.created_at ? new Date(client.created_at).toLocaleDateString() : '—'}</td>
                 <td>
-                    <button class="btn" onclick="editClient('${String(client.id).replace(/'/g, "\\'")}')">Editar</button>
+                    <button class="btn btn-primary" onclick="editClient('${String(client.id).replace(/'/g, "\\'")}')">Editar</button>
                 </td>
             </tr>
         `;
         tbody.innerHTML += row;
     });
+
+    // Popular selectores de chats y documentos
+    populateClientSelector();
+}
+
+function populateClientSelector() {
+    console.log("Populating client selectors...");
+    const chatSelector = document.getElementById('chat-client-selector');
+    const docSelector = document.getElementById('doc-client-selector');
+    if (!chatSelector || !docSelector) {
+        console.warn("Selectors not found in DOM");
+        return;
+    }
+
+    let options = '<option value="">Selecciona un cliente...</option>';
+
+    if (allClients && allClients.length > 0) {
+        allClients.forEach(client => {
+            options += `<option value="${client.id}">${client.name}</option>`;
+        });
+    } else if (currentUser && currentUser.client_id) {
+        // Si no hay lista completa pero tenemos cliente actual (rol cliente)
+        options += `<option value="${currentUser.client_id}">Mi Empresa</option>`;
+    }
+
+    chatSelector.innerHTML = options;
+    docSelector.innerHTML = options;
+
+    // Si somos cliente, seleccionar automáticamente
+    if (currentUser && currentUser.role === 'client') {
+        chatSelector.value = currentUser.client_id;
+        docSelector.value = currentUser.client_id;
+    }
 }
 
 function openModal(isEdit = false) {
@@ -138,6 +174,10 @@ function openModal(isEdit = false) {
         currentMenu = { options: [] };
         renderMenuEditor();
     }
+    // Asegurar que el scroll empiece arriba
+    const modalGrid = document.querySelector('.modal-grid');
+    if (modalGrid) modalGrid.scrollTop = 0;
+
 }
 
 function closeModal() {
@@ -229,120 +269,230 @@ async function loadClientMenu(clientId) {
     renderMenuEditor();
 }
 
-function renderMenuEditor() {
-    const container = document.getElementById('menu-editor-container');
-    if (!container) return;
-    container.innerHTML = '';
+let currentEditingPath = null; // null means 'Home', arrays like [0, 1] means specific node
 
-    if (!currentMenu.options || currentMenu.options.length === 0) {
-        container.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:1rem;">El menú está vacío. Añade tu primera opción principal.</div>';
+function renderMenuEditor() {
+    renderMenuTree();
+
+    if (currentEditingPath === null) {
+        showBotHome(); // Render the Home Cards or Welcome message
+    } else {
+        renderEditorForm(currentEditingPath);
+    }
+}
+
+function renderMenuTree() {
+    const treeContainer = document.getElementById('menu-tree');
+    if (!treeContainer) return;
+    treeContainer.innerHTML = '';
+
+    // Raíz
+    const rootLi = document.createElement('li');
+    rootLi.className = 'tree-node';
+
+    const rootDiv = document.createElement('div');
+    rootDiv.className = `tree-item ${currentEditingPath === null ? 'active' : ''}`;
+    rootDiv.innerHTML = `<i class="fas fa-robot tree-icon"></i> Inicio del Menú`;
+    rootDiv.onclick = () => { currentEditingPath = null; renderMenuEditor(); };
+
+    rootLi.appendChild(rootDiv);
+
+    if (currentMenu.options && currentMenu.options.length > 0) {
+        const rootUl = document.createElement('ul');
+        rootUl.className = 'tree-children open';
+        renderTreeNodes(currentMenu.options, [], rootUl);
+        rootLi.appendChild(rootUl);
+    }
+
+    treeContainer.appendChild(rootLi);
+}
+
+function renderTreeNodes(options, basePath, parentUl) {
+    if (!options) return;
+    options.forEach((opt, index) => {
+        const currentPath = [...basePath, index];
+        const isString = typeof opt === 'string';
+        const title = isString ? opt : (opt.title || `Opción ${index + 1}`);
+        const hasSubmenu = !isString && opt.submenu && opt.submenu.options;
+        const isActive = JSON.stringify(currentEditingPath) === JSON.stringify(currentPath);
+
+        const li = document.createElement('li');
+        li.className = 'tree-node';
+
+        const div = document.createElement('div');
+        div.className = `tree-item ${isActive ? 'active' : ''} ${hasSubmenu ? 'expanded' : ''}`;
+
+        // Icono dependiendo de si tiene submenu
+        const iconClass = hasSubmenu ? 'fas fa-chevron-right' : 'far fa-circle';
+        div.innerHTML = `<i class="${iconClass} tree-icon"></i> ${escapeHtml(title)}`;
+
+        const toggleIcon = div.querySelector('.tree-icon');
+
+        div.onclick = (e) => {
+            currentEditingPath = currentPath;
+            renderMenuEditor();
+        };
+
+        if (hasSubmenu) {
+            // Permitir colapsar/expandir haciendo clic en el icono
+            toggleIcon.onclick = (e) => {
+                e.stopPropagation(); // Evitar seleccionar el nodo si solo se quiere expandir
+                const childrenUl = li.querySelector('.tree-children');
+                if (childrenUl) {
+                    childrenUl.classList.toggle('open');
+                    div.classList.toggle('expanded');
+                }
+            };
+        }
+
+        li.appendChild(div);
+
+        if (hasSubmenu) {
+            const ul = document.createElement('ul');
+            // Si hay un nodo activo dentro, asegurarnos de que el panel esté abierto por defecto
+            const isChildActive = JSON.stringify(currentEditingPath || []).startsWith(JSON.stringify(currentPath).slice(0, -1));
+
+            ul.className = `tree-children ${isChildActive || currentEditingPath === null ? 'open' : ''}`;
+            // siempre abierto inicialmente para mejor UX
+            ul.classList.add('open');
+            div.classList.add('expanded');
+
+            renderTreeNodes(opt.submenu.options, [...currentPath, 'submenu', 'options'], ul);
+            li.appendChild(ul);
+        }
+
+        parentUl.appendChild(li);
+    });
+}
+
+function showBotHome() {
+    currentEditingPath = null;
+    const panel = document.getElementById('bot-editor-panel');
+    if (!panel) return;
+
+    panel.innerHTML = `
+        <div style="text-align: center; margin-bottom: 20px;">
+            <h4 style="color: var(--primary); margin:0; font-size: 1.2rem;">Panel Principal del Bot</h4>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">Configura el flujo inicial y las opciones principales.</p>
+        </div>
+        
+        <div class="form-group" style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+            <label style="color: #58a6ff; font-weight: bold; font-size: 0.8rem; text-transform: uppercase;">Mensaje de Bienvenida</label>
+            <textarea id="menuWelcomeText" class="menu-field-input" rows="3" placeholder="Ej: Hola, bienvenido a..." style="margin-top: 10px; width: 100%;">${escapeHtml(currentMenu.text || '')}</textarea>
+            <small style="color: var(--text-muted); font-size: 0.75rem;">Este es el primer mensaje que envía el bot junto con el menú principal.</small>
+        </div>
+
+        <div class="action-cards-grid">
+            <div class="action-card" onclick="addMenuOption(null)">
+                <i class="fas fa-plus-circle"></i>
+                <h4>Añadir Opción Principal</h4>
+                <p>Crea un nuevo botón en el menú de inicio.</p>
+            </div>
+            <div class="action-card" onclick="closeModal(); showSection('docs');">
+                <i class="fas fa-file-pdf"></i>
+                <h4>Base de Conocimientos</h4>
+                <p>Gestiona los documentos PDF del bot.</p>
+            </div>
+            <div class="action-card" onclick="closeModal(); showSection('settings');">
+                <i class="fas fa-cog"></i>
+                <h4>Ajustes Globales</h4>
+                <p>Configura llaves del bot y webhooks.</p>
+            </div>
+        </div>
+    `;
+
+    const welcomeInput = document.getElementById('menuWelcomeText');
+    if (welcomeInput) {
+        welcomeInput.onchange = (e) => {
+            currentMenu.text = e.target.value;
+        };
+    }
+}
+
+function renderEditorForm(path) {
+    const panel = document.getElementById('bot-editor-panel');
+    if (!panel) return;
+
+    let target = currentMenu.options;
+    for (let i = 0; i < path.length - 1; i++) {
+        target = target[path[i]];
+    }
+    const idx = path[path.length - 1];
+    const option = target[idx];
+
+    if (!option) {
+        currentEditingPath = null;
+        renderMenuEditor();
         return;
     }
 
-    const menuList = document.createElement('div');
-    menuList.style.display = 'flex';
-    menuList.style.flexDirection = 'column';
-    menuList.style.gap = '0.8rem';
-
-    currentMenu.options.forEach((option, index) => {
-        menuList.appendChild(createMenuNode(option, [index]));
-    });
-
-    container.appendChild(menuList);
-}
-
-function createMenuNode(option, path) {
     const isString = typeof option === 'string';
     const title = isString ? option : (option.title || '');
     const response = isString ? '' : (option.response || '');
     const hasSubmenu = !isString && option.submenu && option.submenu.options;
 
-    const node = document.createElement('div');
-    node.className = 'menu-node';
-    node.style.border = '1px solid rgba(255,193,7,0.2)';
-    node.style.borderRadius = '8px';
-    node.style.padding = '0.8rem';
-    node.style.background = 'rgba(255,255,255,0.03)';
+    let contentHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;">
+            <h4 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-edit" style="color: var(--primary);"></i> Editando Opción
+            </h4>
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeMenuOption(${JSON.stringify(path)})" style="padding: 6px 12px; font-size: 0.8rem; background: rgba(255, 107, 107, 0.1); color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.3);">
+                <i class="fas fa-trash"></i> Eliminar
+            </button>
+        </div>
 
-    const header = document.createElement('div');
-    header.style.display = 'flex';
-    header.style.gap = '0.5rem';
-    header.style.marginBottom = '0.5rem';
+        <div class="menu-node" style="border: none; background: transparent; padding: 0 !important; box-shadow: none;">
+            <div class="form-group">
+                <label class="menu-field-label">Etiqueta del Botón (Título visual)</label>
+                <input type="text" id="editor-node-title" class="menu-field-input" value="${escapeHtml(title)}" placeholder="Por ejemplo: Servicios, Ventas, FAQ..." style="font-size: 1.1rem; padding: 12px; font-weight: 500;">
+            </div>
+    `;
 
-    const titleInput = document.createElement('input');
-    titleInput.type = 'text';
-    titleInput.placeholder = 'Título (ej: Precios)';
-    titleInput.value = title;
-    titleInput.style.flex = '1';
-    titleInput.style.fontSize = '0.85rem';
-    titleInput.onchange = (e) => updateMenuValue(path, 'title', e.target.value);
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.innerHTML = '×';
-    deleteBtn.className = 'btn';
-    deleteBtn.style.padding = '0.2rem 0.5rem';
-    deleteBtn.style.background = 'rgba(255,107,107,0.1)';
-    deleteBtn.style.color = '#ff6b6b';
-    deleteBtn.onclick = () => removeMenuOption(path);
-
-    header.appendChild(titleInput);
-    header.appendChild(deleteBtn);
-    node.appendChild(header);
-
-    if (!hasSubmenu) {
-        const respArea = document.createElement('textarea');
-        respArea.placeholder = 'Respuesta del bot...';
-        respArea.value = response;
-        respArea.style.width = '100%';
-        respArea.style.height = '40px';
-        respArea.style.fontSize = '0.8rem';
-        respArea.style.marginTop = '0.2rem';
-        respArea.onchange = (e) => updateMenuValue(path, 'response', e.target.value);
-        node.appendChild(respArea);
-
-        const subBtn = document.createElement('button');
-        subBtn.type = 'button';
-        subBtn.textContent = '+ Sub-menú';
-        subBtn.className = 'btn';
-        subBtn.style.fontSize = '0.7rem';
-        subBtn.style.marginTop = '0.5rem';
-        subBtn.style.background = 'rgba(255,193,7,0.1)';
-        subBtn.style.color = 'var(--primary)';
-        subBtn.onclick = () => addSubmenu(path);
-        node.appendChild(subBtn);
+    if (hasSubmenu) {
+        contentHTML += `
+            <div style="background: rgba(88, 166, 255, 0.05); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 8px; padding: 25px 15px; text-align: center; margin-top: 20px;">
+                <i class="fas fa-sitemap" style="font-size: 2.5rem; color: var(--primary); margin-bottom: 15px; opacity: 0.8;"></i>
+                <h5 style="margin: 0 0 10px 0; color: #fff; font-size: 1.1rem;">Este botón abre un Sub-menú</h5>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin: 0 0 20px 0;">Actualmente contiene ${option.submenu.options.length} opciones hijas.</p>
+                <button type="button" class="btn btn-primary" onclick="addMenuOption(${JSON.stringify([...path, 'submenu', 'options'])})">
+                    <i class="fas fa-plus"></i> Añadir Opción a este Sub-menú
+                </button>
+            </div>
+        `;
     } else {
-        const subContainer = document.createElement('div');
-        subContainer.style.marginLeft = '1.5rem';
-        subContainer.style.marginTop = '0.8rem';
-        subContainer.style.paddingLeft = '0.8rem';
-        subContainer.style.borderLeft = '2px dashed rgba(255,193,7,0.2)';
-
-        const subHeader = document.createElement('div');
-        subHeader.style.fontSize = '0.7rem';
-        subHeader.style.color = 'var(--text-muted)';
-        subHeader.style.marginBottom = '0.5rem';
-        subHeader.textContent = 'SUB-MENÚ:';
-        subContainer.appendChild(subHeader);
-
-        option.submenu.options.forEach((subOpt, subIndex) => {
-            subContainer.appendChild(createMenuNode(subOpt, [...path, 'submenu', 'options', subIndex]));
-        });
-
-        const addSubBtn = document.createElement('button');
-        addSubBtn.type = 'button';
-        addSubBtn.textContent = '+ Opción hija';
-        addSubBtn.className = 'btn';
-        addSubBtn.style.fontSize = '0.7rem';
-        addSubBtn.style.width = '100%';
-        addSubBtn.style.marginTop = '0.5rem';
-        addSubBtn.onclick = () => addMenuOption([...path, 'submenu', 'options']);
-        subContainer.appendChild(addSubBtn);
-
-        node.appendChild(subContainer);
+        contentHTML += `
+            <div class="form-group" style="margin-top: 15px;">
+                <label class="menu-field-label">Respuesta del Bot</label>
+                <textarea id="editor-node-response" class="menu-field-input" rows="6" placeholder="Escribe el mensaje que enviará el bot cuando el usuario presione este botón... El texto también puede incluir emojis. (${escapeHtml(title)})">${escapeHtml(response)}</textarea>
+            </div>
+            
+            <div style="margin-top: 30px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 20px;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;"><i class="fas fa-info-circle"></i> ¿Necesitas que este botón despliegue OTRA lista de botones en lugar de texto?</p>
+                <button type="button" class="btn btn-secondary" onclick="addSubmenu(${JSON.stringify(path)})" style="font-size: 0.85rem;">
+                    <i class="fas fa-folder-plus"></i> Convertir en Sub-menú
+                </button>
+            </div>
+        `;
     }
 
-    return node;
+    contentHTML += `</div>`;
+    panel.innerHTML = contentHTML;
+
+    // Listeners
+    const titleInput = document.getElementById('editor-node-title');
+    if (titleInput) {
+        titleInput.oninput = (e) => { // oninput to update tree in real time
+            updateMenuValue(path, 'title', e.target.value);
+            renderMenuTree();
+        };
+    }
+
+    const respInput = document.getElementById('editor-node-response');
+    if (respInput) {
+        respInput.onchange = (e) => {
+            updateMenuValue(path, 'response', e.target.value);
+        };
+    }
 }
 
 function updateMenuValue(path, key, value) {
@@ -359,15 +509,19 @@ function updateMenuValue(path, key, value) {
 }
 
 function addMenuOption(parentPath) {
-    const newOpt = { title: '', response: '' };
+    const newOpt = { title: 'Nueva Opción', response: '' };
     if (parentPath === null) {
+        if (!currentMenu.options) currentMenu.options = [];
         currentMenu.options.push(newOpt);
+        currentEditingPath = [currentMenu.options.length - 1];
     } else {
         let target = currentMenu.options;
         for (let i = 0; i < parentPath.length; i++) {
             target = target[parentPath[i]];
         }
+        if (!target) target = [];
         target.push(newOpt);
+        currentEditingPath = [...parentPath, target.length - 1];
     }
     renderMenuEditor();
 }
@@ -378,6 +532,16 @@ function removeMenuOption(path) {
         current = current[path[i]];
     }
     current.splice(path[path.length - 1], 1);
+
+    // Si eliminamos el nodo actual, volvemos a inicio
+    if (JSON.stringify(currentEditingPath) === JSON.stringify(path)) {
+        currentEditingPath = null;
+    } else if (currentEditingPath !== null) {
+        // Lógica simplificada: para evitar desajustes de índices si se borra un hermano anterior, reseteamos a inicio.
+        // (Opcional, pero previene bugs si no se recalcula bien el path)
+        currentEditingPath = null;
+    }
+
     renderMenuEditor();
 }
 
@@ -395,26 +559,6 @@ function addSubmenu(path) {
     renderMenuEditor();
 }
 
-function populateClientSelector() {
-    console.log("DEBUG: Populating client selectors with", allClients.length, "clients");
-    const selectors = ['doc-client-selector', 'chat-client-selector'];
-    selectors.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            const currentValue = el.value;
-            el.innerHTML = '<option value="">Selecciona un cliente...</option>';
-            allClients.forEach(client => {
-                const selected = client.id == currentValue ? 'selected' : '';
-                el.innerHTML += `<option value="${client.id}" ${selected}>${client.name}</option>`;
-            });
-        }
-    });
-}
-
-function populateChatClientSelector() {
-    // Redirigir a la función genérica para mantener coherencia
-    populateClientSelector();
-}
 
 async function loadChats() {
     const clientId = document.getElementById('chat-client-selector').value;
@@ -791,4 +935,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (currentUser && currentUser.role === 'admin') {
         fetchClients();
     }
+
+    // Theme preference check
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-mode');
+    }
 });
+
+// Theme Toggle Function
+window.toggleTheme = function () {
+    document.body.classList.toggle('light-mode');
+    const isLight = document.body.classList.contains('light-mode');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+};

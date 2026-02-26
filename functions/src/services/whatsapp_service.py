@@ -1,5 +1,8 @@
 import requests
 import json
+import sys
+from firebase_admin import firestore
+from datetime import datetime
 
 def enviar_mensaje_whatsapp(numero, texto, whatsapp_token, phone_number_id):
     """Envía un mensaje de texto plano a través de la API de WhatsApp Cloud."""
@@ -18,14 +21,29 @@ def enviar_mensaje_whatsapp(numero, texto, whatsapp_token, phone_number_id):
         # Usamos json.dumps con ensure_ascii=False para enviar tildes reales y no códigos \u00xx
         payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
         response = requests.post(url, headers=headers, data=payload)
+        
+        # Log to Firestore for real-time debugging
+        try:
+            from .. import database
+            db = database.get_db()
+            db.collection('debug_logs').add({
+                'type': 'text',
+                'to': numero,
+                'status': response.status_code,
+                'response': response.text[:500],
+                'timestamp': firestore.SERVER_TIMESTAMP
+            })
+        except Exception as log_err:
+            print(f"⚠️ LOGGING FAILED: {log_err}"); sys.stdout.flush()
+
         if response.status_code == 200:
-            print(f"✅ WHATSAPP [{numero}]: {texto[:50]}...")
+            print(f"✅ WHATSAPP [{numero}]: {texto[:50]}..."); sys.stdout.flush()
             return True
         else:
-            print(f"❌ ERROR WHATSAPP ({response.status_code}): {response.text}")
+            print(f"❌ ERROR WHATSAPP ({response.status_code}): {response.text}"); sys.stdout.flush()
             return False
     except Exception as e:
-        print(f"🔥 EXCEPCIÓN WHATSAPP: {e}")
+        print(f"🔥 EXCEPCIÓN WHATSAPP: {e}"); sys.stdout.flush()
         return False
 
 def enviar_menu_botones(numero, texto, opciones, whatsapp_token, phone_number_id):
@@ -62,9 +80,26 @@ def enviar_menu_botones(numero, texto, opciones, whatsapp_token, phone_number_id
         # Usamos json.dumps con ensure_ascii=False para enviar tildes reales y no códigos \u00xx
         payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
         response = requests.post(url, headers=headers, data=payload)
+        
+        # Log to Firestore for real-time debugging
+        try:
+            from .. import database
+            db = database.get_db()
+            db.collection('debug_logs').add({
+                'type': 'interactive_button',
+                'to': numero,
+                'status': response.status_code,
+                'response': response.text[:500],
+                'timestamp': firestore.SERVER_TIMESTAMP
+            })
+        except Exception as log_err:
+            print(f"⚠️ LOGGING FAILED: {log_err}"); sys.stdout.flush()
+
+        if response.status_code != 200:
+            print(f"❌ ERROR WHATSAPP LISTA/BOTONES ({response.status_code}): {response.text}"); sys.stdout.flush()
         return response.status_code == 200
     except Exception as e:
-        print(f"🔥 ERROR ENVIANDO BOTONES: {e}")
+        print(f"🔥 ERROR ENVIANDO BOTONES/LISTA: {e}"); sys.stdout.flush()
         return False
 
 def enviar_menu_lista(numero, texto, titulo_boton, titulo_seccion, opciones, whatsapp_token, phone_number_id):
@@ -107,6 +142,21 @@ def enviar_menu_lista(numero, texto, titulo_boton, titulo_seccion, opciones, wha
         # Usamos json.dumps con ensure_ascii=False para enviar tildes reales y no códigos \u00xx
         payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
         response = requests.post(url, headers=headers, data=payload)
+        
+        # Log to Firestore for real-time debugging
+        try:
+            from .. import database
+            db = database.get_db()
+            db.collection('debug_logs').add({
+                'type': 'interactive_list',
+                'to': numero,
+                'status': response.status_code,
+                'response': response.text[:512],
+                'timestamp': firestore.SERVER_TIMESTAMP
+            })
+        except Exception as log_err:
+            print(f"⚠️ LOGGING FAILED: {log_err}"); sys.stdout.flush()
+
         return response.status_code == 200
     except Exception as e:
         print(f"🔥 ERROR ENVIANDO LISTA: {e}")

@@ -6,6 +6,7 @@ import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from collections import deque
+import sys # Added for sys.stdout.flush()
 
 from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
@@ -16,6 +17,7 @@ from passlib.context import CryptContext
 from dotenv import load_dotenv
 import io
 import sqlite3
+import traceback # Added for traceback.format_exc()
 
 try:
     from pypdf import PdfReader
@@ -59,6 +61,57 @@ app = FastAPI()
 async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
+@app.get("/api/test-whatsapp")
+async def test_whatsapp(to: str = "523123173431"):
+    """Diagnostic endpoint: tests WhatsApp API send capability."""
+    import sys
+    results = {"steps": [], "target": to}
+    
+    try:
+        # Step 1: Get first client
+        clients = database.list_clients()
+        if not clients:
+            return {"error": "No clients in Firestore", "steps": results["steps"]}
+        client = clients[0]
+        results["steps"].append(f"1. Client found: {client.get('name')}")
+        
+        # Step 2: Check token
+        token = client.get('whatsapp_token', '')
+        phone_id = client.get('phone_number_id', '')
+        results["steps"].append(f"2. Token present: {bool(token)}")
+        results["steps"].append(f"3. phone_number_id: {phone_id}")
+        
+        # Step 4: Test WhatsApp API - Send Message
+        import requests as req
+        url = f"https://graph.facebook.com/v22.0/{phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"body": "Test diagnostic message from Bot server"}
+        }
+        
+        results["steps"].append(f"4. Attempting send to {to}...")
+        resp = req.post(url, headers=headers, json=data)
+        results["status_code"] = resp.status_code
+        results["response_body"] = resp.json() if resp.status_code != 204 else {}
+        
+        if resp.status_code == 200:
+            results["result"] = "SUCCESS"
+        else:
+            results["result"] = "FAILED"
+            
+    except Exception as e:
+        import traceback
+        results["error"] = f"{type(e).__name__}: {e}"
+        results["traceback"] = traceback.format_exc()
+    
+    return results
+
 # El resto de rutas de UI (/login, /admin-control) han sido eliminadas
 # ya que Firebase Hosting las maneja mediante rewrites en firebase.json
 
@@ -71,12 +124,12 @@ database.init_db()
 
 # Initialize Gemini at module level (startup events don't fire in our custom ASGI bridge)
 gemini = None
-print(f"GEMINI_API_KEY present: {bool(GEMINI_API_KEY)}, starts: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'NONE'}")
+print(f"GEMINI_API_KEY present: {bool(GEMINI_API_KEY)}, starts: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'NONE'}"); sys.stdout.flush()
 try:
     gemini = GeminiEngine(api_key=GEMINI_API_KEY)
-    print("GeminiEngine initialized OK")
+    print("GeminiEngine initialized OK"); sys.stdout.flush()
 except Exception as e:
-    print(f"GeminiEngine INIT FAILED: {e}")
+    print(f"GeminiEngine INIT FAILED: {e}"); sys.stdout.flush()
     gemini = None
 
 
@@ -97,7 +150,7 @@ async def verify_webhook(request: Request):
 async def recibir_mensaje(request: Request):
     try:
         data = await request.json()
-        print(f"DEBUG: Webhook data received: {data}")
+        print(f"DEBUG: Webhook data received: {data}"); sys.stdout.flush()
         
         if data.get('object') == 'whatsapp_business_account':
             for entry in data.get('entry', []):
@@ -108,7 +161,7 @@ async def recibir_mensaje(request: Request):
                         message_id = message.get('id')
                         
                         if message_id in PROCESSED_MESSAGES:
-                            print(f"DEBUG: Message {message_id} already processed.")
+                            print(f"DEBUG: Message {message_id} already processed."); sys.stdout.flush()
                             return {"status": "already_processed"}
                         
                         PROCESSED_MESSAGES.append(message_id)
@@ -117,17 +170,18 @@ async def recibir_mensaje(request: Request):
                         numero_usuario = message['from']
                         phone_number_id = value['metadata']['phone_number_id']
                         
-                        print(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}")
+                        print(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}"); sys.stdout.flush()
                         
                         client_data = database.get_client_by_phone_id(phone_number_id)
                         if not client_data:
-                            print(f"❌ ERROR: No client found for phoneID {phone_number_id}")
+                            print(f"❌ ERROR: No client found for phoneID {phone_number_id}"); sys.stdout.flush()
                             return {"status": "error", "message": "Client not found"}
                         
-                        print(f"✅ Client Found: {client_data.get('name')}")
+                        print(f"✅ Client Found: {client_data.get('name')}"); sys.stdout.flush()
                         
                         # 1. Detectar tipo de mensaje
                         texto_usuario = ""
+                        texto_menu = "" # Default to avoid NameError
                         if message.get('type') == 'text':
                             texto_usuario = message.get('text', {}).get('body', "")
                         elif message.get('type') == 'interactive':
@@ -137,64 +191,22 @@ async def recibir_mensaje(request: Request):
                             elif interactive.get('type') == 'list_reply':
                                 texto_usuario = interactive.get('list_reply', {}).get('title', "")
                         
-                        print(f"DEBUG: Texto de usuario detectado: '{texto_usuario}'")
+                        print(f"DEBUG: Texto de usuario detectado: '{texto_usuario}'"); sys.stdout.flush()
                         
                         if not client_data.get('is_active', True):
-                            print(f"[Webhook] Bot is INACTIVE for '{client_data['name']}'. Skipping AI.")
+                            print(f"[Webhook] Bot is INACTIVE for '{client_data['name']}'. Skipping AI."); sys.stdout.flush()
                             return {"status": "bot_inactive"}
 
-                        # Helper para enviar el menú
-                        def send_menu_followup():
-                            menu_data = None
-                            try:
-                                menu_doc = database.get_db().collection('clients').document(str(client_data['id'])).collection('config').document('menu').get()
-                                if menu_doc.exists:
-                                    menu_data = menu_doc.to_dict()
-                            except Exception as e:
-                                print(f"Error cargando menú: {e}")
-
-                            if menu_data:
-                                texto_menu = menu_data.get('text', f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte?")
-                                opciones_raw = menu_data.get('options', [])
-                                opciones = []
-                                for opt in opciones_raw:
-                                    if isinstance(opt, dict):
-                                        opciones.append(opt.get('title', 'Opción'))
-                                    else:
-                                        opciones.append(str(opt))
-                            else:
-                                texto_menu = f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte hoy?"
-                                opciones = ["Servicios", "Agendar Cita", "Contacto"]
-                            
-                            if len(opciones) > 3:
-                                whatsapp_service.enviar_menu_lista(numero_usuario, texto_menu, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], phone_number_id)
-                            else:
-                                whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu, opciones, client_data['whatsapp_token'], phone_number_id)
-
-                        # Función para enviar con opciones/botones dinámicos
-                        def enviar_respuesta_con_opciones(numero, texto_completo, token, phone_id):
-                            texto_para_enviar = texto_completo
-                            opciones_dinamicas = []
-                            if "[OPCIONES]:" in texto_completo:
-                                partes = texto_completo.split("[OPCIONES]:")
-                                texto_para_enviar = partes[0].strip()
-                                dict_opciones = partes[1].split("|")
-                                opciones_dinamicas = [o.strip() for o in dict_opciones if o.strip()]
-
-                            success = whatsapp_service.enviar_mensaje_whatsapp(numero, texto_para_enviar, token, phone_id)
-                            if success and opciones_dinamicas:
-                                if len(opciones_dinamicas) > 3:
-                                    whatsapp_service.enviar_menu_lista(numero, "Selecciona:", "Opciones", "Menú", opciones_dinamicas, token, phone_id)
-                                else:
-                                    whatsapp_service.enviar_menu_botones(numero, "Selecciona:", opciones_dinamicas, token, phone_id)
-                            return success
+                        print(f"[Webhook] Bot is ACTIVE. WhatsApp token present: {bool(client_data.get('whatsapp_token'))}, token starts: {str(client_data.get('whatsapp_token', ''))[:15]}..."); sys.stdout.flush()
 
                         # Intercepción de Opciones del Menú Personalizado
                         menu_data = None
                         try:
+                            # Reutilizamos la lógica del menú aquí para evitar funciones anidadas problemáticas
                             menu_doc = database.get_db().collection('clients').document(str(client_data['id'])).collection('config').document('menu').get()
                             if menu_doc.exists: menu_data = menu_doc.to_dict()
-                        except: pass
+                        except Exception as e:
+                            print(f"DEBUG: Error al cargar menú desde Firestore: {e}"); sys.stdout.flush()
 
                         if menu_data:
                             def buscar_opcion(opciones, texto):
@@ -204,17 +216,26 @@ async def recibir_mensaje(request: Request):
                                     if isinstance(opt, dict) and opt.get('submenu') and opt['submenu'].get('options'):
                                         found = buscar_opcion(opt['submenu']['options'], texto)
                                         if found: return found
+                                    elif isinstance(opt, dict) and 'opciones' in opt: # Soporte para estructura vieja
+                                        found = buscar_opcion(opt['opciones'], texto)
+                                        if found: return found
                                 return None
 
                             match = buscar_opcion(menu_data.get('options', []), texto_usuario)
+                            if not match and 'opciones' in menu_data: # Backup para estructura vieja
+                                match = buscar_opcion(menu_data['opciones'], texto_usuario)
+
                             if match and isinstance(match, dict):
                                 if match.get('submenu') and match['submenu'].get('options'):
                                     sub = match['submenu']
                                     titles = [o.get('title', 'Opción') if isinstance(o, dict) else str(o) for o in sub['options']]
-                                    if len(titles) > 3:
-                                        whatsapp_service.enviar_menu_lista(numero_usuario, sub.get('text', 'Opciones:'), "Ver", match['title'], titles, client_data['whatsapp_token'], phone_number_id)
+                                    if len(titles) == 0:
+                                        print(f"DEBUG: Submenú '{match['title']}' no tiene opciones. Enviando solo texto."); sys.stdout.flush()
+                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, sub.get('text', f"Opciones para {match['title']}:"), client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    elif len(titles) > 3:
+                                        whatsapp_service.enviar_menu_lista(numero_usuario, sub.get('text', 'Opciones:'), "Ver", match['title'], titles, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     else:
-                                        whatsapp_service.enviar_menu_botones(numero_usuario, sub.get('text', 'Opciones:'), titles, client_data['whatsapp_token'], phone_number_id)
+                                        whatsapp_service.enviar_menu_botones(numero_usuario, sub.get('text', 'Opciones:'), titles, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, sub.get('text', 'Opciones:'))
                                     return {"status": "submenu_sent"}
                                 elif match.get('response'):
@@ -224,15 +245,60 @@ async def recibir_mensaje(request: Request):
                                         res_text = res_text.replace("{{calendly_url}}", cal_url)
                                         if "agendar cita" in str(match.get('title')).lower():
                                             if cal_url not in res_text: res_text += f"\n\nLink: {cal_url}"
+                                    
+                                    print(f"DEBUG: Enviando respuesta predefinida para '{match.get('title')}'"); sys.stdout.flush()
                                     database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_text)
-                                    enviar_respuesta_con_opciones(numero_usuario, res_text, client_data['whatsapp_token'], phone_number_id)
+                                    
+                                    # Inline de enviar_respuesta_con_opciones
+                                    texto_para_enviar = res_text
+                                    opciones_dinamicas = []
+                                    if "[OPCIONES]:" in res_text:
+                                        partes = res_text.split("[OPCIONES]:")
+                                        texto_para_enviar = partes[0].strip()
+                                        dict_opciones = partes[1].split("|")
+                                        opciones_dinamicas = [o.strip() for o in dict_opciones if o.strip()]
+
+                                    whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_para_enviar, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    if opciones_dinamicas:
+                                        if len(opciones_dinamicas) > 3:
+                                            whatsapp_service.enviar_menu_lista(numero_usuario, "Selecciona:", "Opciones", "Menú", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        elif len(opciones_dinamicas) > 0:
+                                            whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     return {"status": "predefined_sent"}
 
                         # Keywords de menú
                         if texto_usuario.lower().strip() in ["hola", "menu", "menú", "inicio", "opciones"]:
-                            database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, texto_menu)
-                            send_menu_followup()
-                            return {"status": "menu_sent"}
+                            print(f"[Webhook] ✅ Keyword match: '{texto_usuario}' -> sending menu"); sys.stdout.flush()
+                            
+                            # Inline de send_menu_followup
+                            print(f"[send_menu_followup_inline] Starting for client {client_data.get('name')}"); sys.stdout.flush()
+                            if menu_data:
+                                texto_menu_local = menu_data.get('text', f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte?")
+                                opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
+                                opciones = []
+                                for opt in opciones_raw:
+                                    title = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
+                                    opciones.append(title)
+                            else:
+                                texto_menu_local = f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte hoy?"
+                                opciones = ["Servicios", "Agendar Cita", "Contacto"]
+                            
+                            print(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}"); sys.stdout.flush()
+                            try:
+                                if len(opciones) == 0:
+                                    print(f"[Webhook] Menu has 0 options. Sending text only."); sys.stdout.flush()
+                                    send_result = whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_menu_local, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                elif len(opciones) > 3:
+                                    send_result = whatsapp_service.enviar_menu_lista(numero_usuario, texto_menu_local, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                else:
+                                    send_result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu_local, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                
+                                database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Menu enviado: {send_result}]")
+                                print(f"[Webhook] ✅ Menu flow complete. send_result={send_result}"); sys.stdout.flush()
+                                return {"status": "menu_sent"}
+                            except Exception as e:
+                                print(f"❌ ERROR enviando menú: {e}\n{traceback.format_exc()}"); sys.stdout.flush()
+                                return {"status": "error_sending_menu"}
 
                         # Proceso con Gemini
                         if gemini is None: return {"status": "no_gemini"}
@@ -241,18 +307,18 @@ async def recibir_mensaje(request: Request):
                         if message.get('type') == 'interactive':
                             prompt = f"[Menú]: {texto_usuario}"
                         
+                        print(f"[Webhook] Calling Gemini for: '{prompt[:50]}...'")
                         res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
-                        print(f"DEBUG: Gemini response preview: {res_ai[:50]}")
+                        print(f"[Webhook] Gemini response preview: {res_ai[:80]}")
                         
-                        success = enviar_respuesta_con_opciones(numero_usuario, res_ai, client_data['whatsapp_token'], phone_number_id)
+                        success = whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, res_ai, client_data['whatsapp_token'], client_data['phone_number_id'])
+                        print(f"[Webhook] WhatsApp send result: {success}")
                         if success:
                             database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_ai)
                             
     except Exception as e:
         import traceback
         print(f"❌ WEBHOOK CRITICAL ERROR: {e}\n{traceback.format_exc()}")
-
-    return {"status": "ok"}
 
     return {"status": "ok"}
 
@@ -308,11 +374,7 @@ def send_security_code(email: str, code: str):
 async def debug_paths():
     return {
         "BASE_DIR": BASE_DIR,
-        "WWW_DIR": WWW_DIR,
-        "ADMIN_DIR": ADMIN_DIR,
-        "index_exists": os.path.exists(os.path.join(WWW_DIR, "index.html")),
-        "admin_index_exists": os.path.exists(os.path.join(ADMIN_DIR, "index.html")),
-        "login_exists": os.path.exists(os.path.join(ADMIN_DIR, "login.html"))
+        "status": "Firebase Hosting handles static files",
     }
 
 

@@ -1,0 +1,1108 @@
+﻿:root {
+    --bg-color: #0d1117;
+    --card-bg: #161b22;
+    --border-color: #30363d;
+    --primary: #58a6ff;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    margin: 0;
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 260px;
+    background-color: var(--card-bg);
+    border-right: 1px solid var(--border-color);
+    padding: 2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar h2 {
+    color: var(--primary);
+    margin-bottom: 2rem;
+}
+
+.main-content {
+    flex: 1;
+    padding: 2rem 3rem;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #444;
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn:hover {
+    background: #555;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
+    color: white;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #00e5ff 0%, #4a8be5 100%);
+    box-shadow: 0 4px 15px rgba(0, 210, 255, 0.3);
+}
+
+.btn-danger {
+    background: rgba(255, 68, 68, 0.1);
+    color: #ff4444;
+    border: 1px solid rgba(255, 68, 68, 0.2);
+}
+
+.btn-danger:hover {
+    background: #ff4444;
+    color: white;
+}
+
+.table-container {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+th {
+    background: #21262d;
+    color: var(--text-muted);
+}
+
+/* Form Styles */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    justify-content: center;
+    align-items: center;
+}
+
+/* MODAL PRINCIPAL: Forzar diseño horizontal expansivo */
+.modal-content {
+    background: #1a1c23;
+    padding: 20px;
+    border-radius: 12px;
+    width: 95vw;
+    max-width: 1400px;
+    max-height: 95vh;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+    z-index: 1001;
+    overflow: hidden;
+}
+
+.modal-grid {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 20px;
+    flex: 1;
+    max-height: 80vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* Suavizar scroll en iOS */
+    padding-right: 15px;
+    padding-bottom: 20px;
+}
+
+.modal-left,
+.modal-right {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 15px !important;
+    min-width: 0 !important;
+}
+
+.modal-right {
+    background: rgba(255, 255, 255, 0.03) !important;
+    padding: 20px !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Área de acciones (Botones Guardar/Cancelar) siempre abajo */
+.modal-actions {
+    position: sticky !important;
+    bottom: -20px !important;
+    /* Ajuste para compensar el padding del modal-content */
+    background: var(--card-bg) !important;
+    backdrop-filter: blur(10px) !important;
+    margin-top: 10px !important;
+    padding: 15px 0 !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 15px !important;
+    flex-shrink: 0 !important;
+    z-index: 10 !important;
+}
+
+
+#clientForm {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
+@media (max-width: 1100px) {
+    .modal-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-content {
+        width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+        padding: 10px;
+        top: 0;
+        left: 0;
+        transform: none;
+    }
+
+    .modal-left,
+    .modal-right {
+        padding: 5px;
+        gap: 10px !important;
+    }
+
+    .sidebar {
+        width: 80px;
+        padding: 1rem 0.5rem;
+    }
+
+    .sidebar h2,
+    .sidebar nav li span {
+        display: none;
+    }
+
+    .sidebar nav li {
+        text-align: center;
+        font-size: 1.5rem;
+    }
+
+    .main-content {
+        padding: 1rem;
+    }
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-muted);
+}
+
+.form-group input,
+.form-group textarea {
+    width: 100%;
+    padding: 0.8rem;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text);
+}
+
+.form-group textarea {
+    min-height: 32px;
+    max-height: 100px;
+    resize: vertical;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.9rem;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Input file oculto pero clickable por JS (evita que algunos navegadores bloqueen .click()) */
+.pdf-input-hidden {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.pdf-input-hidden:focus {
+    outline: none;
+}
+
+/* Settings Grid */
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 1.5rem;
+}
+
+.settings-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.settings-card-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background: #21262d;
+}
+
+.settings-card-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--text);
+}
+
+.settings-card-body {
+    padding: 0.5rem 0;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    gap: 1rem;
+}
+
+.settings-row:last-child {
+    border-bottom: none;
+}
+
+.settings-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.settings-value {
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.status-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.3rem 0.7rem;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.status-active {
+    background: rgba(63, 185, 80, 0.15);
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.4);
+}
+
+.status-warning {
+    background: rgba(210, 145, 50, 0.15);
+    color: #d29132;
+    border: 1px solid rgba(210, 145, 50, 0.4);
+}
+
+.status-info {
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--primary);
+    border: 1px solid rgba(88, 166, 255, 0.4);
+}
+
+.btn-logout {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.btn-logout:hover {
+    background: rgba(255, 107, 107, 0.1);
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+}
+
+/* Modal de confirmación */
+.confirm-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.confirm-overlay.active {
+    display: flex;
+}
+
+.confirm-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    padding: 2rem 2.5rem;
+    border-radius: 12px;
+    width: 420px;
+    max-width: 90vw;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.confirm-title {
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+    color: var(--primary);
+}
+
+.confirm-msg {
+    margin: 0 0 1.5rem 0;
+    line-height: 1.5;
+    color: var(--text);
+}
+
+.confirm-actions {
+    margin-top: 2rem !important;
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    background: var(--bg-dark);
+    padding: 1.5rem 2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0 0 15px 15px;
+}
+
+/* Estilos específicos para botones del modal */
+#clientModal .btn {
+    min-width: 120px;
+}
+
+#clientModal .btn-primary {
+    background: linear-gradient(135deg, #ff0080 0%, #7928ca 100%);
+    /* Magenta/Violeta Zotek */
+    box-shadow: 0 4px 15px rgba(255, 0, 128, 0.2);
+}
+
+#clientModal .btn-primary:hover {
+    background: linear-gradient(135deg, #ff1a8c 0%, #8a36e5 100%);
+    box-shadow: 0 6px 20px rgba(255, 0, 128, 0.3);
+}
+
+#clientModal .btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#clientModal .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+/* Botón Añadir Opción - Modern Premium Style */
+.btn-add-option {
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: var(--primary) !important;
+    border: 1px dashed rgba(88, 166, 255, 0.3) !important;
+    width: 100%;
+    margin-top: 1rem;
+    font-size: 0.8rem !important;
+    padding: 0.6rem !important;
+    border-radius: 8px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.btn-add-option:hover {
+    background: rgba(88, 166, 255, 0.08) !important;
+    border-color: var(--primary) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-add-option::before {
+    content: "＋";
+    font-size: 1.1rem;
+}
+
+/* Menu Editor Nodes - Refined Card Style */
+.menu-node {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 1rem !important;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.menu-node:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateX(4px);
+}
+
+.menu-node:focus-within {
+    border-color: #00d2ff !important;
+    background: rgba(0, 210, 255, 0.05) !important;
+    box-shadow: 0 0 20px rgba(0, 210, 255, 0.2), 0 0 0 1px #00d2ff;
+    transform: scale(1.01);
+}
+
+body.light-mode .action-card {
+    background: #ffffff;
+    border-color: #ddd;
+}
+
+body.light-mode .action-card:hover {
+    border-color: var(--primary);
+    background: #f0f8ff;
+
+}
+
+body.light-mode .settings-card {
+    background: #ffffff !important;
+    border-color: #e0e0e0 !important;
+}
+
+body.light-mode .settings-card-header h3 {
+    color: #333 !important;
+}
+
+body.light-mode .settings-row {
+    border-bottom-color: #f0f0f0 !important;
+}
+
+body.light-mode .settings-label {
+    color: #555 !important;
+}
+
+body.light-mode .settings-value,
+body.light-mode .form-group label {
+    color: #333 !important;
+}
+
+body.light-mode .modal-actions {
+    background: #ffffff !important;
+    border-top-color: #e0e0e0 !important;
+}
+
+body.light-mode #s-webhook-url {
+    background: #f0f2f5 !important;
+    color: #333 !important;
+}
+
+body.light-mode .chat-card {
+    background: #ffffff !important;
+    border-color: #e0e0e0 !important;
+}
+
+body.light-mode .chat-card-user {
+    color: #333 !important;
+}
+
+body.light-mode .chat-card-date {
+    color: #777 !important;
+}
+
+body.light-mode .chat-card-label {
+    color: #555 !important;
+}
+
+body.light-mode .chat-card-response {
+    background: #f0f2f5 !important;
+    border-color: #ddd !important;
+    color: #333 !important;
+}
+
+body.light-mode .header h1,
+body.light-mode .sidebar nav li span {
+    color: #333 !important;
+}
+
+body.light-mode .dashboard-card {
+    background: #ffffff !important;
+    border-color: #e0e0e0 !important;
+}
+
+body.light-mode .dashboard-card h3 {
+    color: #555 !important;
+}
+
+body.light-mode .dashboard-card .number {
+    color: #333 !important;
+}
+
+body.light-mode td code {
+    background: #f0f2f5 !important;
+    color: #333 !important;
+}
+
+/* --- LIGHT MODE COMPLETO Y CORRECCIONES --- */
+
+body.light-mode th {
+    background: #e0e0e0 !important;
+    color: #333 !important;
+}
+
+body.light-mode td {
+    background: #ffffff !important;
+    color: #333 !important;
+    border-bottom: 1px solid #ddd !important;
+}
+
+body.light-mode tbody tr:hover td {
+    background: #f5f5f5 !important;
+}
+
+body.light-mode .table-container {
+    background: #ffffff !important;
+    border-color: #ddd !important;
+}
+
+body.light-mode .modal-actions {
+    background: #ffffff !important;
+    border-top: 1px solid #e0e0e0 !important;
+}
+
+body.light-mode .form-group label {
+    color: #555 !important;
+}
+
+body.light-mode #clientModal .btn-secondary {
+    background: #e0e0e0 !important;
+    color: #333 !important;
+    border-color: #ccc !important;
+}
+
+body.light-mode #clientModal .btn-secondary:hover {
+    background: #d0d0d0 !important;
+}
+
+body.light-mode .modal-right {
+    background: #f8f9fa !important;
+    border: 1px solid #e0e0e0 !important;
+    color: #333 !important;
+}
+
+body.light-mode .bot-editor-layout {
+    background: #ffffff !important;
+}
+
+body.light-mode .menu-node {
+    background: #ffffff !important;
+    border: 1px solid #ddd !important;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05) !important;
+}
+
+body.light-mode .btn-add-option {
+    background: #f0f8ff !important;
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+}
+
+body.light-mode .menu-field-label {
+    color: #333 !important;
+}
+
+/* NUCLEAR OVERRIDE PARA LIGHT MODE - FORMULARIOS */
+body.light-mode #clientModal .menu-node input,
+body.light-mode #clientModal .menu-node textarea,
+body.light-mode .menu-node input,
+body.light-mode .menu-node textarea,
+body.light-mode textarea.menu-field-input,
+body.light-mode input.menu-field-input,
+body.light-mode .form-group input,
+body.light-mode .form-group textarea {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #333 !important;
+    border: 1px solid #ccc !important;
+}
+
+body.light-mode .menu-node input:focus,
+body.light-mode .menu-node textarea:focus,
+body.light-mode .form-group input:focus,
+body.light-mode .form-group textarea:focus {
+    border-color: var(--primary) !important;
+    background: #fff !important;
+    box-shadow: 0 0 5px rgba(88, 166, 255, 0.3) !important;
+}
+
+
+/* Light Mode Core */
+body.light-mode {
+    background-color: #f0f2f5;
+    color: #333;
+}
+
+body.light-mode .topbar,
+body.light-mode .sidebar,
+body.light-mode .card,
+body.light-mode .modal-content {
+    background-color: #ffffff;
+    border-color: #e0e0e0;
+    color: #333;
+}
+
+body.light-mode .modal-header h2,
+body.light-mode .bot-header h3,
+body.light-mode .tree-item,
+body.light-mode h4,
+body.light-mode h5 {
+    color: #333 !important;
+}
+
+body.light-mode .bot-editor-layout {
+    background: #f8f9fa;
+    border-color: #ddd;
+}
+
+body.light-mode .bot-editor-panel,
+body.light-mode .bot-tree-sidebar {
+    background: #ffffff !important;
+    border-color: #e0e0e0 !important;
+}
+
+body.light-mode .tree-item:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+body.light-mode .tree-item.active {
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--primary) !important;
+}
+
+body.light-mode input,
+body.light-mode textarea,
+body.light-mode #clientModal .menu-node input,
+body.light-mode #clientModal .menu-node textarea,
+body.light-mode .menu-node input,
+body.light-mode .menu-node textarea,
+body.light-mode textarea.menu-field-input,
+body.light-mode input.menu-field-input {
+    background-color: #ffffff !important;
+    color: #333 !important;
+    border: 1px solid #ccc !important;
+}
+
+body.light-mode .menu-field-label {
+    color: #555 !important;
+}
+
+body.light-mode .btn-secondary {
+    background-color: #f0f2f5 !important;
+    color: #333 !important;
+    border: 1px solid #ccc !important;
+}
+
+body.light-mode .btn-secondary:hover {
+    background-color: #e4e6e9 !important;
+}
+
+.menu-node input,
+.menu-node textarea {
+    background: #161b22 !important;
+    /* Forzar fondo oscuro */
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    padding: 0.6rem 0.8rem !important;
+    border-radius: 6px !important;
+    color: #e6edf3 !important;
+    /* Forzar texto claro (blanco/gris) */
+    font-size: 0.85rem !important;
+    transition: all 0.2s ease;
+}
+
+.menu-node input::placeholder,
+.menu-node textarea::placeholder {
+    color: #484f58 !important;
+}
+
+.menu-field-label {
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    color: #58a6ff !important;
+    margin-bottom: 0.3rem !important;
+    display: block !important;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    opacity: 0.8;
+}
+
+.menu-field-input {
+    width: 100% !important;
+    margin-bottom: 0.8rem !important;
+}
+
+/* OVERRIDE NUCLEAR - Forzar tema oscuro en TODO el editor (Solo si NO es modo claro) */
+body:not(.light-mode) #clientModal .menu-node input,
+body:not(.light-mode) #clientModal .menu-node textarea,
+body:not(.light-mode) .menu-node input,
+body:not(.light-mode) .menu-node textarea,
+body:not(.light-mode) textarea.menu-field-input,
+body:not(.light-mode) input.menu-field-input {
+    background-color: #161b22 !important;
+    background: #161b22 !important;
+    color: #e6edf3 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.menu-node input:focus,
+.menu-node textarea:focus {
+    border-color: #00d2ff !important;
+    outline: none !important;
+    background: #0d1117 !important;
+    box-shadow: 0 0 15px rgba(0, 210, 255, 0.2) !important;
+}
+
+/* Identificador de nivel visual */
+.menu-level-indent {
+    border-left: 2px solid rgba(88, 166, 255, 0.1);
+    margin-left: 1.5rem;
+    padding-left: 1rem;
+    margin-top: 0.5rem;
+}
+
+/* Historial de Chats */
+.chat-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 800px;
+}
+
+.chat-placeholder {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 3rem 2rem;
+}
+
+.chat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+}
+
+.chat-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.chat-card-user {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.chat-card-date {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.chat-card-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+
+.chat-card-message {
+    margin-bottom: 1rem;
+    color: var(--text);
+}
+
+.chat-card-response {
+    background: rgba(88, 166, 255, 0.08);
+    padding: 1rem;
+    border-left: 3px solid var(--primary);
+    border-radius: 4px;
+    color: var(--text);
+    white-space: pre-wrap;
+}
+
+/* --- Bot Editor Hybrid Layout --- */
+.bot-editor-layout {
+    display: flex;
+    gap: 20px;
+    height: 100%;
+    min-height: 400px;
+    max-height: 60vh;
+    /* Para que no se desborde la pantalla */
+}
+
+/* Sidebar Tree */
+.bot-tree-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.menu-tree-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.tree-node {
+    margin-bottom: 2px;
+}
+
+.tree-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text);
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+    gap: 8px;
+}
+
+.tree-item:hover {
+    background: rgba(88, 166, 255, 0.1);
+}
+
+.tree-item.active {
+    background: rgba(88, 166, 255, 0.2);
+    border-left: 3px solid var(--primary);
+    color: #fff;
+    font-weight: 500;
+}
+
+.tree-icon {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    width: 16px;
+    text-align: center;
+    transition: transform 0.2s ease;
+}
+
+.tree-item.expanded .tree-icon {
+    transform: rotate(90deg);
+}
+
+.tree-children {
+    list-style: none;
+    padding-left: 20px;
+    margin: 2px 0 0 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    margin-left: 18px;
+    display: none;
+}
+
+.tree-children.open {
+    display: block;
+}
+
+/* Editor Panel */
+.bot-editor-panel {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Action Cards */
+.action-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.action-card {
+    background: rgba(22, 27, 34, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.action-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--primary);
+    background: rgba(88, 166, 255, 0.05);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.action-card i {
+    font-size: 2rem;
+    color: var(--primary);
+    margin-bottom: 5px;
+}
+
+.action-card h4 {
+    margin: 0;
+    color: #fff;
+    font-size: 1.05rem;
+}
+
+.action-card p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Responsive Support for dual layout */
+@media (max-width: 900px) {
+    .bot-editor-layout {
+        flex-direction: column;
+        max-height: none;
+    }
+
+    .bot-tree-sidebar {
+        width: 100%;
+        max-height: 250px;
+    }
+}
+
+/* --- LIGHT MODE REFORZADO V9 --- */
+body.light-mode {
+    background-color: #f4f7fa !important;
+    color: #2c3e50 !important;
+}
+
+body.light-mode .topbar,
+body.light-mode .sidebar,
+body.light-mode .card,
+body.light-mode .modal-content,
+body.light-mode .settings-card,
+body.light-mode .bot-tree-sidebar,
+body.light-mode .bot-editor-panel,
+body.light-mode .action-card,
+body.light-mode .chat-card,
+body.light-mode .table-container,
+body.light-mode .confirm-box {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1px solid #d1d9e6 !important;
+    color: #2c3e50 !important;
+}
+
+body.light-mode input,
+body.light-mode textarea,
+body.light-mode select,
+body.light-mode .menu-field-input {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    color: #2c3e50 !important;
+    border: 1px solid #b8c2cc !important;
+}
+
+body.light-mode .tree-item {
+    color: #2c3e50 !important;
+}
+
+body.light-mode .tree-item:hover {
+    background: #f1f5f9 !important;
+}
+
+body.light-mode label,
+body.light-mode .form-label,
+body.light-mode .settings-label {
+    color: #4a5568 !important;
+    font-weight: 600 !important;
+}
+
+/* Reducción de fuentes para la columna lateral del modal */
+.modal-left .form-group label {
+    font-size: 0.75rem !important;
+}
+
+.modal-left input,
+.modal-left textarea {
+    padding: 8px !important;
+    font-size: 0.85rem !important;
+}
+
+/* Modales en modo oscuro (Nuclear Fix) */
+body:not(.light-mode) .modal-content,
+body:not(.light-mode) .bot-editor-panel {
+    background: #1a1c23 !important;
+}
+
+body:not(.light-mode) input,
+body:not(.light-mode) textarea,
+body:not(.light-mode) select {
+    background: #161b22 !important;
+    color: #e6edf3 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}

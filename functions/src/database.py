@@ -28,15 +28,25 @@ def init_db():
     pass
 
 def get_client_by_phone_id(phone_number_id):
-    """Obtiene los datos de un cliente por su Phone Number ID."""
+    """Obtiene los datos de un cliente por su Phone Number ID o número de WhatsApp."""
     try:
-        clients_ref = get_db().collection('clients')
-        query = clients_ref.where('phone_number_id', '==', str(phone_number_id)).stream()
+        db = get_db()
+        clients_ref = db.collection('clients')
         
+        # 1. Intentar por phone_number_id (ID numérico de Meta)
+        query = clients_ref.where('phone_number_id', '==', str(phone_number_id)).stream()
         for doc in query:
             client_data = doc.to_dict()
             client_data['id'] = doc.id
             return client_data
+            
+        # 2. Intentar por whatsapp_number (por si Meta envía el número en el webhook)
+        query = clients_ref.where('whatsapp_number', '==', str(phone_number_id)).stream()
+        for doc in query:
+            client_data = doc.to_dict()
+            client_data['id'] = doc.id
+            return client_data
+            
         return None
     except Exception as e:
         print(f"❌ ERROR get_client_by_phone_id: {e}")

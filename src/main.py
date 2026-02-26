@@ -1,3 +1,4 @@
+# Deploy Trigger: Force redeploy to fix persistent NameError in production.
 import os
 import random
 import smtplib
@@ -103,6 +104,7 @@ async def recibir_mensaje(request: Request):
 
             numero_usuario = message['from']
             texto_usuario = message.get('text', {}).get('body', "")
+            texto_menu = "" # Default to empty string to avoid NameError
             phone_number_id = value['metadata']['phone_number_id']
             
             # Mexico normalization
@@ -128,11 +130,13 @@ async def recibir_mensaje(request: Request):
                 whatsapp_token=client_data['whatsapp_token'],
                 phone_number_id=client_data['phone_number_id']
             )
+            print(f"✅ Respuesta enviada con éxito a {numero_usuario}")
             
     except Exception as e:
         print(f"🔥 Error en Webhook: {e}")
 
     return {"status": "ok"}
+
 
 # --- Security Helpers ---
 
