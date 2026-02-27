@@ -16,6 +16,12 @@ body {
     min-height: 100vh;
 }
 
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 .sidebar {
     width: 260px;
     background-color: var(--card-bg);
@@ -260,6 +266,15 @@ th {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     color: var(--text);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    outline: none;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+    border-color: #00d2ff !important;
+    box-shadow: 0 0 15px rgba(0, 210, 255, 0.4), inset 0 0 0 1px rgba(0, 210, 255, 0.2) !important;
+    background: rgba(0, 210, 255, 0.03) !important;
 }
 
 .form-group textarea {
@@ -686,9 +701,9 @@ body.light-mode .menu-node input:focus,
 body.light-mode .menu-node textarea:focus,
 body.light-mode .form-group input:focus,
 body.light-mode .form-group textarea:focus {
-    border-color: var(--primary) !important;
+    border-color: #3b82f6 !important;
     background: #fff !important;
-    box-shadow: 0 0 5px rgba(88, 166, 255, 0.3) !important;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3), 0 0 0 1px #3b82f6 !important;
 }
 
 

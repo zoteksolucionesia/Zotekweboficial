@@ -14,7 +14,7 @@ def migrate():
     # Inicializar Firebase Admin (usará las credenciales por defecto si se corre localmente con firebase login)
     print("🚀 Iniciando migración de SQLite a Firestore...")
     try:
-        firebase_admin.initialize_app(options={'projectId': 'zotek-soluciones-ia-demo'})
+        firebase_admin.initialize_app(options={'projectId': 'zotek-ia'})
     except Exception as e:
         print(f"ℹ️ Firebase ya inicializado o error: {e}")
     

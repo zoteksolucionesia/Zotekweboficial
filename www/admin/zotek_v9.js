@@ -1,6 +1,38 @@
 const token = localStorage.getItem('zotek_token');
 let currentUser = null;
 
+/* Toast Notifications System */
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    let icon = 'info-circle';
+    if (type === 'success') icon = 'check-circle';
+    else if (type === 'error') icon = 'exclamation-triangle';
+    else if (type === 'warning') icon = 'exclamation-circle';
+
+    // Use a basic escape function to prevent html injection
+    const escapedMsg = message.replace(/[&<>'"]/g,
+        tag => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+        }[tag] || tag));
+
+    toast.innerHTML = `
+        <i class="fas fa-${icon}"></i>
+        <div class="toast-message">${escapedMsg}</div>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
 if (!token && (window.location.pathname.startsWith('/admin') || window.location.pathname === '/admin-control' || window.location.pathname === '/dashboard')) {
     window.location.href = '/login';
 }
@@ -209,9 +241,17 @@ async function editClient(id) {
 
 async function saveClient(event) {
     event.preventDefault();
+
+    const nameInput = document.getElementById('clientName');
+    if (!nameInput.value.trim()) {
+        showToast('El Nombre del Negocio es obligatorio.', 'warning');
+        nameInput.focus();
+        return;
+    }
+
     const id = document.getElementById('clientId').value;
     const data = {
-        name: document.getElementById('clientName').value,
+        name: nameInput.value,
         whatsapp_token: document.getElementById('whatsappToken').value,
         phone_number_id: document.getElementById('phoneNumberId').value,
         verify_token: document.getElementById('verifyToken').value,
@@ -227,20 +267,25 @@ async function saveClient(event) {
     const method = id ? 'PUT' : 'POST';
     const url = id ? `/api/clients/${id}` : '/api/clients';
 
-    const response = await fetch(url, {
-        method: method,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(data)
-    });
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
 
-    if (response.ok) {
-        closeModal();
-        fetchClients();
-    } else {
-        alert('Error al guardar cliente');
+        if (response.ok) {
+            closeModal();
+            fetchClients();
+            showToast('Cambios guardados con éxito', 'success');
+        } else {
+            showToast('Error al guardar los cambios del cliente', 'error');
+        }
+    } catch (e) {
+        showToast('Error de conexión al guardar', 'error');
     }
 }
 
@@ -403,7 +448,7 @@ function showBotHome() {
 
     const welcomeInput = document.getElementById('menuWelcomeText');
     if (welcomeInput) {
-        welcomeInput.onchange = (e) => {
+        welcomeInput.oninput = (e) => {
             currentMenu.text = e.target.value;
         };
     }
@@ -489,7 +534,7 @@ function renderEditorForm(path) {
 
     const respInput = document.getElementById('editor-node-response');
     if (respInput) {
-        respInput.onchange = (e) => {
+        respInput.oninput = (e) => {
             updateMenuValue(path, 'response', e.target.value);
         };
     }

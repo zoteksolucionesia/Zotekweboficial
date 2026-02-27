@@ -268,37 +268,37 @@ async def recibir_mensaje(request: Request):
 
                         # Keywords de menú
                         if texto_usuario.lower().strip() in ["hola", "menu", "menú", "inicio", "opciones"]:
-                            print(f"[Webhook] ✅ Keyword match: '{texto_usuario}' -> sending menu"); sys.stdout.flush()
+                            print(f"[Webhook] ✅ Keyword match: '{texto_usuario}' -> checking for explicit menu options"); sys.stdout.flush()
                             
-                            # Inline de send_menu_followup
-                            print(f"[send_menu_followup_inline] Starting for client {client_data.get('name')}"); sys.stdout.flush()
+                            opciones_raw = []
+                            texto_menu_local = ""
                             if menu_data:
-                                texto_menu_local = menu_data.get('text', f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte?")
                                 opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
+                                texto_menu_local = menu_data.get('text', f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte?")
+                            
+                            if len(opciones_raw) > 0:
+                                print(f"[send_menu_followup_inline] Starting for client {client_data.get('name')}"); sys.stdout.flush()
                                 opciones = []
                                 for opt in opciones_raw:
                                     title = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
                                     opciones.append(title)
-                            else:
-                                texto_menu_local = f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte hoy?"
-                                opciones = ["Servicios", "Agendar Cita", "Contacto"]
-                            
-                            print(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}"); sys.stdout.flush()
-                            try:
-                                if len(opciones) == 0:
-                                    print(f"[Webhook] Menu has 0 options. Sending text only."); sys.stdout.flush()
-                                    send_result = whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_menu_local, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                elif len(opciones) > 3:
-                                    send_result = whatsapp_service.enviar_menu_lista(numero_usuario, texto_menu_local, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                else:
-                                    send_result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu_local, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
                                 
-                                database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Menu enviado: {send_result}]")
-                                print(f"[Webhook] ✅ Menu flow complete. send_result={send_result}"); sys.stdout.flush()
-                                return {"status": "menu_sent"}
-                            except Exception as e:
-                                print(f"❌ ERROR enviando menú: {e}\n{traceback.format_exc()}"); sys.stdout.flush()
-                                return {"status": "error_sending_menu"}
+                                print(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}"); sys.stdout.flush()
+                                try:
+                                    if len(opciones) > 3:
+                                        send_result = whatsapp_service.enviar_menu_lista(numero_usuario, texto_menu_local, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    else:
+                                        send_result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu_local, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    
+                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Menu enviado: {send_result}]")
+                                    print(f"[Webhook] ✅ Menu flow complete. send_result={send_result}"); sys.stdout.flush()
+                                    return {"status": "menu_sent"}
+                                except Exception as e:
+                                    print(f"❌ ERROR enviando menú: {e}\n{traceback.format_exc()}"); sys.stdout.flush()
+                                    return {"status": "error_sending_menu"}
+                            else:
+                                print(f"[Webhook] Menu has 0 options. Allowing Gemini to handle the greeting."); sys.stdout.flush()
+                                # Do not return here. Let it fall through to Gemini.
 
                         # Proceso con Gemini
                         if gemini is None: return {"status": "no_gemini"}
@@ -311,11 +311,27 @@ async def recibir_mensaje(request: Request):
                         res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
                         print(f"[Webhook] Gemini response preview: {res_ai[:80]}")
                         
-                        success = whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, res_ai, client_data['whatsapp_token'], client_data['phone_number_id'])
+                        # Parse dynamic [OPCIONES]: generated by Gemini
+                        texto_para_enviar = res_ai
+                        opciones_dinamicas = []
+                        if "[OPCIONES]:" in res_ai:
+                            partes = res_ai.split("[OPCIONES]:")
+                            texto_para_enviar = partes[0].strip()
+                            dict_opciones = partes[1].split("|")
+                            opciones_dinamicas = [o.strip() for o in dict_opciones if o.strip()][:10] # WhatsApp list limit 10
+                        
+                        success = whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_para_enviar, client_data['whatsapp_token'], client_data['phone_number_id'])
+                        
+                        if success and opciones_dinamicas:
+                            if len(opciones_dinamicas) > 3:
+                                whatsapp_service.enviar_menu_lista(numero_usuario, "Por favor, selecciona una opción:", "Ver opciones", "Menú", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
+                            elif len(opciones_dinamicas) > 0:
+                                whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona una opción:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
+
                         print(f"[Webhook] WhatsApp send result: {success}")
                         if success:
                             database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_ai)
-                            
+
     except Exception as e:
         import traceback
         print(f"❌ WEBHOOK CRITICAL ERROR: {e}\n{traceback.format_exc()}")

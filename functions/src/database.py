@@ -4,7 +4,7 @@ import os
 
 # Inicializar Firebase Admin si no está inicializado
 try:
-    firebase_admin.initialize_app()
+    firebase_admin.initialize_app(options={'projectId': 'zotek-ia'})
 except ValueError:
     # Ya estaba inicializado
     pass
