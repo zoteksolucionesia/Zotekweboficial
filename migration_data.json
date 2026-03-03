@@ -1,0 +1,44 @@
+{
+    "clients": [
+        {
+            "id": 1,
+            "name": "Zotek Soluciones IA",
+            "whatsapp_token": "EAAoC7oYRllsBQZB7RMmNhZA9ypzWmZBdBVfcUfD0qvKdZBLJkzYLaD0SpghQfsxZAnQLd8z0OBQqJ3SaRsw34ZBdhCRCNNgcRxOZA3GrLujmaZAvOJKI3WMwm1RXkPiPn5O6afQV6ZBeKRo0EnjkHr16KKa6mARZBZBbywHXib54rxJWvs4tx851oMInZADfhK1qPa8iZCQZDZD",
+            "phone_number_id": "980996958435648",
+            "verify_token": "MI_TOKEN_SECRETO_123",
+            "system_instruction": "Eres un experto de Zotek Soluciones IA. Proporciona información sobre nuestros servicios de forma clara y profesional.",
+            "stripe_api_key": null,
+            "created_at": "2026-02-18 15:40:57",
+            "bank_name": "SANTANDER",
+            "clabe": "012345678901234567",
+            "beneficiary_name": "Zotek Soluciones IA"
+        }
+    ],
+    "knowledge": [
+        {
+            "id": 3,
+            "client_id": 1,
+            "content": "Zotek Soluciones IA  \n1. Automatización Avanzada y Agentes de Voz (Deep Dive) \nAsistentes de Voz Telefónicos (IA Conversacional) \nNo son simples contestadores; son agentes capaces de mantener conversaciones fluidas y \nhumanas. \n• Capacidad de Interacción: Utilizamos tecnología que permite a la IA escuchar, entender y \nresponder en tiempo real con baja latencia, simulando una conversación humana natural con \nemociones y pausas lógicas,. \n• Gestión de Citas en Tiempo Real: El agente puede consultar tu disponibilidad en Google \nCalendar o herramientas como Cal.com durante la llamada y bloquear el hueco \nautomáticamente sin intervención humana,. \n• Entrenamiento Personalizado: Configuramos el \"cerebro\" del asistente con la información \nde tu empresa (precios, horarios, servicios) e instrucciones sobre cómo manejar objeciones o \ncerrar ventas,. \n• Captación de Datos: El agente puede extraer información clave del cliente (nombre, \ninterés, correo) durante la conversación y volcarla automáticamente en tu CRM o base de \ndatos,. \nChatbots Omnicanal (WhatsApp/Instagram) \n• Flujos de Venta Complejos: Configuramos agentes que guían al usuario desde la duda \ninicial hasta la compra, recomendando productos específicos basados en las necesidades \ndel cliente,. \n• Integración con Bases de Datos: Podemos conectar el chatbot a tus hojas de cálculo \n(Google Sheets) o bases de datos para que consulte el estado de un pedido o stock en tiempo \nreal y responda al cliente,. \n• Recuperación de Carrit",
+            "source_file": null,
+            "updated_at": "2026-02-18 18:19:44"
+        },
+        {
+            "id": 4,
+            "client_id": 1,
+            "content": "Zotek Soluciones IA  \n1. Automatización Avanzada y Agentes de Voz (Deep Dive) \nAsistentes de Voz Telefónicos (IA Conversacional) \nNo son simples contestadores; son agentes capaces de mantener conversaciones fluidas y \nhumanas. \n• Capacidad de Interacción: Utilizamos tecnología que permite a la IA escuchar, entender y \nresponder en tiempo real con baja latencia, simulando una conversación humana natural con \nemociones y pausas lógicas,. \n• Gestión de Citas en Tiempo Real: El agente puede consultar tu disponibilidad en Google \nCalendar o herramientas como Cal.com durante la llamada y bloquear el hueco \nautomáticamente sin intervención humana,. \n• Entrenamiento Personalizado: Configuramos el \"cerebro\" del asistente con la información \nde tu empresa (precios, horarios, servicios) e instrucciones sobre cómo manejar objeciones o \ncerrar ventas,. \n• Captación de Datos: El agente puede extraer información clave del cliente (nombre, \ninterés, correo) durante la conversación y volcarla automáticamente en tu CRM o base de \ndatos,. \nChatbots Omnicanal (WhatsApp/Instagram) \n• Flujos de Venta Complejos: Configuramos agentes que guían al usuario desde la duda \ninicial hasta la compra, recomendando productos específicos basados en las necesidades \ndel cliente,. \n• Integración con Bases de Datos: Podemos conectar el chatbot a tus hojas de cálculo \n(Google Sheets) o bases de datos para que consulte el estado de un pedido o stock en tiempo \nreal y responda al cliente,. \n• Recuperación de Carritos y Seguimiento: Automatizamos el envío de mensajes proactivos \npara recuperar clientes que mostraron interés pero no compraron, aumentando la tasa de \nconversión,. \n2. Desarrollo de Software y Aplicaciones (No-Code & AI-Powered) \nDesarrollo de Apps a Medida (Web & Móvil) \n• Prototipado Instantáneo: Convertimos una idea o un boceto en servilleta en una \naplicación funcional en cuestión de minutos, permitiendo validar ideas de negocio sin \ngrandes inversiones iniciales,. \n• Funcionalidades Backend Completas: No son solo \"caras bonitas\"; integramos sistemas \nde autenticación de usuarios (login/registro), bases de datos para guardar historiales de \nclientes y pasarelas de pago como Stripe,. \n• Paneles de Control (Dashboards): Creamos herramientas internas para que visualices \nmétricas de tu negocio, gestiones inventarios o administres tareas, todo personalizado a tu \nflujo de trabajo,. \n• Publicación y Despliegue: Nos encargamos de publicar la aplicación en servidores \nseguros para que sea accesible vía web o incluso empaquetarla para dispositivos móviles,. \nDiseño y Desarrollo Web Inteligente \n• Webs Corporativas y E-commerce: Desplegamos tiendas online completas con gestión de \ninventario, facturación y seguimiento de envíos integrados en plataformas como Odoo o \nWordPress,. \n• Optimización SEO Automática: Utilizamos IA para analizar tu competencia y estructurar el \ncontenido de tu web (textos, metaetiquetas) para que posicione mejor en Google desde el \nprimer día,. \n3. Producción de Contenido Multimedia con IA \nAvatares y Vídeo Marketing \n• Avatares Hiperrealistas: Creamos portavoces digitales que no existen (o clonamos a tu \nCEO) para que presenten tus productos en vídeo, con sincronización labial perfecta y gestos \nnaturales,. \n• Vídeo a partir de Producto: Podemos generar anuncios de vídeo completos simplemente \nproporcionando la URL de tu producto (Amazon/Shopify); la IA extrae la información, escribe \nel guion y monta el vídeo,. \n• Traducción y Doblaje (Video Translate): Traducimos tus vídeos corporativos a otros \nidiomas manteniendo la voz original del hablante y adaptando el movimiento de los labios al \nnuevo idioma,. \nDiseño Gráfico y Branding \n• Generación de Imágenes de Marca: Creamos bancos de imágenes propios con la \nidentidad de tu marca (colores, estilo, logotipos) para usar en redes sociales, evitando \nproblemas de derechos de autor,. \n• Edición Avanzada: Podemos modificar fotos de producto, cambiar fondos, añadir \nelementos o expandir imágenes vertical/horizontalmente para adaptarlas a diferentes \nformatos de redes sociales,. \n4. Consultoría Estratégica y Análisis de Datos \nInvestigación de Mercado Profunda (Deep Research) \n• Agentes de Investigación Autónomos: Desplegamos agentes que navegan por internet, \nleen informes, analizan a tu competencia y buscan tendencias en foros para entregarte un \ninforme estratégico detallado con oportunidades de negocio,. \n• Análisis de Documentos Masivos: Podemos procesar cientos de PDFs, contratos o \ninformes técnicos para extraer resúmenes, encontrar cláusulas específicas o comparar datos \nen segundos,. \nBusiness Intelligence (BI) con IA \n• Conversión de Datos en Insights: Subimos tus archivos de ventas (Excel/CSV) y \ngeneramos dashboards interactivos que explican, mediante gráficos y texto, qué está \npasando en tu negocio, detectando anomalías o tendencias de crecimiento,. \n• Estrategia de Marketing Automatizada: Analizamos tu presencia digital y la de tus \ncompetidores para generar planes de marketing completos, calendarios de contenido y \nestrategias de lanzamiento de productos",
+            "source_file": "Zotek Soluciones IA.pdf",
+            "updated_at": "2026-02-18 18:55:52"
+        }
+    ],
+    "appointments": [
+        {
+            "id": 1,
+            "cliente_telefono": "3123173431",
+            "paciente_nombre": "Omar Morentin Lopez",
+            "fecha_hora": "2025-12-20 16:00",
+            "motivo": "consulta medica",
+            "created_at": "2025-12-04 18:59:34",
+            "client_id": 1
+        }
+    ]
+}
