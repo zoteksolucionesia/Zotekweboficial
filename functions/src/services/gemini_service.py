@@ -23,8 +23,31 @@ class GeminiEngine:
         # Si el cliente tiene instrucciones personalizadas, las usamos. Si no, usamos una por defecto.
         instrucciones_base = client_data.get('system_instruction') or f"Eres un asistente para {nombre_cliente}. Sé amable, breve y profesional."
         
+        # Inyectar la estructura de menú que configuran en el editor
+        menu_tree_text = ""
+        menu_data = client_data.get('menu_data')
+        if menu_data and 'opciones' in menu_data:
+            def _build_menu_text(opciones_list, level=0):
+                text = ""
+                prefix = "  " * level + "- "
+                for opt in opciones_list:
+                    if isinstance(opt, dict):
+                        title = opt.get('title', 'Opción')
+                        desc = opt.get('description', '')
+                        text += f"{prefix}{title}"
+                        if desc:
+                            text += f" ({desc})"
+                        text += "\n"
+                        if 'opciones' in opt and isinstance(opt['opciones'], list) and len(opt['opciones']) > 0:
+                            text += _build_menu_text(opt['opciones'], level + 1)
+                    else:
+                        text += f"{prefix}{str(opt)}\n"
+                return text
+            menu_tree_text = "\nESTE ES TU MENÚ INTERACTIVO ACTUAL. SI EL USUARIO PIDE OPCIONES, DEBES OFRECER ESTAS:\n" + _build_menu_text(menu_data['opciones'])
+        
         prompt_sistema = f"""
         {instrucciones_base}
+        {menu_tree_text}
         
         Usa el siguiente CONOCIMIENTO para responder si es relevante:
         

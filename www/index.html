@@ -29,7 +29,14 @@
             <img src="assets/logo.svg" alt="Zotek Logo">
         </div>
         <nav>
-            <!-- Navigation items could go here -->
+            <a href="#demo"
+                style="color: var(--text-main); text-decoration: none; margin-right: 20px; font-weight: 500; transition: color 0.3s;"
+                onmouseover="this.style.color='var(--primary-color)'"
+                onmouseout="this.style.color='var(--text-main)'">Probar bots</a>
+            <a href="/login" class="nav-btn"
+                style="padding: 8px 16px; background: rgba(0, 188, 212, 0.1); border: 1px solid rgba(0, 188, 212, 0.2); border-radius: 6px; color: var(--text-main); text-decoration: none; font-weight: 500; transition: all 0.3s;"
+                onmouseover="this.style.background='var(--primary-color)'; this.style.color='#000';"
+                onmouseout="this.style.background='rgba(0, 188, 212, 0.1)'; this.style.color='var(--text-main)';">Login</a>
         </nav>
     </header>
 
@@ -42,10 +49,19 @@
             <a href="/api/redirect/whatsapp" class="cta-button">Hablemos en WhatsApp</a>
         </section>
 
-        <section class="services">
+        <section class="services" id="demo">
             <div class="service-card">
                 <h3>Chatbots Inteligentes</h3>
                 <p>Asistentes 24/7 en WhatsApp y Web que entienden a tus clientes y cierran ventas automáticamente.</p>
+                <div class="demo-buttons">
+                    <h4 class="demo-title">Pruébalo Gratis Ahora:</h4>
+                    <a href="/api/redirect/whatsapp?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Restaurante"
+                        target="_blank" class="demo-btn">🍕 Demo Restaurante</a>
+                    <a href="/api/redirect/whatsapp?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Clínica"
+                        target="_blank" class="demo-btn">🏥 Demo Clínica</a>
+                    <a href="/api/redirect/whatsapp?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Tienda"
+                        target="_blank" class="demo-btn">🛍️ Demo Tienda</a>
+                </div>
             </div>
             <div class="service-card">
                 <h3>Automatización RPA</h3>

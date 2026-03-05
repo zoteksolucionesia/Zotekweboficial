@@ -87,10 +87,48 @@ def add_knowledge_entry(client_id, content, source_file=None):
     return True
 
 def list_clients():
-    """Retorna una lista de todos los clientes."""
+    """Retorna una lista de todos los clientes, incluyendo los de demostración."""
     clients_ref = get_db().collection('clients').stream()
     clients = []
+    
+    # Inyectar clientes demo
+    demo_clients = [
+        {
+            "id": "demo_restaurante", 
+            "name": "🍕 Demo Restaurante V9", 
+            "phone": "521550000001",
+            "phone_number_id": "demo_123", 
+            "email": "demo@zotek.ia",
+            "response_type": "text",
+            "gemini_prompt": "Eres el asistente de una Pizzería Gourmet. Saluda con entusiasmo y ofrece las pizzas del día.",
+            "created_at": "2024-01-01 00:00:00"
+        },
+        {
+            "id": "demo_clinica", 
+            "name": "🏥 Demo Clínica Dental", 
+            "phone": "521550000002",
+            "phone_number_id": "demo_456", 
+            "email": "demo@zotek.ia",
+            "response_type": "text",
+            "gemini_prompt": "Eres el asistente de una Clínica Dental. Ayuda a los pacientes a conocer los servicios de ortodoncia y limpieza.",
+            "created_at": "2024-01-01 00:00:00"
+        },
+        {
+            "id": "demo_tienda", 
+            "name": "🛍️ Demo Tienda e-Commerce", 
+            "phone": "521550000003",
+            "phone_number_id": "demo_789", 
+            "email": "demo@zotek.ia",
+            "response_type": "text",
+            "gemini_prompt": "Eres el asistente de una tienda de gadgets tecnológicos. Recomienda los mejores productos según las necesidades del cliente.",
+            "created_at": "2024-01-01 00:00:00"
+        }
+    ]
+    clients.extend(demo_clients)
+    
     for doc in clients_ref:
+        if doc.id in ["demo_restaurante", "demo_clinica", "demo_tienda"]:
+            continue
         client_data = doc.to_dict()
         client_data['id'] = doc.id
         clients.append(client_data)
@@ -195,6 +233,38 @@ def get_client_chats(client_id, limit=50):
     except Exception as e:
         print(f"❌ ERROR GET CHATS (Firestore): {e}")
         return []
+
+# --- GESTIÓN DE SESIONES DE DEMO (SANDBOX) ---
+
+def get_user_session(user_number):
+    """Obtiene la sesión de sandbox actual para un número de usuario."""
+    try:
+        doc_ref = get_db().collection('sandbox_sessions').document(str(user_number)).get()
+        if doc_ref.exists:
+            return doc_ref.to_dict()
+        return None
+    except Exception as e:
+        print(f"❌ ERROR GET USER SESSION: {e}")
+        return None
+
+def save_user_session(user_number, session_data):
+    """Guarda o actualiza la sesión de sandbox para un número de usuario."""
+    try:
+        session_data['updated_at'] = firestore.SERVER_TIMESTAMP
+        get_db().collection('sandbox_sessions').document(str(user_number)).set(session_data, merge=True)
+        return True
+    except Exception as e:
+        print(f"❌ ERROR SAVE USER SESSION: {e}")
+        return False
+
+def delete_user_session(user_number):
+    """Elimina la sesión de sandbox de un usuario (para salir de la demo)."""
+    try:
+        get_db().collection('sandbox_sessions').document(str(user_number)).delete()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR DELETE USER SESSION: {e}")
+        return False
 
 if __name__ == "__main__":
     # Prueba rápida

@@ -172,12 +172,29 @@ async def recibir_mensaje(request: Request):
                         
                         print(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}"); sys.stdout.flush()
                         
-                        client_data = database.get_client_by_phone_id(phone_number_id)
+                        # --- VERIFICAR SESIÓN DEMO PRIMERO ---
+                        session = database.get_user_session(numero_usuario)
+                        demo_client_id = None
+                        if session and session.get("demo_mode"):
+                            demo_mode = session.get("demo_mode")
+                            if demo_mode == "Restaurante": demo_client_id = "demo_restaurante"
+                            elif demo_mode == "Clínica" or demo_mode == "Clinica": demo_client_id = "demo_clinica"
+                            elif demo_mode == "Tienda": demo_client_id = "demo_tienda"
+                        
+                        client_data = None
+                        if demo_client_id:
+                            print(f"[Webhook] Sesión Demo activa, cargando cliente: {demo_client_id}"); sys.stdout.flush()
+                            client_data = database.get_client_by_id(demo_client_id)
+                        
+                        # Fallback a phone_number_id si no es demo o no se encontró
+                        if not client_data:
+                            client_data = database.get_client_by_phone_id(phone_number_id)
+                            
                         if not client_data:
                             print(f"❌ ERROR: No client found for phoneID {phone_number_id}"); sys.stdout.flush()
                             return {"status": "error", "message": "Client not found"}
                         
-                        print(f"✅ Client Found: {client_data.get('name')}"); sys.stdout.flush()
+                        print(f"✅ Client Found: {client_data.get('name')} (ID: {client_data.get('id')})"); sys.stdout.flush()
                         
                         # 1. Detectar tipo de mensaje
                         texto_usuario = ""
@@ -193,6 +210,44 @@ async def recibir_mensaje(request: Request):
                         
                         print(f"DEBUG: Texto de usuario detectado: '{texto_usuario}'"); sys.stdout.flush()
                         
+                        # --- INTERCEPCIÓN DE DEMOS (SANDBOX) ---
+                        texto_lower = texto_usuario.lower().strip()
+                        if "quiero probar la demo de" in texto_lower:
+                            # Identificar el tipo de demo
+                            tipo_demo = None
+                            if "restaurante" in texto_lower: tipo_demo = "Restaurante"
+                            elif "clínica" in texto_lower or "clinica" in texto_lower: tipo_demo = "Clínica"
+                            elif "tienda" in texto_lower: tipo_demo = "Tienda"
+                            
+                            if tipo_demo:
+                                print(f"[Demo] Iniciando sesión de demo para {numero_usuario} modo: {tipo_demo}"); sys.stdout.flush()
+                                database.save_user_session(numero_usuario, {"demo_mode": tipo_demo})
+                                
+                                # Send welcome message with buttons for the demo
+                                if tipo_demo == "Restaurante":
+                                    texto_welcome = "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?"
+                                    opciones = ["Ver Menú 🍕", "Hacer Reserva 📅", "Horarios ⏰"]
+                                elif tipo_demo == "Clínica":
+                                    texto_welcome = "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?"
+                                    opciones = ["Agendar Cita 📅", "Especialidades 👨‍⚕️", "Ubicación 📍"]
+                                else: # Tienda
+                                    texto_welcome = "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?"
+                                    opciones = ["Ver Catálogo 👕", "Tallas 📏", "Devoluciones 🔄"]
+
+                                whatsapp_service.enviar_menu_botones(numero_usuario, texto_welcome, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                return {"status": "demo_started"}
+
+                        # Comprobar si desea salir de la demo
+                        if texto_lower in ["salir", "terminar", "terminar demo", "salir demo"]:
+                            session = database.get_user_session(numero_usuario)
+                            if session and session.get("demo_mode"):
+                                database.delete_user_session(numero_usuario)
+                                print(f"[Demo] Terminando sesión de demo para {numero_usuario}"); sys.stdout.flush()
+                                msg_salida = "Has salido del modo demo. Ahora vuelvo a ser el asistente general de Zotek Soluciones IA. ¿En qué más puedo ayudarte?"
+                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                return {"status": "demo_ended"}
+                        # --- FIN INTERCEPCIÓN DEMOS ---
+
                         if not client_data.get('is_active', True):
                             print(f"[Webhook] Bot is INACTIVE for '{client_data['name']}'. Skipping AI."); sys.stdout.flush()
                             return {"status": "bot_inactive"}
@@ -211,12 +266,19 @@ async def recibir_mensaje(request: Request):
                         if menu_data:
                             def buscar_opcion(opciones, texto):
                                 for opt in opciones:
-                                    title = opt.get('title') if isinstance(opt, dict) else opt
+                                    is_dict = isinstance(opt, dict)
+                                    title = opt.get('title') if is_dict else opt
+                                    icon = opt.get('icon', '') if is_dict else ''
+                                    full_title = f"{icon} {title}".strip()
+                                    
+                                    # Comparar con título completo (con icono) y con solo el título
+                                    if str(full_title).lower().strip() == texto.lower().strip(): return opt
                                     if str(title).lower().strip() == texto.lower().strip(): return opt
-                                    if isinstance(opt, dict) and opt.get('submenu') and opt['submenu'].get('options'):
+
+                                    if is_dict and opt.get('submenu') and opt['submenu'].get('options'):
                                         found = buscar_opcion(opt['submenu']['options'], texto)
                                         if found: return found
-                                    elif isinstance(opt, dict) and 'opciones' in opt: # Soporte para estructura vieja
+                                    elif is_dict and 'opciones' in opt: # Soporte para estructura vieja
                                         found = buscar_opcion(opt['opciones'], texto)
                                         if found: return found
                                 return None
@@ -228,10 +290,15 @@ async def recibir_mensaje(request: Request):
                             if match and isinstance(match, dict):
                                 if match.get('submenu') and match['submenu'].get('options'):
                                     sub = match['submenu']
-                                    titles = [o.get('title', 'Opción') if isinstance(o, dict) else str(o) for o in sub['options']]
+                                    titles = []
+                                    for o in sub['options']:
+                                        t = o.get('title', 'Opción') if isinstance(o, dict) else str(o)
+                                        i = o.get('icon', '') if isinstance(o, dict) else ''
+                                        titles.append(f"{i} {t}".strip())
+                                        
                                     if len(titles) == 0:
-                                        print(f"DEBUG: Submenú '{match['title']}' no tiene opciones. Enviando solo texto."); sys.stdout.flush()
-                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, sub.get('text', f"Opciones para {match['title']}:"), client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        msg = sub.get('text', f"Opciones para {match['title']}:")
+                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     elif len(titles) > 3:
                                         whatsapp_service.enviar_menu_lista(numero_usuario, sub.get('text', 'Opciones:'), "Ver", match['title'], titles, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     else:
@@ -266,7 +333,25 @@ async def recibir_mensaje(request: Request):
                                             whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     return {"status": "predefined_sent"}
 
-                        # Keywords de menú
+                            if not match and menu_data.get('fallback_text'):
+                                print(f"DEBUG: No menu match found. Sending fallback_text for {client_data['name']}"); sys.stdout.flush()
+                                fallback_msg = menu_data['fallback_text']
+                                opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
+                                opciones = []
+                                for opt in opciones_raw:
+                                    t = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
+                                    i = opt.get('icon', '') if isinstance(opt, dict) else ''
+                                    opciones.append(f"{i} {t}".strip())
+                                
+                                if len(opciones) > 0:
+                                    if len(opciones) > 3:
+                                        whatsapp_service.enviar_menu_lista(numero_usuario, fallback_msg, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    else:
+                                        whatsapp_service.enviar_menu_botones(numero_usuario, fallback_msg, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Fallback enviado: {fallback_msg}]")
+                                    return {"status": "fallback_sent"}
+
+                        # Keywords de menú (hola, menu, etc.)
                         if texto_usuario.lower().strip() in ["hola", "menu", "menú", "inicio", "opciones"]:
                             print(f"[Webhook] ✅ Keyword match: '{texto_usuario}' -> checking for explicit menu options"); sys.stdout.flush()
                             
@@ -280,8 +365,9 @@ async def recibir_mensaje(request: Request):
                                 print(f"[send_menu_followup_inline] Starting for client {client_data.get('name')}"); sys.stdout.flush()
                                 opciones = []
                                 for opt in opciones_raw:
-                                    title = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
-                                    opciones.append(title)
+                                    t = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
+                                    i = opt.get('icon', '') if isinstance(opt, dict) else ''
+                                    opciones.append(f"{i} {t}".strip())
                                 
                                 print(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}"); sys.stdout.flush()
                                 try:
@@ -303,9 +389,27 @@ async def recibir_mensaje(request: Request):
                         # Proceso con Gemini
                         if gemini is None: return {"status": "no_gemini"}
                         
+                        # --- INYECCIÓN DE CONTEXTO DEMO ---
+                        session = database.get_user_session(numero_usuario)
+                        if session and session.get('demo_mode'):
+                            demo_mode = session['demo_mode']
+                            if demo_mode == "Restaurante":
+                                if not client_data.get('name'): client_data['name'] = "La Trattoria"
+                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente inteligente del restaurante 'La Trattoria'. Tu objetivo es ayudar a los clientes a hacer reservas, ver el menú (ofreces pizzas, pastas y ensaladas) y responder dudas sobre los horarios (abierto 12pm a 11pm). Sé amigable, breve y apetitoso."
+                            elif demo_mode == "Clínica":
+                                if not client_data.get('name'): client_data['name'] = "Clínica San Juan"
+                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente de la 'Clínica San Juan'. Ayudas a pacientes a agendar citas médicas (Medicina general, Odontología, Pediatría) y das información de ubicación. Sé empático, breve, profesional y tranquilizador."
+                            elif demo_mode == "Tienda":
+                                if not client_data.get('name'): client_data['name'] = "Moda Urbana Tienda"
+                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente de la tienda de ropa 'Moda Urbana'. Ayudas a encontrar prendas (camisetas, jeans, tenis), verificar disponibilidad de tallas y hacer devoluciones. Usa emojis, sé casual, vendedor, dinámico y muy breve."
+                            print(f"[Demo] Inyectando contexto de {demo_mode} para Gemini."); sys.stdout.flush()
+                        
                         prompt = texto_usuario
                         if message.get('type') == 'interactive':
                             prompt = f"[Menú]: {texto_usuario}"
+                        
+                        if menu_data:
+                            client_data['menu_data'] = menu_data
                         
                         print(f"[Webhook] Calling Gemini for: '{prompt[:50]}...'")
                         res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
@@ -479,7 +583,7 @@ async def get_me(token: str = Depends(oauth2_scheme)):
 # === Dynamic Redirections ===
 
 @app.get("/api/redirect/whatsapp")
-async def whatsapp_redirect():
+async def whatsapp_redirect(text: str = "Hola, quisiera mas informacion"):
     """Redirige dinamicamente al WhatsApp del cliente principal configurado."""
     clients = database.list_clients()
     
@@ -499,12 +603,15 @@ async def whatsapp_redirect():
             target_number = sanitize_mx_number(num)
             break
             
+    import urllib.parse
+    encoded_text = urllib.parse.quote(text)
+
     if target_number:
         print(f"[Redirect] Redirecting to client number: {target_number}")
-        return RedirectResponse(url=f"https://wa.me/{target_number}?text=Hola,%20quisiera%20mas%20informacion")
+        return RedirectResponse(url=f"https://wa.me/{target_number}?text={encoded_text}")
 
     # Fallback de seguridad (Bot Zotek: 3123775877)
-    fallback_url = "https://wa.me/523123775877?text=Hola,%20quisiera%20mas%20informacion"
+    fallback_url = f"https://wa.me/523123775877?text={encoded_text}"
     print(f"[Redirect] No numbers found in DB, using fallback: 523123775877")
     return RedirectResponse(url=fallback_url)
 
@@ -574,6 +681,82 @@ async def update_client_menu(client_id: str, request: Request, current_user: str
     data = await request.json()
     database.get_db().collection('clients').document(client_id).collection('config').document('menu').set(data)
     return {"status": "updated"}
+
+@app.post("/api/clients/{client_id}/reset")
+async def reset_demo_client(client_id: str, current_user: str = Depends(get_current_user)):
+    """Restablece la configuración de un cliente de demostración a su estado original."""
+    demo_clients_data = {
+        "demo_restaurante": {
+            "name": "Restaurante La Trattoria",
+            "email": "restaurante@ejemplo.com",
+            "phone_number_id": "demo_123",
+            "is_active": True,
+            "menu": {
+                "text": "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?",
+                "options": [
+                    {"title": "Ver Menú", "icon": "🍕", "response": "Nuestro menú incluye pizzas a la leña, pastas frescas y postres italianos."},
+                    {"title": "Hacer Reserva", "icon": "📅", "response": "Indícanos la fecha y hora para verificar disponibilidad."},
+                    {"title": "Horarios", "icon": "⏰", "response": "Estamos abiertos todos los días de 12:00 PM a 11:00 PM."}
+                ],
+                "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de La Trattoria:"
+            }
+        },
+        "demo_clinica": {
+            "name": "Clínica San Juan",
+            "email": "clinica@ejemplo.com",
+            "phone_number_id": "demo_456",
+            "is_active": True,
+            "menu": {
+                "text": "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?",
+                "options": [
+                    {"title": "Agendar Cita", "icon": "📅", "response": "Por favor, dinos para qué especialidad buscas cita."},
+                    {"title": "Especialidades", "icon": "👨‍⚕️", "response": "Contamos con Medicina General, Odontología y Pediatría."},
+                    {"title": "Ubicación", "icon": "📍", "response": "Estamos en Av. Central #123. Haz clic aquí para ver en el mapa: https://maps.google.com"}
+                ],
+                "fallback_text": "No comprendo tu solicitud. Selecciona una de estas opciones de la clínica:"
+            }
+        },
+        "demo_tienda": {
+            "name": "Moda Urbana",
+            "email": "tienda@ejemplo.com",
+            "phone_number_id": "demo_789",
+            "is_active": True,
+            "menu": {
+                "text": "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?",
+                "options": [
+                    {"title": "Ver Catálogo", "icon": "👕", "response": "Nuestra nueva colección de otoño ya está disponible."},
+                    {"title": "Tallas", "icon": "📏", "response": "Manejamos tallas desde XS hasta XL en la mayoría de nuestras prendas."},
+                    {"title": "Devoluciones", "icon": "🔄", "response": "Tienes 30 días para realizar cambios o devoluciones con tu ticket."}
+                ],
+                "fallback_text": "Ups, no reconozco eso. Aquí tienes lo que puedo hacer por ti en Moda Urbana:"
+            }
+        }
+    }
+
+    if client_id not in demo_clients_data:
+        raise HTTPException(status_code=400, detail="Solo se pueden restablecer los clientes de ejemplo.")
+
+    client_data = demo_clients_data[client_id]
+    db = firestore.client()
+    
+    # 1. Update basic info
+    client_info = client_data.copy()
+    menu_data = client_info.pop("menu")
+    client_info["id"] = client_id
+    
+    db.collection('clients').document(client_id).set(client_info, merge=True)
+    
+    # 2. Overwrite the entire menu config
+    db.collection('clients').document(client_id).collection('config').document('menu').set(menu_data)
+    
+    # Optional: Clear chats for a clean slate
+    chats = db.collection('clients').document(client_id).collection('chats').stream()
+    batch = db.batch()
+    for doc in chats:
+        batch.delete(doc.reference)
+    batch.commit()
+
+    return {"status": "success", "message": f"Cliente {client_id} restablecido correctamente"}
 
 @app.get("/api/clients/{client_id}/chats")
 async def list_chats(client_id: str, limit: int = 50, current_user: str = Depends(get_current_user)):

@@ -1,4 +1,5 @@
 import sqlite3
+import json
 import os
 
 # Pointing to the new data directory location
@@ -52,7 +53,8 @@ def init_db():
             "bank_name": "TEXT",
             "clabe": "TEXT",
             "beneficiary_name": "TEXT",
-            "stripe_api_key": "TEXT" 
+            "stripe_api_key": "TEXT",
+            "menu_json": "TEXT" 
         }
         
         for col, type in new_cols.items():
@@ -107,7 +109,44 @@ def get_client_by_phone_id(phone_number_id):
         return None
 
 def list_clients():
-    """Retorna una lista de todos los clientes."""
+    """Retorna una lista de todos los clientes, incluyendo los de demostración."""
+    # Inyectar clientes demo que siempre deben estar visibles
+    demo_clients = [
+        {
+            "id": 9991, 
+            "name": "🍕 Demo Restaurante V9", 
+            "phone": "521550000001",
+            "phone_number_id": "demo_restaurante", 
+            "email": "demo@zotek.ia", 
+            "response_type": "text",
+            "gemini_prompt": "Eres el asistente de una Pizzería Gourmet. Saluda con entusiasmo y ofrece las pizzas del día.",
+            "created_at": "2024-01-01 00:00:00",
+            "menu_json": '{"text": "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?", "options": [{"title": "Ver Menú", "icon": "🍕", "response": "Nuestro menú incluye pizzas a la leña, pastas frescas y postres italianos."}, {"title": "Hacer Reserva", "icon": "📅", "response": "Indícanos la fecha y hora para verificar disponibilidad."}, {"title": "Horarios", "icon": "⏰", "response": "Estamos abiertos todos los días de 12:00 PM a 11:00 PM."}], "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de La Trattoria:"}'
+        },
+        {
+            "id": 9992, 
+            "name": "🏥 Demo Clínica Dental", 
+            "phone": "521550000002",
+            "phone_number_id": "demo_clinica", 
+            "email": "demo@zotek.ia", 
+            "response_type": "text",
+            "gemini_prompt": "Eres el asistente de una Clínica Dental. Ayuda a los pacientes a conocer los servicios de ortodoncia y limpieza.",
+            "created_at": "2024-01-01 00:00:00",
+            "menu_json": '{"text": "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?", "options": [{"title": "Agendar Cita", "icon": "📅", "response": "Por favor, dinos para qué especialidad buscas cita."}, {"title": "Especialidades", "icon": "👨‍⚕️", "response": "Contamos con Medicina General, Odontología y Pediatría."}, {"title": "Ubicación", "icon": "📍", "response": "Estamos en Av. Central #123. Haz clic aquí para ver en el mapa: https://maps.google.com"}], "fallback_text": "No comprendo tu solicitud. Selecciona una de estas opciones de la clínica:"}'
+        },
+        {
+            "id": 9993, 
+            "name": "🛍️ Demo Tienda e-Commerce", 
+            "phone": "521550000003",
+            "phone_number_id": "demo_tienda", 
+            "email": "demo@zotek.ia", 
+            "response_type": "text",
+            "gemini_prompt": "Eres el asistente de una tienda de gadgets tecnológicos. Recomienda los mejores productos según las necesidades del cliente.",
+            "created_at": "2024-01-01 00:00:00",
+            "menu_json": '{"text": "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?", "options": [{"title": "Ver Catálogo", "icon": "👕", "response": "Nuestra nueva colección de otoño ya está disponible."}, {"title": "Tallas", "icon": "📏", "response": "Manejamos tallas desde XS hasta XL en la mayoría de nuestras prendas."}, {"title": "Devoluciones", "icon": "🔄", "response": "Tienes 30 días para realizar cambios o devoluciones con tu ticket."}], "fallback_text": "Ups, no reconozco eso. Aquí tienes lo que puedo hacer por ti en Moda Urbana:"}'
+        }
+    ]
+    
     try:
         conn = sqlite3.connect(DB_NAME)
         conn.row_factory = sqlite3.Row
@@ -115,19 +154,20 @@ def list_clients():
         cursor.execute("SELECT * FROM clients")
         rows = cursor.fetchall()
         conn.close()
-        return [dict(row) for row in rows]
+        real_clients = [dict(row) for row in rows]
+        return demo_clients + real_clients
     except Exception as e:
         print(f"❌ ERROR list_clients: {e}")
-        return []
+        return demo_clients
 
 def update_client(client_id, data):
-    """Actualiza los datos de un cliente."""
+    """Actualiza los datos de un cliente. Si no existe en BD (ej. demo), lo inserta."""
     fields = []
     values = []
     for key, value in data.items():
         if key != 'id' and key != 'created_at':
             fields.append(f"{key} = ?")
-            values.append(value)
+            values.append(value if not isinstance(value, (dict, list)) else json.dumps(value))
     
     if not fields:
         return False
@@ -139,11 +179,47 @@ def update_client(client_id, data):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute(query, values)
+        rows_affected = cursor.rowcount
+        
+        if rows_affected == 0:
+            # El cliente no existía en BD (probablemente un demo). Insertar con el ID dado.
+            print(f"⚠️ Client {client_id} not in DB, inserting...")
+            
+            # Asegurar campos NOT NULL con valores por defecto
+            defaults = {
+                'name': data.get('name', 'Cliente'),
+                'whatsapp_token': data.get('whatsapp_token', ''),
+                'phone_number_id': data.get('phone_number_id', f'client_{client_id}'),
+                'verify_token': data.get('verify_token', ''),
+            }
+            
+            insert_cols = ['id']
+            insert_vals = [client_id]
+            
+            # Primero agregar los defaults
+            for key, val in defaults.items():
+                if key not in [k for k in data.keys()]:
+                    insert_cols.append(key)
+                    insert_vals.append(val)
+            
+            # Luego agregar los datos del usuario
+            for key, value in data.items():
+                if key != 'id' and key != 'created_at':
+                    insert_cols.append(key)
+                    insert_vals.append(value if not isinstance(value, (dict, list)) else json.dumps(value))
+            
+            placeholders = ', '.join(['?'] * len(insert_cols))
+            insert_query = f"INSERT INTO clients ({', '.join(insert_cols)}) VALUES ({placeholders})"
+            cursor.execute(insert_query, insert_vals)
+
+        
         conn.commit()
         conn.close()
         return True
     except Exception as e:
         print(f"❌ ERROR UPDATE CLIENT: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def add_client(data):
@@ -170,7 +246,35 @@ def add_client(data):
         return False
 
 def get_client_by_id(client_id):
-    """Obtiene un cliente por su ID numérico."""
+    """Obtiene un cliente por su ID numérico, incluyendo clientes demo."""
+    # Soporte para IDs de demo hardcodeados
+    demo_ids = {
+        9991: {
+            "id": 9991, 
+            "name": "🍕 Demo Restaurante V9", 
+            "phone_number_id": "demo_restaurante", 
+            "email": "demo@zotek.ia",
+            "system_instruction": "Eres el asistente de una Pizzería Gourmet. Saluda con entusiasmo y ofrece las pizzas del día.",
+            "menu_json": '{"text": "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?", "options": [{"title": "Ver Menú", "icon": "🍕", "response": "Nuestro menú incluye pizzas a la leña, pastas frescas y postres italianos."}, {"title": "Hacer Reserva", "icon": "📅", "response": "Indícanos la fecha y hora para verificar disponibilidad."}, {"title": "Horarios", "icon": "⏰", "response": "Estamos abiertos todos los días de 12:00 PM a 11:00 PM."}], "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de La Trattoria:"}'
+        },
+        9992: {
+            "id": 9992, 
+            "name": "🏥 Demo Clínica Dental", 
+            "phone_number_id": "demo_clinica", 
+            "email": "demo@zotek.ia",
+            "system_instruction": "Eres el asistente de una Clínica Dental. Ayuda a los pacientes a conocer los servicios de ortodoncia y limpieza.",
+            "menu_json": '{"text": "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?", "options": [{"title": "Agendar Cita", "icon": "📅", "response": "Por favor, dinos para qué especialidad buscas cita."}, {"title": "Especialidades", "icon": "👨‍⚕️", "response": "Contamos con Medicina General, Odontología y Pediatría."}, {"title": "Ubicación", "icon": "📍", "response": "Estamos en Av. Central #123. Haz clic aquí para ver en el mapa: https://maps.google.com"}], "fallback_text": "No comprendo tu solicitud. Selecciona una de estas opciones de la clínica:"}'
+        },
+        9993: {
+            "id": 9993, 
+            "name": "🛍️ Demo Tienda e-Commerce", 
+            "phone_number_id": "demo_tienda", 
+            "email": "demo@zotek.ia",
+            "system_instruction": "Eres el asistente de una tienda de gadgets tecnológicos. Recomienda los mejores productos según las necesidades del cliente.",
+            "menu_json": '{"text": "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?", "options": [{"title": "Ver Catálogo", "icon": "👕", "response": "Nuestra nueva colección de otoño ya está disponible."}, {"title": "Tallas", "icon": "📏", "response": "Manejamos tallas desde XS hasta XL en la mayoría de nuestras prendas."}, {"title": "Devoluciones", "icon": "🔄", "response": "Tienes 30 días para realizar cambios o devoluciones con tu ticket."}], "fallback_text": "Ups, no reconozco eso. Aquí tienes lo que puedo hacer por ti en Moda Urbana:"}'
+        }
+    }
+    
     try:
         conn = sqlite3.connect(DB_NAME)
         conn.row_factory = sqlite3.Row
@@ -178,10 +282,31 @@ def get_client_by_id(client_id):
         cursor.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
         client = cursor.fetchone()
         conn.close()
-        return dict(client) if client else None
+        
+        if client:
+            return dict(client)
+        
+        # Si no está en BD, buscar en demos
+        if int(client_id) in demo_ids:
+            return demo_ids[int(client_id)]
+            
+        return None
     except Exception as e:
         print(f"❌ ERROR get_client_by_id: {e}")
         return None
+
+def delete_client_db_entry(client_id):
+    """Elimina un cliente de la base de datos (usado para resetear demos)."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR delete_client: {e}")
+        return False
 
 def list_client_documents(client_id):
     """Lista los archivos de conocimiento de un cliente."""

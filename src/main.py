@@ -1,5 +1,6 @@
 # Deploy Trigger: Force redeploy to fix persistent NameError in production.
 import os
+import json
 import random
 import smtplib
 from email.mime.text import MIMEText
@@ -46,6 +47,9 @@ print(f"📁 ADMIN_DIR: {ADMIN_DIR}")
 print(f"----------------------------------")
 
 app = FastAPI()
+
+# Initialize Database Schema
+database.init_db()
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
@@ -141,19 +145,26 @@ async def recibir_mensaje(request: Request):
 # --- Security Helpers ---
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
+    print(f"🔑 Generating access token for: {data.get('sub')}")
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(hours=8))
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    print(f"DEBUG: Token generated. Secret Key length: {len(SECRET_KEY)}")
+    return token
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
+    print(f"🕵️ Validating token: {token[:10]}...{token[-10:] if len(token) > 20 else ''}")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        print(f"✅ Token decoded successfully for: {email}")
         if email is None:
+            print("❌ Token payload missing 'sub'")
             raise HTTPException(status_code=401, detail="Invalid token")
         return email
-    except JWTError:
+    except JWTError as e:
+        print(f"❌ JWT Error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def send_security_code(email: str, code: str):
@@ -222,16 +233,35 @@ async def verify_code(request: Request):
     data = await request.json()
     email = data.get("email")
     code = data.get("code")
+    print(f"📩 Login attempt: Email={email}, Code={code}")
     
     stored = verification_codes.get(email)
-    if not stored or stored["code"] != code or datetime.utcnow() > stored["expiry"]:
+    if not stored:
+        print(f"❌ No code found in memory for {email}")
+        raise HTTPException(status_code=401, detail="Código inválido o expirado")
+        
+    if stored["code"] != code:
+        print(f"❌ Code mismatch: expected {stored['code']}, got {code}")
+        raise HTTPException(status_code=401, detail="Código inválido o expirado")
+        
+    if datetime.utcnow() > stored["expiry"]:
+        print(f"❌ Code expired for {email}")
         raise HTTPException(status_code=401, detail="Código inválido o expirado")
     
+    print(f"✅ Code verified for {email}")
     # Clean up code
     del verification_codes[email]
     
     access_token = create_access_token(data={"sub": email})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/api/me")
+async def get_me(current_user: str = Depends(get_current_user)):
+    print(f"👤 GET /api/me called for: {current_user}")
+    return {
+        "email": current_user,
+        "role": "admin" if current_user == ADMIN_EMAIL else "client"
+    }
 
 # --- Protected Admin API ---
 
@@ -242,6 +272,10 @@ async def list_clients(current_user: str = Depends(get_current_user)):
 @app.post("/api/clients")
 async def create_client(request: Request, current_user: str = Depends(get_current_user)):
     data = await request.json()
+    # Map 'menu' from frontend to 'menu_json' in DB
+    if 'menu' in data:
+        data['menu_json'] = json.dumps(data.pop('menu'))
+        
     if database.add_client(data):
         return {"status": "created"}
     raise HTTPException(status_code=400, detail="Error creating client")
@@ -249,9 +283,34 @@ async def create_client(request: Request, current_user: str = Depends(get_curren
 @app.put("/api/clients/{client_id}")
 async def update_client(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
     data = await request.json()
+    # Map 'menu' from frontend to 'menu_json' in DB
+    if 'menu' in data:
+        data['menu_json'] = json.dumps(data.pop('menu'))
+        
     if database.update_client(client_id, data):
         return {"status": "updated"}
     raise HTTPException(status_code=400, detail="Error updating client")
+
+@app.get("/api/clients/{client_id}/menu")
+async def get_client_menu(client_id: int, current_user: str = Depends(get_current_user)):
+    client = database.get_client_by_id(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    menu_data = client.get("menu_json")
+    if menu_data:
+        try:
+            return json.loads(menu_data)
+        except:
+            return {"options": []}
+    return {"options": []}
+
+@app.post("/api/clients/{client_id}/reset")
+async def reset_client(client_id: int, current_user: str = Depends(get_current_user)):
+    """Resetea un cliente, eliminando sus personalizaciones en BD (especial para demos)."""
+    if database.delete_client_db_entry(client_id):
+        return {"status": "reset_successful"}
+    raise HTTPException(status_code=400, detail="Error resetting client")
 
 @app.get("/api/clients/{client_id}")
 async def get_client(client_id: int, current_user: str = Depends(get_current_user)):

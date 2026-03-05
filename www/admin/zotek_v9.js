@@ -4,7 +4,11 @@ let currentUser = null;
 /* Toast Notifications System */
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
-    if (!container) return;
+    if (!container) {
+        console.error("Toast failed, container missing:", message);
+        alert(message);
+        return;
+    }
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
@@ -114,6 +118,16 @@ function showSection(sectionId) {
     if (activeSection) activeSection.classList.remove('hidden');
     if (activeNav) activeNav.style.color = 'var(--primary)';
 
+    // Ocultar/mostrar main-content según si estamos editando un cliente
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) {
+        if (sectionId === 'edit-client') {
+            mainContent.classList.add('hidden');
+        } else {
+            mainContent.classList.remove('hidden');
+        }
+    }
+
     if (sectionId === 'docs' || sectionId === 'chats') {
         if (allClients.length === 0) {
             fetchClients().then(() => populateClientSelector());
@@ -144,8 +158,19 @@ async function fetchClients() {
     const tbody = document.getElementById('client-table-body');
     tbody.innerHTML = '';
 
+    const demoClients = ['demo_clinica', 'demo_restaurante', 'demo_tienda'];
+
     allClients.forEach(client => {
         // En la tabla general (Admin), mostrar el email de login si existe
+        let actionsHtml = `<button class="btn btn-primary" onclick="editClient('${client.id}')">Editar</button>`;
+
+        // Agregar botón especial para clientes de demostración
+        // Aseguramos que la comparación sea robusta
+        const pId = String(client.phone_number_id || '').trim();
+        if (demoClients.includes(pId)) {
+            actionsHtml += ` <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="resetDemoClient('${client.id}')" title="Restaurar a configuración original">Restablecer</button>`;
+        }
+
         const row = `
             <tr>
                 <td><small style="color:var(--text-muted);">${client.id}</small></td>
@@ -156,7 +181,7 @@ async function fetchClients() {
                 <td><code>${client.phone_number_id}</code></td>
                 <td>${client.created_at ? new Date(client.created_at).toLocaleDateString() : '—'}</td>
                 <td>
-                    <button class="btn btn-primary" onclick="editClient('${String(client.id).replace(/'/g, "\\'")}')">Editar</button>
+                    ${actionsHtml}
                 </td>
             </tr>
         `;
@@ -198,14 +223,15 @@ function populateClientSelector() {
 }
 
 function openModal(isEdit = false) {
-    document.getElementById('clientModal').style.display = 'flex';
-    document.getElementById('modalTitle').innerText = isEdit ? 'Editar Cliente' : 'Agregar Cliente';
+    document.getElementById('modalTitle').innerText = isEdit ? 'Editar Cliente' : 'Agregar Nuevo Cliente';
     if (!isEdit) {
         document.getElementById('clientForm').reset();
         document.getElementById('clientId').value = '';
+        currentEditingPath = null;
         currentMenu = { options: [] };
         renderMenuEditor();
     }
+    showSection('edit-client');
     // Asegurar que el scroll empiece arriba
     const modalGrid = document.querySelector('.modal-grid');
     if (modalGrid) modalGrid.scrollTop = 0;
@@ -213,30 +239,72 @@ function openModal(isEdit = false) {
 }
 
 function closeModal() {
-    document.getElementById('clientModal').style.display = 'none';
+    showSection('clients');
+    document.getElementById('clientForm').reset();
+}
+
+async function resetDemoClient(id) {
+    if (!confirm(`¿Estás seguro de que deseas restablecer el cliente de ejemplo '${id}' a su configuración original? Se perderán todos los cambios que hayas hecho en sus menús y respuestas.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/clients/${id}/reset`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            showToast(`Cliente '${id}' restablecido correctamente.`, 'success');
+            fetchClients(); // Recargar la tabla para mostrar los datos limpios si fuera necesario
+        } else {
+            const data = await response.json();
+            showToast('Error al restablecer: ' + (data.detail || data.error || 'Desconocido'), 'error');
+        }
+    } catch (error) {
+        console.error("Error reseteando cliente:", error);
+        showToast('Error de conexión al restablecer.', 'error');
+    }
 }
 
 async function editClient(id) {
-    const response = await fetch(`/api/clients/${id}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const client = await response.json();
+    try {
+        console.log("Edit client called for id:", id);
+        const response = await fetch(`/api/clients/${id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
 
-    document.getElementById('clientId').value = client.id;
-    document.getElementById('clientName').value = client.name;
-    document.getElementById('whatsappToken').value = client.whatsapp_token || '';
-    document.getElementById('phoneNumberId').value = client.phone_number_id || '';
-    document.getElementById('verifyToken').value = client.verify_token || '';
-    document.getElementById('systemInstruction').value = client.system_instruction || '';
+        if (!response.ok) {
+            console.error("HTTP error:", response.status);
+            showToast('Error de servidor al cargar cliente', 'error');
+            return;
+        }
 
-    // SaaS Phase 3 fields
-    document.getElementById('clientEmail').value = client.email || '';
-    document.getElementById('calendlyUrl').value = client.calendly_url || '';
+        const client = await response.json();
+        console.log("Client loaded:", client);
 
-    // Load Menu
-    await loadClientMenu(id);
+        document.getElementById('clientId').value = client.id;
+        document.getElementById('clientName').value = client.name;
+        document.getElementById('whatsappToken').value = client.whatsapp_token || '';
+        document.getElementById('phoneNumberId').value = client.phone_number_id || '';
+        document.getElementById('verifyToken').value = client.verify_token || '';
+        document.getElementById('systemInstruction').value = client.system_instruction || '';
 
-    openModal(true);
+        // SaaS Phase 3 fields
+        document.getElementById('clientEmail').value = client.email || '';
+        document.getElementById('calendlyUrl').value = client.calendly_url || '';
+
+        // Clean UI state before loading menu
+        currentEditingPath = null;
+
+        // Load Menu
+        await loadClientMenu(id);
+
+        openModal(true);
+    } catch (e) {
+        console.error("Error in editClient:", e);
+        showToast('Error interno al editar: ' + e.message, 'error');
+    }
 }
 
 async function saveClient(event) {
@@ -259,8 +327,7 @@ async function saveClient(event) {
         email: document.getElementById('clientEmail').value,
         calendly_url: document.getElementById('calendlyUrl').value,
         menu: {
-            ...currentMenu,
-            text: document.getElementById('menuWelcomeText').value
+            ...currentMenu
         }
     };
 
@@ -296,19 +363,21 @@ let currentPdfClientId = null;
 let currentMenu = { options: [] };
 
 async function loadClientMenu(clientId) {
+    console.log("Loading menu for client:", clientId);
     try {
         const res = await fetch(`/api/clients/${clientId}/menu`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
             currentMenu = await res.json();
-            document.getElementById('menuWelcomeText').value = currentMenu.text || '';
+            console.log("Menu loaded successfully:", currentMenu);
         } else {
+            const errorText = await res.text();
+            console.error("Error response from server:", errorText);
             currentMenu = { options: [] };
-            document.getElementById('menuWelcomeText').value = '';
         }
     } catch (e) {
-        console.error("Error loading menu:", e);
+        console.error("Exception loading menu:", e);
         currentMenu = { options: [] };
     }
     renderMenuEditor();
@@ -324,6 +393,102 @@ function renderMenuEditor() {
     } else {
         renderEditorForm(currentEditingPath);
     }
+}
+
+const EMOJI_CATEGORIES = [
+    { name: "Caritas", emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😎", "🤓", "🧐", "😕", "😟", "🙁", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨", "😰", "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫", "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "💩", "🤡", "👹", "👺", "👻", "👽", "👾", "🤖", "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾"] },
+    { name: "Gestos", emojis: ["👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤌", "🤏", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "✍️", "💅", "🤳", "💪"] },
+    { name: "Comida", emojis: ["🍏", "🍎", "🍐", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🌽", "🥕", "🧄", "🧅", "🥔", "🍠", "🥐", "🥯", "🍞", "🥖", "🥨", "🧀", "🥚", "🍳", "🧈", "🥞", "🧇", "🥓", "🥩", "🍗", "🍖", "🌭", "🍔", "🍟", "🍕", "🥪", "🥙", "🧆", "🌮", "🌯", "🥗", "🥘", "🥫", "🍝", "🍜", "🍲", "🍛", "🍣", "🍱", "🥟", "🦪", "🍤", "🍙", "🍚", "🍘", "🍥", "🥠", "🥮", "🍢", "🍡", "🍧", "🍨", "🍦"] },
+    { name: "Tecnología", emojis: ["⌚", "📱", "📲", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "🖲️", "🕹️", "🗜️", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽️", "🎞️", "📞", "☎️", "📟", "📠", "📺", "📻", "🎙️", "🎚️", "🎛️", "🧭", "⏱️", "⏲️", "💡", "🔦", "🕯️", "📡", "🔋", "🔌"] },
+    { name: "Transporte", emojis: ["🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🚚", "🚛", "🚜", "🛴", "🚲", "🛵", "🏍️", "🛺", "🚨", "🚔", "🚍", "🚘", "🚖", "🚡", "🚠", "🚟", "🚃", "🚋", "🚞", "🚝", "🚄", "🚅", "🚈", "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬", "🛩️", "💺", "🛰️", "🚀", "🛸", "🚁", "🛶", "⛵", "🚤", "🛥️", "🛳️", "⛴️", "🚢", "⚓", "🪝", "⛽", "🚧", "🚦", "🚥", "🛞"] },
+    { name: "Edificios", emojis: ["🏠", "🏡", "🏢", "🏣", "🏤", "🏥", "🏦", "🏨", "🏩", "🏪", "🏫", "🏬", "🏭", "🏯", "🏰", "💒", "🗼", "🗽", "⛪", "🕌", "🛕", "🕍", "⛩️", "🕋", "⛲", "⛺", "🌁", "🌃", "🏙️", "🌄", "🌅", "🌆", "🌇", "🌉", "🎠", "🎡", "🎢", "🗺️", "🧭", "🏗️", "🧱", "🪵", "🛖", "🏚️", "🏘️"] },
+    { name: "Deportes", emojis: ["⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🥏", "🎱", "🪀", "🏓", "🏸", "🏒", "🏑", "🥍", "🏏", "🥅", "⛳", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽", "🛹", "🛷", "⛸️", "🥌", "🎿", "⛷️", "🏂", "🪂", "🏋️‍♂️", "🏋️‍♀️", "🤼‍♂️"] },
+    { name: "Naturaleza", emojis: ["🌸", "💮", "🏵️", "🌹", "🥀", "🌺", "🌻", "🌼", "🌷", "🌱", "🪴", "🌲", "🌳", "🌴", "🌵", "🌾", "🌿", "☘️", "🍀", "🍁", "🍂", "🍃", "🍄", "🌰", "🐚", "🌍", "🌎", "🌏", "🌑", "🌒", "🌓", "🌔", "🌕", "🌙", "⭐", "🌟", "✨", "⚡", "🔥", "🌈", "☀️", "🌤️", "⛅", "🌧️", "❄️", "💧", "🌊"] },
+    { name: "Animales", emojis: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🪱", "🐛", "🦋", "🐌", "🐞", "🐜", "🪰", "🪲", "🪳", "🦟", "🦗", "🕷️", "🦂", "🐢", "🐍", "🦎", "🐙", "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊", "🐅", "🐆", "🦓", "🦍", "🦧", "🐘", "🦛", "🦏"] },
+    { name: "Objetos", emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "🎁", "🎀", "🎈", "🎉", "🎊", "🎃", "🎄", "✉️", "📧", "📨", "📩", "📝", "📋", "📌", "📍", "📎", "🔗", "📏", "📐", "✂️", "🗃️", "🗄️", "🗑️", "🔒", "🔓", "🔑", "🗝️", "🔨", "🪓", "⛏️", "🔧", "🔩", "⚙️", "💰", "💳", "💎", "⚖️", "🧲", "🪜", "🧰", "🧪", "🧫", "🧬", "🔬", "🔭", "📡"] },
+    { name: "Símbolos", emojis: ["✅", "❌", "❓", "❗", "‼️", "⁉️", "💯", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪", "🟤", "🔶", "🔷", "🔸", "🔹", "🔺", "🔻", "🔘", "🔲", "🔳", "⬛", "⬜", "◾", "◽", "▪️", "▫️", "♻️", "☮️", "☯️", "⚕️", "🔰", "💠", "Ⓜ️", "🅿️", "🈳", "🆔", "🆕", "🆗", "🆙", "🆚", "🔝", "🔜", "🔛", "🔙", "🔚"] }
+];
+
+/* Legacy emoji array removed */
+
+
+let currentEmojiTargetCallback = null;
+
+function renderIconPicker(currentIcon, onSelect) {
+    // Ya no se usa para renderizar grids fijos, sino para preparar el modal global
+    return document.createElement('div'); // dummy para mantener compatibilidad con llamadas existentes si las hay
+}
+
+window.toggleEmojiPicker = function (callback) {
+    currentEmojiTargetCallback = callback;
+    const overlay = document.getElementById('emojiPickerOverlay');
+    const searchInput = document.getElementById('emojiSearch');
+
+    if (overlay) {
+        overlay.classList.remove('hidden');
+        searchInput.value = '';
+        renderCategories();
+        renderEmojis(EMOJI_CATEGORIES[0].emojis); // Cargar primera categoría por defecto
+        searchInput.focus();
+    }
+}
+
+window.closeEmojiPicker = function () {
+    const overlay = document.getElementById('emojiPickerOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+    }
+    currentEmojiTargetCallback = null;
+}
+
+function renderCategories() {
+    const container = document.getElementById('emojiCategories');
+    if (!container) return;
+
+    container.innerHTML = '';
+    EMOJI_CATEGORIES.forEach((cat, idx) => {
+        const span = document.createElement('span');
+        span.className = `category-tab ${idx === 0 ? 'active' : ''}`;
+        span.innerText = cat.name;
+        span.onclick = (e) => {
+            document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+            span.classList.add('active');
+            renderEmojis(cat.emojis);
+        };
+        container.appendChild(span);
+    });
+}
+
+function renderEmojis(emojiList) {
+    const content = document.getElementById('emojiPickerContent');
+    if (!content) return;
+
+    content.innerHTML = '';
+    emojiList.forEach(emoji => {
+        const div = document.createElement('div');
+        div.className = 'emoji-item';
+        div.innerText = emoji;
+        div.onclick = () => {
+            if (currentEmojiTargetCallback) {
+                currentEmojiTargetCallback(emoji);
+            }
+            closeEmojiPicker();
+        };
+        content.appendChild(div);
+    });
+}
+
+window.filterEmojis = function (query) {
+    if (!query) {
+        const activeTab = document.querySelector('.category-tab.active');
+        const catIdx = activeTab ? Array.from(document.querySelectorAll('.category-tab')).indexOf(activeTab) : 0;
+        renderEmojis(EMOJI_CATEGORIES[catIdx].emojis);
+        return;
+    }
+
+    const allEmojis = EMOJI_CATEGORIES.flatMap(c => c.emojis);
+    const filtered = allEmojis.filter(emoji => emoji.includes(query));
+    renderEmojis(filtered);
 }
 
 function renderMenuTree() {
@@ -358,6 +523,7 @@ function renderTreeNodes(options, basePath, parentUl) {
         const currentPath = [...basePath, index];
         const isString = typeof opt === 'string';
         const title = isString ? opt : (opt.title || `Opción ${index + 1}`);
+        const icon = isString ? '' : (opt.icon || '');
         const hasSubmenu = !isString && opt.submenu && opt.submenu.options;
         const isActive = JSON.stringify(currentEditingPath) === JSON.stringify(currentPath);
 
@@ -367,18 +533,25 @@ function renderTreeNodes(options, basePath, parentUl) {
         const div = document.createElement('div');
         div.className = `tree-item ${isActive ? 'active' : ''} ${hasSubmenu ? 'expanded' : ''}`;
 
-        // Icono dependiendo de si tiene submenu
-        const iconClass = hasSubmenu ? 'fas fa-chevron-right' : 'far fa-circle';
-        div.innerHTML = `<i class="${iconClass} tree-icon"></i> ${escapeHtml(title)}`;
+        // Icono dependiendo de si tiene submenu o icono personalizado
+        let iconHtml = '';
+        if (icon) {
+            iconHtml = `<span class="tree-custom-icon">${icon}</span>`;
+        } else {
+            const iconClass = hasSubmenu ? 'fas fa-chevron-right' : 'far fa-circle';
+            iconHtml = `<i class="${iconClass} tree-icon"></i>`;
+        }
 
-        const toggleIcon = div.querySelector('.tree-icon');
+        div.innerHTML = `${iconHtml} ${escapeHtml(title)}`;
+
+        const toggleIcon = div.querySelector('.tree-icon, .tree-custom-icon');
 
         div.onclick = (e) => {
             currentEditingPath = currentPath;
             renderMenuEditor();
         };
 
-        if (hasSubmenu) {
+        if (hasSubmenu && toggleIcon) {
             // Permitir colapsar/expandir haciendo clic en el icono
             toggleIcon.onclick = (e) => {
                 e.stopPropagation(); // Evitar seleccionar el nodo si solo se quiere expandir
@@ -421,10 +594,16 @@ function showBotHome() {
             <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">Configura el flujo inicial y las opciones principales.</p>
         </div>
         
-        <div class="form-group" style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
-            <label style="color: #58a6ff; font-weight: bold; font-size: 0.8rem; text-transform: uppercase;">Mensaje de Bienvenida</label>
-            <textarea id="menuWelcomeText" class="menu-field-input" rows="3" placeholder="Ej: Hola, bienvenido a..." style="margin-top: 10px; width: 100%;">${escapeHtml(currentMenu.text || '')}</textarea>
-            <small style="color: var(--text-muted); font-size: 0.75rem;">Este es el primer mensaje que envía el bot junto con el menú principal.</small>
+        <div class="form-group welcome-msg-box">
+            <div class="editor-section-title"><i class="fas fa-comment-dots"></i> Mensaje de Bienvenida</div>
+            <textarea id="menuWelcomeText" class="menu-field-input" rows="2" placeholder="Ej: Hola, bienvenido a..." style="margin-top: 5px; width: 100%; font-size: 0.9rem;">${escapeHtml(currentMenu.text || '')}</textarea>
+            <div class="editor-help-text">Este es el primer mensaje que envía el bot junto con el menú principal.</div>
+        </div>
+
+        <div class="fallback-box">
+            <h5><i class="fas fa-redo-alt"></i> Respuesta de Navegación (Fallback)</h5>
+            <textarea id="menuFallbackText" class="menu-field-input" rows="2" placeholder="Ej: No entendí eso. Aquí tienes el menú de nuevo:" style="margin-top: 8px; width: 100%; font-size: 0.85rem;">${escapeHtml(currentMenu.fallback_text || '')}</textarea>
+            <div class="editor-help-text">Mensaje que se envía cuando el usuario escribe algo que el bot no reconoce, para guiarlo de vuelta al menú.</div>
         </div>
 
         <div class="action-cards-grid">
@@ -438,11 +617,6 @@ function showBotHome() {
                 <h4>Base de Conocimientos</h4>
                 <p>Gestiona los documentos PDF del bot.</p>
             </div>
-            <div class="action-card" onclick="closeModal(); showSection('settings');">
-                <i class="fas fa-cog"></i>
-                <h4>Ajustes Globales</h4>
-                <p>Configura llaves del bot y webhooks.</p>
-            </div>
         </div>
     `;
 
@@ -450,6 +624,13 @@ function showBotHome() {
     if (welcomeInput) {
         welcomeInput.oninput = (e) => {
             currentMenu.text = e.target.value;
+        };
+    }
+
+    const fallbackInput = document.getElementById('menuFallbackText');
+    if (fallbackInput) {
+        fallbackInput.oninput = (e) => {
+            currentMenu.fallback_text = e.target.value;
         };
     }
 }
@@ -473,6 +654,7 @@ function renderEditorForm(path) {
 
     const isString = typeof option === 'string';
     const title = isString ? option : (option.title || '');
+    const icon = isString ? '' : (option.icon || '');
     const response = isString ? '' : (option.response || '');
     const hasSubmenu = !isString && option.submenu && option.submenu.options;
 
@@ -481,39 +663,51 @@ function renderEditorForm(path) {
             <h4 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px;">
                 <i class="fas fa-edit" style="color: var(--primary);"></i> Editando Opción
             </h4>
-            <button type="button" class="btn btn-danger btn-sm" onclick="removeMenuOption(${JSON.stringify(path)})" style="padding: 6px 12px; font-size: 0.8rem; background: rgba(255, 107, 107, 0.1); color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.3);">
+            <button type="button" class="btn btn-danger btn-sm" id="btn-delete-option" style="padding: 6px 12px; font-size: 0.8rem; background: rgba(255, 107, 107, 0.1); color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.3);">
                 <i class="fas fa-trash"></i> Eliminar
             </button>
         </div>
 
         <div class="menu-node" style="border: none; background: transparent; padding: 0 !important; box-shadow: none;">
-            <div class="form-group">
-                <label class="menu-field-label">Etiqueta del Botón (Título visual)</label>
-                <input type="text" id="editor-node-title" class="menu-field-input" value="${escapeHtml(title)}" placeholder="Por ejemplo: Servicios, Ventas, FAQ..." style="font-size: 1.1rem; padding: 12px; font-weight: 500;">
+            <div class="form-group" style="margin-bottom: 10px;">
+                <label class="menu-field-label">Etiqueta del Botón</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <div id="selected-icon-display" style="font-size: 1.5rem; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); min-width: 45px; text-align: center; cursor: pointer;" title="Cambiar Emoji">${icon || '—'}</div>
+                    <input type="text" id="editor-node-title" class="menu-field-input" value="${escapeHtml(title)}" placeholder="Servicios, FAQ, Contacto..." style="font-size: 1rem; padding: 10px; flex: 1;">
+                </div>
+                <div class="editor-help-text" style="margin-top:5px;">El icono a la izquierda aparecerá junto al texto. Haz clic sobre él para cambiarlo.</div>
             </div>
     `;
 
     if (hasSubmenu) {
         contentHTML += `
-            <div style="background: rgba(88, 166, 255, 0.05); border: 1px solid rgba(88, 166, 255, 0.2); border-radius: 8px; padding: 25px 15px; text-align: center; margin-top: 20px;">
-                <i class="fas fa-sitemap" style="font-size: 2.5rem; color: var(--primary); margin-bottom: 15px; opacity: 0.8;"></i>
-                <h5 style="margin: 0 0 10px 0; color: #fff; font-size: 1.1rem;">Este botón abre un Sub-menú</h5>
-                <p style="font-size: 0.9rem; color: var(--text-muted); margin: 0 0 20px 0;">Actualmente contiene ${option.submenu.options.length} opciones hijas.</p>
-                <button type="button" class="btn btn-primary" onclick="addMenuOption(${JSON.stringify([...path, 'submenu', 'options'])})">
-                    <i class="fas fa-plus"></i> Añadir Opción a este Sub-menú
-                </button>
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 20px; margin-top: 20px;">
+                <div class="editor-section-title"><i class="fas fa-sitemap"></i> Configuración de Sub-menú</div>
+                <div class="form-group">
+                    <label class="menu-field-label">Texto de Encabezado del Sub-menú</label>
+                    <input type="text" id="editor-submenu-text" class="menu-field-input" value="${escapeHtml(option.submenu.text || 'Selecciona una opción:')}" placeholder="Ej: Elige una categoría:">
+                    <div class="editor-help-text">Este mensaje se enviará antes de mostrar los botones del sub-menú.</div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px; padding: 20px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
+                     <p style="font-size: 0.9rem; color: var(--text-muted); margin: 0 0 15px 0;">Actualmente contiene ${option.submenu.options.length} opciones hijas.</p>
+                    <button type="button" class="btn btn-primary" id="btn-add-child-option">
+                        <i class="fas fa-plus"></i> Añadir Opción Hija
+                    </button>
+                </div>
             </div>
         `;
     } else {
         contentHTML += `
             <div class="form-group" style="margin-top: 15px;">
-                <label class="menu-field-label">Respuesta del Bot</label>
-                <textarea id="editor-node-response" class="menu-field-input" rows="6" placeholder="Escribe el mensaje que enviará el bot cuando el usuario presione este botón... El texto también puede incluir emojis. (${escapeHtml(title)})">${escapeHtml(response)}</textarea>
+                <div class="editor-section-title"><i class="fas fa-comment-dots"></i> Respuesta del Bot</div>
+                <textarea id="editor-node-response" class="menu-field-input" rows="5" placeholder="Escribe el mensaje que enviará el bot..." style="font-size: 0.9rem;">${escapeHtml(response)}</textarea>
+                <div class="editor-help-text">Si este botón NO es un sub-menú, el bot enviará este texto de respuesta.</div>
             </div>
             
-            <div style="margin-top: 30px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 20px;">
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;"><i class="fas fa-info-circle"></i> ¿Necesitas que este botón despliegue OTRA lista de botones en lugar de texto?</p>
-                <button type="button" class="btn btn-secondary" onclick="addSubmenu(${JSON.stringify(path)})" style="font-size: 0.85rem;">
+            <div style="margin-top: 30px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 20px; text-align: center;">
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">¿Quieres que este botón abra otro listado de opciones?</p>
+                <button type="button" class="btn btn-secondary" id="btn-convert-submenu" style="font-size: 0.85rem; width: 100%;">
                     <i class="fas fa-folder-plus"></i> Convertir en Sub-menú
                 </button>
             </div>
@@ -523,12 +717,64 @@ function renderEditorForm(path) {
     contentHTML += `</div>`;
     panel.innerHTML = contentHTML;
 
+    // Ya no renderizamos el picker estático inline
+    /*
+    const iconPickerContainer = document.getElementById('icon-picker-container');
+    if (iconPickerContainer) {
+        const picker = renderIconPicker(icon, (newIcon) => {
+            updateMenuValue(path, 'icon', newIcon);
+            document.getElementById('selected-icon-display').innerText = newIcon;
+            renderMenuTree(); 
+        });
+        iconPickerContainer.appendChild(picker);
+    }
+    */
+
+    // === Programmatic Event Listeners (avoid inline onclick quoting issues) ===
+
+    // Emoji picker
+    const iconDisplay = document.getElementById('selected-icon-display');
+    if (iconDisplay) {
+        iconDisplay.addEventListener('click', () => {
+            toggleEmojiPicker((emoji) => {
+                updateMenuValue(path, 'icon', emoji);
+                document.getElementById('selected-icon-display').innerText = emoji;
+                renderMenuTree();
+            });
+        });
+    }
+
+    // Delete button
+    const deleteBtn = document.getElementById('btn-delete-option');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => removeMenuOption(path));
+    }
+
+    // Add child option button (submenu)
+    const addChildBtn = document.getElementById('btn-add-child-option');
+    if (addChildBtn) {
+        addChildBtn.addEventListener('click', () => addMenuOption([...path, 'submenu', 'options']));
+    }
+
+    // Convert to submenu button
+    const convertBtn = document.getElementById('btn-convert-submenu');
+    if (convertBtn) {
+        convertBtn.addEventListener('click', () => addSubmenu(path));
+    }
+
     // Listeners
     const titleInput = document.getElementById('editor-node-title');
     if (titleInput) {
-        titleInput.oninput = (e) => { // oninput to update tree in real time
+        titleInput.oninput = (e) => {
             updateMenuValue(path, 'title', e.target.value);
             renderMenuTree();
+        };
+    }
+
+    const subTextInput = document.getElementById('editor-submenu-text');
+    if (subTextInput) {
+        subTextInput.oninput = (e) => {
+            updateSubmenuValue(path, 'text', e.target.value);
         };
     }
 
@@ -537,6 +783,17 @@ function renderEditorForm(path) {
         respInput.oninput = (e) => {
             updateMenuValue(path, 'response', e.target.value);
         };
+    }
+}
+
+function updateSubmenuValue(path, key, value) {
+    let current = currentMenu.options;
+    for (let i = 0; i < path.length - 1; i++) {
+        current = current[path[i]];
+    }
+    const idx = path[path.length - 1];
+    if (current[idx] && current[idx].submenu) {
+        current[idx].submenu[key] = value;
     }
 }
 
@@ -554,19 +811,24 @@ function updateMenuValue(path, key, value) {
 }
 
 function addMenuOption(parentPath) {
-    const newOpt = { title: 'Nueva Opción', response: '' };
     if (parentPath === null) {
         if (!currentMenu.options) currentMenu.options = [];
+        const newOpt = { title: `Opción ${currentMenu.options.length + 1}`, response: '' };
         currentMenu.options.push(newOpt);
         currentEditingPath = [currentMenu.options.length - 1];
     } else {
-        let target = currentMenu.options;
+        // parentPath es algo como [...path, 'submenu', 'options']
+        // Navegar hasta el array de options destino
+        let current = currentMenu.options;
         for (let i = 0; i < parentPath.length; i++) {
-            target = target[parentPath[i]];
+            current = current[parentPath[i]];
         }
-        if (!target) target = [];
-        target.push(newOpt);
-        currentEditingPath = [...parentPath, target.length - 1];
+        // current ahora es el array de options del submenu
+        if (!Array.isArray(current)) current = [];
+        const newOpt = { title: `Sub-opción ${current.length + 1}`, response: '' };
+        current.push(newOpt);
+        // El path al nuevo item: parentPath + índice
+        currentEditingPath = [...parentPath, current.length - 1];
     }
     renderMenuEditor();
 }
@@ -596,13 +858,88 @@ function addSubmenu(path) {
         current = current[path[i]];
     }
     const idx = path[path.length - 1];
-    if (typeof current[idx] === 'string') {
-        current[idx] = { title: current[idx], response: '' };
+    const option = current[idx];
+
+    if (typeof option === 'object') {
+        // Intentar extraer opciones del texto de respuesta
+        const responseText = option.response || '';
+        const extractedItems = parseResponseToItems(responseText);
+
+        let subOptions;
+        if (extractedItems.length > 0) {
+            subOptions = extractedItems.map(item => ({
+                title: item,
+                response: `Información sobre ${item}.`
+            }));
+        } else {
+            subOptions = [
+                { title: "Sub-opción 1", response: "Respuesta de ejemplo para la sub-opción 1." }
+            ];
+        }
+
+        option.submenu = {
+            text: "Selecciona una opción:",
+            options: subOptions
+        };
+        delete option.response; // Quitar respuesta si ahora es submenú
     }
-    current[idx].submenu = { text: 'Selecciona una opción:', options: [] };
-    current[idx].response = ''; // Limpiamos respuesta si se vuelve submenú
-    renderMenuEditor();
+
+    renderMenuTree();
+    renderEditorForm(path);
 }
+
+/**
+ * Analiza el texto de respuesta del bot y extrae elementos como una lista.
+ * Soporta: comas, "y", viñetas, números, saltos de línea.
+ * Ejemplo: "Contamos con Medicina General, Odontología y Pediatría." → ["Medicina General", "Odontología", "Pediatría"]
+ */
+function parseResponseToItems(text) {
+    if (!text || text.trim().length === 0) return [];
+
+    // Limpiar texto: remover emojis comunes de lista
+    let cleaned = text.replace(/[•\-–—]/g, ',').trim();
+
+    // Intentar separar por saltos de línea primero (si hay múltiples líneas)
+    let lines = cleaned.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+
+    if (lines.length > 1) {
+        // Múltiples líneas — cada línea podría ser un item
+        // Remover numeración (1. 2. 3. o 1) 2) etc.)
+        let items = lines.map(l => l.replace(/^\d+[\.\)\-]\s*/, '').trim()).filter(l => l.length > 2);
+        if (items.length >= 2) return items.slice(0, 10);
+    }
+
+    // Una sola línea o pocas — buscar patrones de lista
+    // Remover prefijos comunes como "Contamos con", "Ofrecemos", "Tenemos", etc.
+    const prefixPatterns = /^(?:contamos\s+con|ofrecemos|tenemos|nuestros?\s+\w+\s+(?:son|incluyen)|disponemos\s+de|entre\s+(?:ellos|ellas)|las?\s+opciones\s+(?:son|incluyen)|(?:estos|estas)\s+son)\s*/i;
+    cleaned = cleaned.replace(prefixPatterns, '');
+
+    // Remover puntos finales y caracteres sobrantes
+    cleaned = cleaned.replace(/\.\s*$/, '').trim();
+
+    // Separar por comas y "y" / "e"
+    // Patrón: "A, B, C y D" o "A, B y C"
+    let items = cleaned.split(/\s*,\s*/);
+
+    // El último elemento podría tener " y " o " e "
+    if (items.length > 0) {
+        const lastItem = items[items.length - 1];
+        const andSplit = lastItem.split(/\s+(?:y|e)\s+/i);
+        if (andSplit.length > 1) {
+            items.pop();
+            items.push(...andSplit);
+        }
+    }
+
+    // Limpiar cada item
+    items = items.map(item => item.trim()).filter(item => item.length > 1 && item.length < 80);
+
+    // Solo devolver si encontramos al menos 2 items razonables
+    if (items.length >= 2) return items.slice(0, 10);
+
+    return [];
+}
+
 
 
 async function loadChats() {

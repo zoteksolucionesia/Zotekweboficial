@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zotek IA | Panel de Control</title>
-    <link rel="stylesheet" href="/admin/zotek_v9.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.12">
     <script>
         // Force theme immediately to prevent flashing/overrides
         const savedTheme = localStorage.getItem('theme');
@@ -20,38 +21,38 @@
 </head>
 
 <body>
+    <div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>
     <div class="sidebar" id="sidebar">
         <div class="logo-container"
             style="margin-bottom: 2.5rem; display: flex; justify-content: center; align-items: center; gap: 10px;">
-            <img src="/assets/logo.svg" alt="Zotek Logo" id="sidebar-logo"
+            <img src="/assets/logo.svg" alt="" id="sidebar-logo"
                 style="height: 50px; filter: drop-shadow(0 0 10px rgba(88, 166, 255, 0.3)); transition: all 0.3s ease;">
-            <h2 class="sidebar-title" style="margin: 0; font-size: 1.2rem; color: var(--primary);">Zøtek</h2>
         </div>
         <nav>
             <ul style="list-style: none; padding: 0;">
                 <li id="nav-clients"
-                    style="padding: 1rem 0; color: var(--primary); cursor: pointer; display: flex; align-items: center; gap: 12px;"
+                    style="padding: 1rem 1.2rem; color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; transition: all 0.2s ease; margin-bottom: 5px;"
                     onclick="showSection('clients')">
-                    <i class="fas fa-users" style="width: 20px;"></i>
-                    <span class="nav-text">Clientes</span>
+                    <span class="nav-text" style="font-weight: 500;">Clientes</span>
+                    <i class="fas fa-users-viewfinder" style="font-size: 1.1rem; opacity: 0.9;"></i>
                 </li>
                 <li id="nav-docs"
-                    style="padding: 1rem 0; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 12px;"
+                    style="padding: 1rem 1.2rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; transition: all 0.2s ease; margin-bottom: 5px;"
                     onclick="showSection('docs')">
-                    <i class="fas fa-folder" style="width: 20px;"></i>
-                    <span class="nav-text">Documentos</span>
+                    <span class="nav-text" style="font-weight: 500;">Documentos</span>
+                    <i class="fas fa-book-medical" style="font-size: 1.1rem; opacity: 0.8;"></i>
                 </li>
                 <li id="nav-chats"
-                    style="padding: 1rem 0; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 12px;"
+                    style="padding: 1rem 1.2rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; transition: all 0.2s ease; margin-bottom: 5px;"
                     onclick="showSection('chats')">
-                    <i class="fas fa-comments" style="width: 20px;"></i>
-                    <span class="nav-text">Chats</span>
+                    <span class="nav-text" style="font-weight: 500;">Chats</span>
+                    <i class="fas fa-comment-dots" style="font-size: 1.1rem; opacity: 0.8;"></i>
                 </li>
                 <li id="nav-settings"
-                    style="padding: 1rem 0; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 12px;"
+                    style="padding: 1rem 1.2rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; transition: all 0.2s ease; margin-bottom: 5px;"
                     onclick="showSection('settings')">
-                    <i class="fas fa-cog" style="width: 20px;"></i>
-                    <span class="nav-text">Ajustes</span>
+                    <span class="nav-text" style="font-weight: 500;">Ajustes</span>
+                    <i class="fas fa-sliders" style="font-size: 1.1rem; opacity: 0.8;"></i>
                 </li>
             </ul>
         </nav>
@@ -237,86 +238,100 @@
         </section>
     </div>
 
-    <!-- Modal for Add/Edit -->
-    <div id="clientModal" class="modal">
-        <div class="modal-content">
-            <h2 id="modalTitle">Agregar Cliente</h2>
-            <form id="clientForm" onsubmit="saveClient(event)">
-                <input type="hidden" id="clientId">
+    <!-- Seccion de Editor de Clientes -->
+    <section id="section-edit-client" class="hidden">
+        <div class="header">
+            <h1 id="modalTitle">Agregar Cliente</h1>
+            <div style="display: flex; gap: 1rem;">
+                <button type="button" onclick="closeModal()" class="btn btn-secondary">Volver</button>
+                <button type="submit" form="clientForm" class="btn btn-primary">Guardar Cambios</button>
+            </div>
+        </div>
 
-                <div class="modal-grid">
-                    <div class="modal-left">
-                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div class="form-group">
-                                <label>Nombre del Negocio</label>
-                                <input type="text" id="clientName">
-                            </div>
-                            <div class="form-group">
-                                <label>Phone Number ID</label>
-                                <input type="text" id="phoneNumberId">
-                            </div>
+        <form id="clientForm" onsubmit="saveClient(event)">
+            <input type="hidden" id="clientId">
+
+            <div class="editor-grid">
+                <div class="editor-left">
+                    <!-- Configuración General -->
+                    <div class="settings-card" style="margin-bottom: 20px;">
+                        <div class="settings-card-header">
+                            <h3><i class="fas fa-sliders-h"></i> Configuración General</h3>
                         </div>
-                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div class="form-group">
-                                <label>WhatsApp Token (Meta)</label>
-                                <input type="text" id="whatsappToken">
+                        <div class="settings-card-body" style="padding: 1.5rem;">
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div class="form-group">
+                                    <label>Nombre del Negocio</label>
+                                    <input type="text" id="clientName">
+                                </div>
+                                <div class="form-group">
+                                    <label>Phone Number ID</label>
+                                    <input type="text" id="phoneNumberId">
+                                </div>
+                            </div>
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div class="form-group">
+                                    <label>WhatsApp Token (Meta)</label>
+                                    <input type="text" id="whatsappToken">
+                                </div>
+                                <div class="form-group">
+                                    <label>Verify Token (Webhook)</label>
+                                    <input type="text" id="verifyToken">
+                                </div>
+                            </div>
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div class="form-group">
+                                    <label>Email del Cliente (Login)</label>
+                                    <input type="email" id="clientEmail" placeholder="ejemplo@correo.com">
+                                </div>
+                                <div class="form-group">
+                                    <label>Calendly URL</label>
+                                    <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label>Verify Token (Webhook)</label>
-                                <input type="text" id="verifyToken">
+                                <label>Instrucciones del Sistema (Contexto Bot)</label>
+                                <textarea id="systemInstruction" rows="4"></textarea>
                             </div>
-                        </div>
-                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div class="form-group">
-                                <label>Email del Cliente (Login)</label>
-                                <input type="email" id="clientEmail" placeholder="ejemplo@correo.com">
-                            </div>
-                            <div class="form-group">
-                                <label>Calendly URL</label>
-                                <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Instrucciones del Sistema (Contexto Bot)</label>
-                            <textarea id="systemInstruction" rows="2"></textarea>
                         </div>
                     </div>
+                </div>
 
-                    <div class="modal-right">
-                        <div class="bot-header">
-                            <h3><i class="fas fa-project-diagram"></i> Flujos del Bot</h3>
+                <div class="editor-right">
+                    <div class="settings-card" style="height: 100%; display: flex; flex-direction: column;">
+                        <div class="settings-card-header"
+                            style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="margin: 0;"><i class="fas fa-project-diagram"></i> Editor de Menú Interactivo
+                            </h3>
                             <button type="button" onclick="showBotHome()" class="btn btn-secondary btn-sm"
                                 style="padding: 5px 10px; font-size: 0.8rem; height: auto; min-width: auto;">
                                 <i class="fas fa-home"></i> Inicio Central
                             </button>
                         </div>
-                        <p style="font-size: 0.85rem; color: #888; margin-bottom: 15px;">Gestiona la estructura de
-                            respuestas y opciones.</p>
+                        <div class="settings-card-body"
+                            style="padding: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                            <div class="bot-editor-layout"
+                                style="flex: 1; display: flex; height: 100%; min-height: 500px;">
+                                <!-- Sidebar Tree (Estructura) -->
+                                <div class="bot-tree-sidebar"
+                                    style="flex: 0 0 220px; border-right: 1px solid var(--border-color); overflow-y: auto;">
+                                    <ul id="menu-tree" class="menu-tree-list">
+                                        <!-- El árbol se renderizará aquí -->
+                                    </ul>
+                                </div>
 
-                        <div class="bot-editor-layout">
-                            <!-- Sidebar Tree (Estructura) -->
-                            <div class="bot-tree-sidebar">
-                                <ul id="menu-tree" class="menu-tree-list">
-                                    <!-- El árbol se renderizará aquí -->
-                                </ul>
-                            </div>
-
-                            <!-- Panel de Edición / Tarjetas -->
-                            <div class="bot-editor-panel" id="bot-editor-panel"
-                                style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 15px; overflow-y: auto;">
-                                <!-- El contenido dinámico (Tarjetas o Formulario) irá aquí -->
+                                <!-- Panel de Edición / Tarjetas -->
+                                <div class="bot-editor-panel" id="bot-editor-panel"
+                                    style="flex: 1; padding: 20px; overflow-y: auto; background: var(--bg-color);">
+                                    <!-- El contenido dinámico (Tarjetas o Formulario) irá aquí -->
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-
-                <div class="modal-actions">
-                    <button type="button" onclick="closeModal()" class="btn btn-secondary">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-                </div>
-            </form>
-        </div>
-    </div>
+            </div>
+        </form>
+    </section>
 
     <input type="file" id="pdfInput" accept="application/pdf" class="pdf-input-hidden"
         onchange="handleFileSelect(event)">
@@ -333,7 +348,26 @@
         </div>
     </div>
 
-    <script src="/admin/zotek_v9.js"></script>
+    <!-- Selector de Emojis Overlay -->
+    <div id="emojiPickerOverlay" class="emoji-picker-overlay hidden" onclick="closeEmojiPicker()">
+        <div class="emoji-picker-container" onclick="event.stopPropagation()">
+            <div class="emoji-picker-header">
+                <h3>Elegir Emoji</h3>
+                <button type="button" class="close-emoji-btn" onclick="closeEmojiPicker()">×</button>
+            </div>
+            <div class="emoji-picker-search">
+                <input type="text" id="emojiSearch" placeholder="Buscar emoji..." oninput="filterEmojis(this.value)">
+            </div>
+            <div class="emoji-categories-tabs" id="emojiCategories">
+                <!-- Categorías se cargarán por JS -->
+            </div>
+            <div class="emoji-picker-content" id="emojiPickerContent">
+                <!-- Emojis se cargan aquí -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/admin/zotek_v9.js?v=2.12"></script>
 </body>
 
 </html>

@@ -1,17 +1,5 @@
-<svg width="400" height="80" viewBox="0 0 400 80" xmlns="http://www.w3.org/2000/svg">
+<svg width="160" height="60" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg">
   <style>
-    .text {
-      fill: #004080; /* Azul rey */
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      font-size: 36px;
-      font-weight: 500;
-      dominant-baseline: middle;
-      text-anchor: start;
-    }
-    .dot {
-      fill: #ff0066; /* Rosa neón */
-    }
-
     /* Animación para el círculo principal */
     @keyframes pulse {
       0% { transform: scale(1); }
@@ -34,27 +22,26 @@
     }
   </style>
 
-  <!-- Texto -->
-  <text x="0" y="40" class="text">ZØtek</text> <!-- Nota: Uso del carácter Ø -->
-  <text x="120" y="40" class="text">Soluciones</text>
-
-  <!-- Icono IA / Chip tecnológico -->
-  <g transform="translate(320, 30)">
+  <!-- Icono IA / Chip tecnológico (centrado) -->
+  <g transform="translate(35, 30)">
     <!-- Círculo principal -->
-    <circle r="10" cx="0" cy="0" class="dot circle-main"/>
-    
+    <circle r="14" cx="0" cy="0" fill="#00bcd4" class="circle-main"/>
+
     <!-- Grupo de puntos rotatorios -->
     <g class="dot-group">
-      <circle r="3" cx="-12" cy="-12" class="dot" fill-opacity="0.6"/>
-      <circle r="3" cx="12" cy="-12" class="dot" fill-opacity="0.6"/>
-      <circle r="3" cx="-12" cy="12" class="dot" fill-opacity="0.6"/>
-      <circle r="3" cx="12" cy="12" class="dot" fill-opacity="0.6"/>
+      <circle r="4" cx="-18" cy="-18" fill="#ff0066" fill-opacity="0.7"/>
+      <circle r="4" cx="18" cy="-18" fill="#ff0066" fill-opacity="0.7"/>
+      <circle r="4" cx="-18" cy="18" fill="#ff0066" fill-opacity="0.7"/>
+      <circle r="4" cx="18" cy="18" fill="#ff0066" fill-opacity="0.7"/>
     </g>
 
     <!-- Líneas conectando puntos -->
-    <line x1="-12" y1="-12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
-    <line x1="12" y1="-12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
-    <line x1="-12" y1="12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
-    <line x1="12" y1="12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
+    <line x1="-18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+    <line x1="18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+    <line x1="-18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+    <line x1="18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
   </g>
+
+  <!-- Texto "Zotek" en azul (visible en ambos modos) -->
+  <text x="65" y="38" fill="#1565C0" font-family="'Space Grotesk', 'Segoe UI', sans-serif" font-size="28" font-weight="600" dominant-baseline="middle" text-anchor="start">Zotek</text>
 </svg>
