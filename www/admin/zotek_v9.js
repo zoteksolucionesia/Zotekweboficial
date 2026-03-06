@@ -158,16 +158,12 @@ async function fetchClients() {
     const tbody = document.getElementById('client-table-body');
     tbody.innerHTML = '';
 
-    const demoClients = ['demo_clinica', 'demo_restaurante', 'demo_tienda'];
-
     allClients.forEach(client => {
         // En la tabla general (Admin), mostrar el email de login si existe
         let actionsHtml = `<button class="btn btn-primary" onclick="editClient('${client.id}')">Editar</button>`;
 
-        // Agregar botón especial para clientes de demostración
-        // Aseguramos que la comparación sea robusta
-        const pId = String(client.phone_number_id || '').trim();
-        if (demoClients.includes(pId)) {
+        // Agregar botón especial para clientes de demostración (cualquier cliente cuyo ID empiece con 'demo_')
+        if (String(client.id || '').startsWith('demo_')) {
             actionsHtml += ` <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="resetDemoClient('${client.id}')" title="Restaurar a configuración original">Restablecer</button>`;
         }
 
@@ -254,16 +250,19 @@ async function resetDemoClient(id) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
+        const rawText = await response.text();
         if (response.ok) {
             showToast(`Cliente '${id}' restablecido correctamente.`, 'success');
-            fetchClients(); // Recargar la tabla para mostrar los datos limpios si fuera necesario
+            fetchClients();
         } else {
-            const data = await response.json();
-            showToast('Error al restablecer: ' + (data.detail || data.error || 'Desconocido'), 'error');
+            let msg = rawText;
+            try { msg = JSON.parse(rawText).detail || JSON.parse(rawText).error || rawText; } catch (_) { }
+            console.error('Reset error:', response.status, rawText);
+            showToast('Error al restablecer (' + response.status + '): ' + msg, 'error');
         }
     } catch (error) {
-        console.error("Error reseteando cliente:", error);
-        showToast('Error de conexión al restablecer.', 'error');
+        console.error("Error de red reseteando cliente:", error);
+        showToast('Error de red: ' + error.message, 'error');
     }
 }
 
@@ -865,17 +864,32 @@ function addSubmenu(path) {
         const responseText = option.response || '';
         const extractedItems = parseResponseToItems(responseText);
 
-        let subOptions;
-        if (extractedItems.length > 0) {
-            subOptions = extractedItems.map(item => ({
-                title: item,
-                response: `Información sobre ${item}.`
-            }));
-        } else {
-            subOptions = [
-                { title: "Sub-opción 1", response: "Respuesta de ejemplo para la sub-opción 1." }
-            ];
+        if (extractedItems.length === 0) {
+            // El texto no tiene formato de lista — avisar al usuario y abortar
+            showConfirmDelete({
+                title: '⚠️ No se puede convertir automáticamente',
+                message: `Para convertir en sub-menú automáticamente, la "Respuesta del Bot" debe contener opciones cortas separadas por comas.\n\nEjemplo: "XS, S, M, L, XL"\n\nActualmente el texto es una oración larga. Puedes:\n1. Editar la respuesta del bot con ese formato y volver a intentarlo.\n2. Convertir manualmente usando el botón "Añadir Opción Hija" después de hacer clic en "Convertir en Sub-menú" (vacío).`,
+                showCancel: true,
+                confirmText: 'Convertir vacío de todas formas',
+                cancelText: 'Cancelar',
+                onConfirm: () => {
+                    option.submenu = {
+                        text: "Selecciona una opción:",
+                        options: [{ title: "Nueva opción", response: "" }]
+                    };
+                    delete option.response;
+                    renderMenuTree();
+                    renderEditorForm(path);
+                }
+            });
+            return; // Abortar la conversión automática
         }
+
+        // Texto válido — convertir con las opciones extraídas
+        const subOptions = extractedItems.map(item => ({
+            title: item,
+            response: `Información sobre ${item}.`
+        }));
 
         option.submenu = {
             text: "Selecciona una opción:",
@@ -932,7 +946,7 @@ function parseResponseToItems(text) {
     }
 
     // Limpiar cada item
-    items = items.map(item => item.trim()).filter(item => item.length > 1 && item.length < 80);
+    items = items.map(item => item.trim()).filter(item => item.length >= 1 && item.length < 80);
 
     // Solo devolver si encontramos al menos 2 items razonables
     if (items.length >= 2) return items.slice(0, 10);
@@ -1195,6 +1209,7 @@ function showConfirmDelete(options) {
     titleEl.textContent = options.title || '¿Estás seguro?';
     messageEl.textContent = options.message || '';
     okBtn.textContent = options.confirmText || 'Eliminar';
+    cancelBtn.textContent = options.cancelText || 'Cancelar';
 
     const showCancel = options.showCancel !== false;
     cancelBtn.style.display = showCancel ? '' : 'none';

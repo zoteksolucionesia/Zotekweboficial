@@ -554,9 +554,59 @@ function addSubmenu(path) {
     if (typeof current[idx] === 'string') {
         current[idx] = { title: current[idx], response: '' };
     }
-    current[idx].submenu = { text: 'Selecciona una opción:', options: [] };
-    current[idx].response = ''; // Limpiamos respuesta si se vuelve submenú
+    const option = current[idx];
+    const responseText = option.response || '';
+    const extractedItems = parseResponseToItems(responseText);
+
+    if (extractedItems.length === 0) {
+        // El texto no tiene formato de lista — avisar al usuario y abortar
+        showConfirmDelete({
+            title: '⚠️ No se puede convertir automáticamente',
+            message: `Para convertir en sub-menú automáticamente, la "Respuesta del Bot" debe contener opciones cortas separadas por comas.\n\nEjemplo: "XS, S, M, L, XL"\n\nActualmente el texto es una oración larga. Puedes:\n1. Editar la respuesta del bot con ese formato y volver a intentarlo.\n2. Convertir manualmente usando "Añadir Opción Hija" después de convertir (vacío).`,
+            showCancel: true,
+            confirmText: 'Convertir vacío de todas formas',
+            cancelText: 'Cancelar',
+            onConfirm: () => {
+                option.submenu = { text: 'Selecciona una opción:', options: [{ title: 'Nueva opción', response: '' }] };
+                delete option.response;
+                renderMenuEditor();
+            }
+        });
+        return;
+    }
+
+    // Texto válido — convertir con las opciones extraídas
+    option.submenu = {
+        text: 'Selecciona una opción:',
+        options: extractedItems.map(item => ({ title: item, response: `Información sobre ${item}.` }))
+    };
+    delete option.response;
     renderMenuEditor();
+}
+
+/**
+ * Analiza el texto de respuesta del bot y extrae elementos como una lista.
+ * Ejemplo: "XS, S, M, L, XL" → ["XS", "S", "M", "L", "XL"]
+ */
+function parseResponseToItems(text) {
+    if (!text || text.trim().length === 0) return [];
+    let cleaned = text.replace(/[•\-–—]/g, ',').trim();
+    let lines = cleaned.split(/\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length > 1) {
+        let items = lines.map(l => l.replace(/^\d+[\.\)\-]\s*/, '').trim()).filter(l => l.length > 2);
+        if (items.length >= 2) return items.slice(0, 10);
+    }
+    const prefixPatterns = /^(?:contamos\s+con|ofrecemos|tenemos|nuestros?\s+\w+\s+(?:son|incluyen)|disponemos\s+de|entre\s+(?:ellos|ellas)|las?\s+opciones\s+(?:son|incluyen)|(?:estos|estas)\s+son)\s*/i;
+    cleaned = cleaned.replace(prefixPatterns, '').replace(/\.\s*$/, '').trim();
+    let items = cleaned.split(/\s*,\s*/);
+    if (items.length > 0) {
+        const lastItem = items[items.length - 1];
+        const andSplit = lastItem.split(/\s+(?:y|e)\s+/i);
+        if (andSplit.length > 1) { items.pop(); items.push(...andSplit); }
+    }
+    items = items.map(item => item.trim()).filter(item => item.length >= 1 && item.length < 80);
+    if (items.length >= 2) return items.slice(0, 10);
+    return [];
 }
 
 
@@ -813,6 +863,7 @@ function showConfirmDelete(options) {
     titleEl.textContent = options.title || '¿Estás seguro?';
     messageEl.textContent = options.message || '';
     okBtn.textContent = options.confirmText || 'Eliminar';
+    cancelBtn.textContent = options.cancelText || 'Cancelar';
 
     const showCancel = options.showCancel !== false;
     cancelBtn.style.display = showCancel ? '' : 'none';

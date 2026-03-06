@@ -181,14 +181,21 @@ async def recibir_mensaje(request: Request):
                             elif demo_mode == "Clínica" or demo_mode == "Clinica": demo_client_id = "demo_clinica"
                             elif demo_mode == "Tienda": demo_client_id = "demo_tienda"
                         
+                        # Obtener siempre el cliente real primero (propietario del número base)
+                        real_client = database.get_client_by_phone_id(phone_number_id)
+
                         client_data = None
                         if demo_client_id:
                             print(f"[Webhook] Sesión Demo activa, cargando cliente: {demo_client_id}"); sys.stdout.flush()
                             client_data = database.get_client_by_id(demo_client_id)
+                            # Heredar token e ID del bot principal para poder responder por WhatsApp
+                            if client_data and real_client:
+                                client_data['whatsapp_token'] = real_client.get('whatsapp_token')
+                                client_data['phone_number_id'] = real_client.get('phone_number_id')
                         
                         # Fallback a phone_number_id si no es demo o no se encontró
                         if not client_data:
-                            client_data = database.get_client_by_phone_id(phone_number_id)
+                            client_data = real_client
                             
                         if not client_data:
                             print(f"❌ ERROR: No client found for phoneID {phone_number_id}"); sys.stdout.flush()
@@ -226,13 +233,13 @@ async def recibir_mensaje(request: Request):
                                 # Send welcome message with buttons for the demo
                                 if tipo_demo == "Restaurante":
                                     texto_welcome = "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?"
-                                    opciones = ["Ver Menú 🍕", "Hacer Reserva 📅", "Horarios ⏰"]
+                                    opciones = ["Ver Menú", "Hacer Reserva", "Horarios"]
                                 elif tipo_demo == "Clínica":
                                     texto_welcome = "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?"
-                                    opciones = ["Agendar Cita 📅", "Especialidades 👨‍⚕️", "Ubicación 📍"]
+                                    opciones = ["Agendar Cita", "Especialidades", "Ubicación"]
                                 else: # Tienda
                                     texto_welcome = "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?"
-                                    opciones = ["Ver Catálogo 👕", "Tallas 📏", "Devoluciones 🔄"]
+                                    opciones = ["Ver Catálogo", "Tallas", "Devoluciones"]
 
                                 whatsapp_service.enviar_menu_botones(numero_usuario, texto_welcome, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
                                 return {"status": "demo_started"}
@@ -685,11 +692,16 @@ async def update_client_menu(client_id: str, request: Request, current_user: str
 @app.post("/api/clients/{client_id}/reset")
 async def reset_demo_client(client_id: str, current_user: str = Depends(get_current_user)):
     """Restablece la configuración de un cliente de demostración a su estado original."""
-    demo_clients_data = {
-        "demo_restaurante": {
+    
+    # Verificar que sea un cliente demo (ID debe comenzar con 'demo_')
+    if not str(client_id).startswith('demo_'):
+        raise HTTPException(status_code=400, detail="Solo se pueden restablecer los clientes de ejemplo (ID debe comenzar con 'demo_').")
+    
+    # Plantillas de configuración original por tipo de demo
+    demo_templates = {
+        "restaurante": {
             "name": "Restaurante La Trattoria",
             "email": "restaurante@ejemplo.com",
-            "phone_number_id": "demo_123",
             "is_active": True,
             "menu": {
                 "text": "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?",
@@ -701,10 +713,9 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
                 "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de La Trattoria:"
             }
         },
-        "demo_clinica": {
+        "clinica": {
             "name": "Clínica San Juan",
             "email": "clinica@ejemplo.com",
-            "phone_number_id": "demo_456",
             "is_active": True,
             "menu": {
                 "text": "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?",
@@ -716,10 +727,9 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
                 "fallback_text": "No comprendo tu solicitud. Selecciona una de estas opciones de la clínica:"
             }
         },
-        "demo_tienda": {
+        "tienda": {
             "name": "Moda Urbana",
             "email": "tienda@ejemplo.com",
-            "phone_number_id": "demo_789",
             "is_active": True,
             "menu": {
                 "text": "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?",
@@ -732,31 +742,62 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
             }
         }
     }
-
-    if client_id not in demo_clients_data:
-        raise HTTPException(status_code=400, detail="Solo se pueden restablecer los clientes de ejemplo.")
-
-    client_data = demo_clients_data[client_id]
-    db = firestore.client()
+    db = database.get_db()
     
-    # 1. Update basic info
-    client_info = client_data.copy()
+    # 1. Obtener el cliente actual para saber su phone_number_id y determinar el tipo de demo
+    client_ref = db.collection('clients').document(client_id)
+    client_doc = client_ref.get()
+    if not client_doc.exists:
+        raise HTTPException(status_code=404, detail=f"Cliente '{client_id}' no encontrado en la base de datos.")
+    
+    current_data = client_doc.to_dict()
+    phone_id = str(current_data.get('phone_number_id', '')).lower()
+    
+    # Determinar el tipo de demo por phone_number_id o por el ID del cliente
+    template_key = None
+    if 'restaurante' in phone_id or 'restaurante' in client_id.lower() or phone_id == 'demo_123':
+        template_key = 'restaurante'
+    elif 'clinica' in phone_id or 'clinica' in client_id.lower() or phone_id == 'demo_456':
+        template_key = 'clinica'
+    elif 'tienda' in phone_id or 'tienda' in client_id.lower() or phone_id == 'demo_789':
+        template_key = 'tienda'
+    
+    # Si no se pudo determinar, intentar por el nombre del cliente
+    if not template_key:
+        client_name = str(current_data.get('name', '')).lower()
+        if 'restaurante' in client_name or 'trattoria' in client_name:
+            template_key = 'restaurante'
+        elif 'clínica' in client_name or 'clinica' in client_name or 'san juan' in client_name:
+            template_key = 'clinica'
+        elif 'tienda' in client_name or 'moda' in client_name or 'urbana' in client_name or 'ecommerce' in client_name or 'e-commerce' in client_name:
+            template_key = 'tienda'
+    
+    if not template_key:
+        raise HTTPException(status_code=400, detail=f"No se pudo determinar el tipo de demo para '{client_id}'. Verifica que el phone_number_id o nombre del cliente indique el tipo (restaurante, clinica, tienda).")
+    
+    template = demo_templates[template_key]
+    
+    # 2. Actualizar información básica (preservar phone_number_id y campos técnicos)
+    client_info = template.copy()
     menu_data = client_info.pop("menu")
     client_info["id"] = client_id
+    # Preservar el phone_number_id original para no romper la integración de WhatsApp
+    client_info["phone_number_id"] = current_data.get('phone_number_id', phone_id)
     
-    db.collection('clients').document(client_id).set(client_info, merge=True)
+    client_ref.set(client_info, merge=True)
     
-    # 2. Overwrite the entire menu config
-    db.collection('clients').document(client_id).collection('config').document('menu').set(menu_data)
+    # 3. Sobrescribir el menú completo con la configuración original
+    client_ref.collection('config').document('menu').set(menu_data)
     
-    # Optional: Clear chats for a clean slate
-    chats = db.collection('clients').document(client_id).collection('chats').stream()
+    # 4. Limpiar chats para un estado limpio
+    chats = client_ref.collection('chats').stream()
     batch = db.batch()
     for doc in chats:
         batch.delete(doc.reference)
     batch.commit()
 
-    return {"status": "success", "message": f"Cliente {client_id} restablecido correctamente"}
+    return {"status": "success", "message": f"Cliente {client_id} restablecido correctamente como demo de '{template_key}'"}
+
 
 @app.get("/api/clients/{client_id}/chats")
 async def list_chats(client_id: str, limit: int = 50, current_user: str = Depends(get_current_user)):
