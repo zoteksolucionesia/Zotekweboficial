@@ -1,10 +1,44 @@
 import sqlite3
 import json
 import os
+import re
+from typing import Optional, Dict, Any, List, Tuple
 
 # Pointing to the new data directory location
 ORIGINAL_DB = os.path.join(os.path.dirname(__file__), "..", "data", "consultorio.db")
 DB_NAME = ORIGINAL_DB
+
+
+def sanitize_phone(phone: str, visible_digits: int = 4) -> str:
+    """
+    Sanitiza un número de teléfono para logs, mostrando solo los últimos dígitos.
+    
+    Args:
+        phone: Número de teléfono a sanitizar
+        visible_digits: Cantidad de dígitos visibles al final
+    
+    Returns:
+        Número sanitizado con asteriscos
+    """
+    if len(phone) > visible_digits:
+        return "*" * (len(phone) - visible_digits) + phone[-visible_digits:]
+    return phone
+
+
+def sanitize_message_preview(message: str, max_length: int = 50) -> str:
+    """
+    Trunca un mensaje para logs, mostrando solo un preview.
+    
+    Args:
+        message: Mensaje a truncar
+        max_length: Longitud máxima del preview
+    
+    Returns:
+        Mensaje truncado con elipsis si es necesario
+    """
+    if len(message) <= max_length:
+        return message
+    return message[:max_length] + "..."
 
 # Workaround for Firebase Functions (Read-only filesystem)
 if os.environ.get('K_SERVICE') or os.environ.get('FIREBASE_CONFIG'):
@@ -87,7 +121,43 @@ def init_db():
                 FOREIGN KEY (client_id) REFERENCES clients (id)
             )
         ''')
+
+        # Tabla de Message Logs (para métricas y facturación)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS message_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id INTEGER NOT NULL,
+                direction TEXT NOT NULL,
+                phone_number TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_id) REFERENCES clients (id)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_message_logs_client ON message_logs(client_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_message_logs_date ON message_logs(created_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_message_logs_client_date ON message_logs(client_id, created_at)')
+
+        # Tabla de Historial de Conversación (para contexto con Gemini)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversation_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone_number TEXT NOT NULL,
+                content TEXT NOT NULL,
+                is_user INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversation_phone ON conversation_history(phone_number)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversation_date ON conversation_history(created_at)')
+
+        # Agregar columna 'plan' a clients si no existe
+        cursor.execute("PRAGMA table_info(clients)")
+        client_columns = [column[1] for column in cursor.fetchall()]
         
+        if 'plan' not in client_columns:
+            print("🔧 Agregando columna 'plan' a la tabla 'clients'...")
+            cursor.execute("ALTER TABLE clients ADD COLUMN plan TEXT DEFAULT 'free'")
+
         conn.commit()
         conn.close()
         print("✅ Base de datos multitenencia inicializada.")
@@ -334,6 +404,248 @@ def get_client_knowledge(client_id):
     except Exception as e:
         print(f"❌ ERROR get_client_knowledge: {e}")
         return ""
+
+
+# ============================================
+# TRACKING DE MENSAJES Y MÉTRICAS
+# ============================================
+
+def track_message(client_id: int, direction: str = "outbound", phone_number: str = None):
+    """
+    Registra un mensaje para métricas de facturación.
+    
+    Args:
+        client_id: ID del cliente
+        direction: 'inbound' (recibido) o 'outbound' (enviado)
+        phone_number: Número de teléfono (opcional, para logs)
+    """
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO message_logs (client_id, direction, phone_number, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, (client_id, direction, phone_number))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # No bloquear el flujo principal por errores de tracking
+        print(f"⚠️ ERROR track_message: {e}")
+
+
+def get_monthly_message_count(client_id: int) -> int:
+    """
+    Obtiene la cantidad de mensajes del mes actual para facturación.
+    
+    Args:
+        client_id: ID del cliente
+    
+    Returns:
+        Cantidad de mensajes en el mes actual
+    """
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM message_logs 
+            WHERE client_id = ? 
+            AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+        """, (client_id,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"❌ ERROR get_monthly_message_count: {e}")
+        return 0
+
+
+def check_message_limit(client_id: int, plan: str = 'free') -> Tuple[bool, str]:
+    """
+    Verifica si el cliente excedió su límite de mensajes mensual.
+    
+    Args:
+        client_id: ID del cliente
+        plan: Plan del cliente (free, basic, pro, enterprise)
+    
+    Returns:
+        Tuple (allowed: bool, message: str)
+    """
+    # Importar planes desde config si está disponible
+    from .config import Config
+    
+    limits = Config.get_plan_limits(plan)
+    monthly_limit = limits.get('monthly_messages', 100)
+    
+    # Ilimitado
+    if monthly_limit == -1:
+        return True, "Ilimitado"
+    
+    current_count = get_monthly_message_count(client_id)
+    
+    if current_count >= monthly_limit:
+        return False, f"Límite de {monthly_limit} mensajes alcanzado. Mes: {current_count}/{monthly_limit}"
+    
+    remaining = monthly_limit - current_count
+    return True, f"{remaining} mensajes restantes este mes"
+
+
+def get_message_stats(client_id: int = None) -> Dict[str, Any]:
+    """
+    Obtiene estadísticas de mensajes.
+    
+    Args:
+        client_id: ID del cliente (opcional, si None retorna globales)
+    
+    Returns:
+        Diccionario con estadísticas
+    """
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if client_id:
+            # Estadísticas por cliente
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound,
+                    SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound,
+                    MIN(created_at) as first_message,
+                    MAX(created_at) as last_message
+                FROM message_logs 
+                WHERE client_id = ?
+            """, (client_id,))
+        else:
+            # Estadísticas globales
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound,
+                    SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound,
+                    COUNT(DISTINCT client_id) as unique_clients,
+                    MIN(created_at) as first_message,
+                    MAX(created_at) as last_message
+                FROM message_logs
+            """)
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'total': row['total'] or 0,
+                'inbound': row['inbound'] or 0,
+                'outbound': row['outbound'] or 0,
+                'unique_clients': row.get('unique_clients', 0),
+                'first_message': row['first_message'],
+                'last_message': row['last_message']
+            }
+        return {'total': 0, 'inbound': 0, 'outbound': 0, 'unique_clients': 0}
+    except Exception as e:
+        print(f"❌ ERROR get_message_stats: {e}")
+        return {'total': 0, 'inbound': 0, 'outbound': 0}
+
+
+# ============================================
+# HISTORIAL DE CONVERSACIÓN
+# ============================================
+
+def add_to_conversation_history(phone_number: str, user_message: str, assistant_response: str):
+    """
+    Agrega un intercambio de mensajes al historial de conversación.
+    
+    Args:
+        phone_number: Número de teléfono del usuario
+        user_message: Mensaje del usuario
+        assistant_response: Respuesta del asistente
+    """
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        # Insertar mensaje del usuario
+        cursor.execute("""
+            INSERT INTO conversation_history (phone_number, content, is_user, created_at)
+            VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+        """, (phone_number, user_message))
+        
+        # Insertar respuesta del asistente
+        cursor.execute("""
+            INSERT INTO conversation_history (phone_number, content, is_user, created_at)
+            VALUES (?, ?, 0, CURRENT_TIMESTAMP)
+        """, (phone_number, assistant_response))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # No bloquear el flujo principal por errores de historial
+        print(f"⚠️ ERROR add_to_conversation_history: {e}")
+
+
+def get_conversation_history(phone_number: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Obtiene el historial reciente de conversación para un usuario.
+    
+    Args:
+        phone_number: Número de teléfono del usuario
+        limit: Cantidad máxima de mensajes a retornar
+    
+    Returns:
+        Lista de mensajes con estructura: {content, is_user, created_at}
+    """
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT content, is_user, created_at 
+            FROM conversation_history 
+            WHERE phone_number = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (phone_number, limit))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Invertir para que el más antiguo vaya primero
+        return [dict(row) for row in reversed(rows)]
+    except Exception as e:
+        print(f"❌ ERROR get_conversation_history: {e}")
+        return []
+
+
+def clear_conversation_history(phone_number: str = None, older_than_days: int = 30):
+    """
+    Limpia el historial de conversación.
+    
+    Args:
+        phone_number: Número específico (opcional, si None limpia todo)
+        older_than_days: Días de antigüedad para limpiar (default 30)
+    """
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        if phone_number:
+            cursor.execute("""
+                DELETE FROM conversation_history 
+                WHERE phone_number = ?
+            """, (phone_number,))
+        else:
+            # Limpieza automática de conversaciones antiguas
+            cursor.execute("""
+                DELETE FROM conversation_history 
+                WHERE created_at < datetime('now', ?)
+            """, (f'-{older_than_days} days',))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"❌ ERROR clear_conversation_history: {e}")
+
 
 if __name__ == "__main__":
     init_db()
