@@ -174,7 +174,12 @@ async function fetchClients() {
                 </button>
             `;
         } else {
-            actionsHtml = `<button class="btn btn-primary" onclick="editClient('${client.id}')">Editar</button>`;
+            actionsHtml = `
+                <button class="btn btn-primary" onclick="editClient('${client.id}')">Editar</button>
+                <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="deleteClient('${client.id}', '${client.name}')" title="Eliminar cliente permanentemente">
+                    <i class="fas fa-trash"></i> Eliminar
+                </button>
+            `;
         }
 
         const row = `
@@ -295,16 +300,30 @@ async function duplicateDemoClient(demoId) {
         const response = await fetch(`/api/clients/${demoId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        
+
         if (!response.ok) {
             showToast('Error al cargar datos del demo', 'error');
             return;
         }
-        
+
         const demoClient = await response.json();
-        
+        console.log("Demo client loaded:", demoClient);
+
         // 2. Crear nuevo cliente basado en el demo
         const timestamp = Date.now();
+        
+        // Parsear menu_json si es string (viene del backend como JSON string)
+        let menuData = { options: [] };
+        if (demoClient.menu_json) {
+            try {
+                menuData = typeof demoClient.menu_json === 'string' 
+                    ? JSON.parse(demoClient.menu_json) 
+                    : demoClient.menu_json;
+            } catch (e) {
+                console.error("Error parsing menu_json:", e);
+            }
+        }
+        
         const newClient = {
             name: `${demoClient.name} (Copia ${new Date().toLocaleDateString()})`,
             whatsapp_token: '',  // Limpiar tokens sensibles
@@ -313,11 +332,11 @@ async function duplicateDemoClient(demoId) {
             system_instruction: demoClient.system_instruction || '',
             email: '',  // El usuario debe poner su propio email
             calendly_url: demoClient.calendly_url || '',
-            menu: demoClient.menu_json || { options: [] }
+            menu: menuData  // Copiar menú completo con opciones
         };
-        
+
         console.log("Creating new client from demo:", newClient);
-        
+
         // 3. Guardar nuevo cliente
         const createResponse = await fetch('/api/clients', {
             method: 'POST',
@@ -327,19 +346,19 @@ async function duplicateDemoClient(demoId) {
             },
             body: JSON.stringify(newClient)
         });
-        
+
         if (createResponse.ok) {
             showToast('Cliente creado exitosamente. Ahora puedes editarlo.', 'success');
-            
+
             // Recargar lista y abrir el nuevo cliente para editar
             await fetchClients();
             await new Promise(resolve => setTimeout(resolve, 500));
-            
+
             // Obtener el ID del nuevo cliente (último creado)
             const allClients = await fetch('/api/clients', {
                 headers: { 'Authorization': `Bearer ${token}` }
             }).then(r => r.json());
-            
+
             const newClientData = allClients.find(c => c.phone_number_id === newClient.phone_number_id);
             if (newClientData) {
                 editClient(newClientData.id);
@@ -395,6 +414,41 @@ function showConfirmReset(options) {
             onCancel();
         }
     };
+}
+
+async function deleteClient(id, name) {
+    // Confirmación con modal elegante
+    const confirmed = await new Promise((resolve) => {
+        showConfirmDelete({
+            title: '¿Eliminar cliente?',
+            message: `¿Estás seguro de que deseas eliminar permanentemente al cliente "${name}"?\n\nEsta acción no se puede deshacer y se perderán todos sus menús y configuraciones.`,
+            showCancel: true,
+            confirmText: 'Sí, eliminar',
+            cancelText: 'Cancelar',
+            onConfirm: () => resolve(true),
+            onCancel: () => resolve(false)
+        });
+    });
+
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`/api/clients/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            showToast(`Cliente "${name}" eliminado correctamente.`, 'success');
+            await fetchClients();
+        } else {
+            const errorText = await response.text();
+            showToast('Error al eliminar: ' + errorText, 'error');
+        }
+    } catch (error) {
+        console.error("Error eliminando cliente:", error);
+        showToast('Error de conexión: ' + error.message, 'error');
+    }
 }
 
 async function editClient(id) {
