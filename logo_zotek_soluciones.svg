@@ -1,0 +1,28 @@
+<svg width="400" height="80" viewBox="0 0 400 80" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .text { fill: #004080; font-family: 'Segoe UI', sans-serif; font-size: 36px; font-weight: 500; dominant-baseline: middle; }
+    .dot { fill: #ff0066; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    .circle-main { animation: pulse 2s infinite ease-in-out; }
+    @keyframes rotateDots { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .dot-group { animation: rotateDots 5s linear infinite; transform-origin: center; }
+  </style>
+
+  <text x="0" y="40" class="text">ZØtek</text>
+  <text x="120" y="40" class="text">Soluciones</text>
+
+  <!-- Icono IA -->
+  <g transform="translate(320, 30)">
+    <circle r="10" cx="0" cy="0" class="dot circle-main"/>
+    <g class="dot-group" style="transform-box: fill-box; transform-origin: center;">
+      <circle r="3" cx="-12" cy="-12" class="dot" fill-opacity="0.6"/>
+      <circle r="3" cx="12" cy="-12" class="dot" fill-opacity="0.6"/>
+      <circle r="3" cx="-12" cy="12" class="dot" fill-opacity="0.6"/>
+      <circle r="3" cx="12" cy="12" class="dot" fill-opacity="0.6"/>
+    </g>
+    <line x1="-12" y1="-12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
+    <line x1="12" y1="-12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
+    <line x1="-12" y1="12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
+    <line x1="12" y1="12" x2="0" y2="0" stroke="#004080" stroke-width="1"/>
+  </g>
+</svg>
