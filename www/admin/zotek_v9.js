@@ -372,6 +372,12 @@ async function saveClient(event) {
     }
 
     const id = document.getElementById('clientId').value;
+    
+    // Debug: Log del menú actual
+    console.log("=== SAVE CLIENT DEBUG ===");
+    console.log("Client ID:", id);
+    console.log("Current Menu:", JSON.stringify(currentMenu, null, 2));
+    
     const data = {
         name: nameInput.value,
         whatsapp_token: document.getElementById('whatsappToken').value,
@@ -384,6 +390,8 @@ async function saveClient(event) {
             ...currentMenu
         }
     };
+
+    console.log("Data to send:", JSON.stringify(data, null, 2));
 
     const method = id ? 'PUT' : 'POST';
     const url = id ? `/api/clients/${id}` : '/api/clients';
@@ -398,15 +406,26 @@ async function saveClient(event) {
             body: JSON.stringify(data)
         });
 
+        const responseText = await response.text();
+        console.log("Response status:", response.status);
+        console.log("Response text:", responseText);
+
         if (response.ok) {
             closeModal();
             fetchClients();
             showToast('Cambios guardados con éxito', 'success');
         } else {
-            showToast('Error al guardar los cambios del cliente', 'error');
+            let errorMsg = responseText;
+            try {
+                const errorJson = JSON.parse(responseText);
+                errorMsg = errorJson.detail || errorJson.error || responseText;
+            } catch (_) { }
+            console.error("Save error:", errorMsg);
+            showToast('Error al guardar: ' + errorMsg, 'error');
         }
     } catch (e) {
-        showToast('Error de conexión al guardar', 'error');
+        console.error("Network error:", e);
+        showToast('Error de conexión al guardar: ' + e.message, 'error');
     }
 }
 
