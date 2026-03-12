@@ -334,6 +334,62 @@ async def recibir_mensaje(request: Request):
 
 
 # ============================================
+# SEGURIDAD: Helpers
+# ============================================
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    print(f"🔑 Generating access token for: {data.get('sub')}")
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(hours=8))
+    to_encode.update({"exp": expire})
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    print(f"DEBUG: Token generated. Secret Key length: {len(SECRET_KEY)}")
+    return token
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    print(f"🕵️ Validating token: {token[:10]}...{token[-10:] if len(token) > 20 else ''}")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        print(f"✅ Token decoded successfully for: {email}")
+        if email is None:
+            print("❌ Token payload missing 'sub'")
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return email
+    except JWTError as e:
+        print(f"❌ JWT Error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+def send_security_code(email: str, code: str):
+    if not EMAIL_PASSWORD:
+        print("❌ ERROR: EMAIL_APP_PASSWORD no configurada en .env")
+        return False
+    
+    print(f"📧 Intentando enviar email a {email}...")
+    print(f"DEBUG: Enviando desde {ADMIN_EMAIL} (Pass length: {len(EMAIL_PASSWORD) if EMAIL_PASSWORD else 0})")
+    
+    try:
+        import smtplib
+        msg = MIMEText(f"Tu código de acceso para Zotek Admin es: {code}\nExpira en 10 minutos.")
+        msg['Subject'] = f"{code} es tu código de verificación de Zotek"
+        msg['From'] = ADMIN_EMAIL
+        msg['To'] = email
+
+        # Using SMTP with STARTTLS on 587 (Often more reliable for Gmail)
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.set_debuglevel(1) # Extra verbosity in logs
+            server.starttls()
+            server.login(ADMIN_EMAIL, EMAIL_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        import traceback
+        print(f"❌ Error enviando email: {e}")
+        traceback.print_exc()
+        return False
+
+
+# ============================================
 # MÉTRICAS ENDPOINT
 # ============================================
 @app.get("/api/metrics")
@@ -411,61 +467,6 @@ async def get_usage_metrics(client_id: int = None, current_user: str = Depends(g
         
         return {'clients': usage_data}
 
-
-# ============================================
-# SEGURIDAD: Helpers
-# ============================================
-
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    print(f"🔑 Generating access token for: {data.get('sub')}")
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(hours=8))
-    to_encode.update({"exp": expire})
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    print(f"DEBUG: Token generated. Secret Key length: {len(SECRET_KEY)}")
-    return token
-
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    print(f"🕵️ Validating token: {token[:10]}...{token[-10:] if len(token) > 20 else ''}")
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        print(f"✅ Token decoded successfully for: {email}")
-        if email is None:
-            print("❌ Token payload missing 'sub'")
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return email
-    except JWTError as e:
-        print(f"❌ JWT Error: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-def send_security_code(email: str, code: str):
-    if not EMAIL_PASSWORD:
-        print("❌ ERROR: EMAIL_APP_PASSWORD no configurada en .env")
-        return False
-    
-    print(f"📧 Intentando enviar email a {email}...")
-    print(f"DEBUG: Enviando desde {ADMIN_EMAIL} (Pass length: {len(EMAIL_PASSWORD) if EMAIL_PASSWORD else 0})")
-    
-    try:
-        import smtplib
-        msg = MIMEText(f"Tu código de acceso para Zotek Admin es: {code}\nExpira en 10 minutos.")
-        msg['Subject'] = f"{code} es tu código de verificación de Zotek"
-        msg['From'] = ADMIN_EMAIL
-        msg['To'] = email
-
-        # Using SMTP with STARTTLS on 587 (Often more reliable for Gmail)
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.set_debuglevel(1) # Extra verbosity in logs
-            server.starttls()
-            server.login(ADMIN_EMAIL, EMAIL_PASSWORD)
-            server.send_message(msg)
-        return True
-    except Exception as e:
-        import traceback
-        print(f"❌ Error enviando email: {e}")
-        traceback.print_exc()
-        return False
 
 # --- Routes ---
 
@@ -578,9 +579,15 @@ async def get_client_menu(client_id: int, current_user: str = Depends(get_curren
     return {"options": []}
 
 @app.post("/api/clients/{client_id}/reset")
-async def reset_client(client_id: int, current_user: str = Depends(get_current_user)):
-    """Resetea un cliente, eliminando sus personalizaciones en BD (especial para demos)."""
-    if database.delete_client_db_entry(client_id):
+async def reset_client(client_id: str, current_user: str = Depends(get_current_user)):
+    """Resetea un cliente demo, eliminando sus personalizaciones en BD."""
+    # Convertir a int si es un ID numérico
+    try:
+        client_id_int = int(client_id)
+    except (ValueError, TypeError):
+        client_id_int = client_id  # Usar el string original si no es numérico
+    
+    if database.delete_client_db_entry(client_id_int):
         return {"status": "reset_successful"}
     raise HTTPException(status_code=400, detail="Error resetting client")
 

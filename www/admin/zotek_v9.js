@@ -253,7 +253,15 @@ async function resetDemoClient(id) {
         const rawText = await response.text();
         if (response.ok) {
             showToast(`Cliente '${id}' restablecido correctamente.`, 'success');
-            fetchClients();
+            
+            // Recargar lista de clientes
+            await fetchClients();
+            
+            // Pequeña pausa para asegurar que la lista se actualizó
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Abrir automáticamente el formulario de edición para este cliente
+            editClient(id);
         } else {
             let msg = rawText;
             try { msg = JSON.parse(rawText).detail || JSON.parse(rawText).error || rawText; } catch (_) { }
