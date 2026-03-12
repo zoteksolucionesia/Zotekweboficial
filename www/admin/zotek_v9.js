@@ -160,11 +160,21 @@ async function fetchClients() {
 
     allClients.forEach(client => {
         // En la tabla general (Admin), mostrar el email de login si existe
-        let actionsHtml = `<button class="btn btn-primary" onclick="editClient('${client.id}')">Editar</button>`;
-
-        // Agregar botón especial para clientes de demostración (cualquier cliente cuyo phone_number_id empiece con 'demo_')
-        if (String(client.phone_number_id || '').startsWith('demo_')) {
-            actionsHtml += ` <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="resetDemoClient('${client.id}')" title="Restaurar a configuración original">Restablecer</button>`;
+        const isDemo = String(client.phone_number_id || '').startsWith('demo_');
+        
+        // Los demos solo pueden ser restablecidos o duplicados, no editados directamente
+        let actionsHtml = '';
+        if (isDemo) {
+            actionsHtml = `
+                <button class="btn btn-outline-primary" onclick="duplicateDemoClient('${client.id}')" title="Crear cliente basado en este demo">
+                    <i class="fas fa-copy"></i> Duplicar
+                </button>
+                <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="resetDemoClient('${client.id}')" title="Restaurar a configuración original">
+                    <i class="fas fa-undo"></i> Restablecer
+                </button>
+            `;
+        } else {
+            actionsHtml = `<button class="btn btn-primary" onclick="editClient('${client.id}')">Editar</button>`;
         }
 
         const row = `
@@ -173,6 +183,7 @@ async function fetchClients() {
                 <td>
                     <b>${client.name}</b><br>
                     <small style="color:var(--text-muted);">${client.email || 'Sin email configurado'}</small>
+                    ${isDemo ? '<br><small style="color:var(--warning);"><i class="fas fa-info-circle"></i> Cliente de demostración (no editable)</small>' : ''}
                 </td>
                 <td><code>${client.phone_number_id}</code></td>
                 <td>${client.created_at ? new Date(client.created_at).toLocaleDateString() : '—'}</td>
@@ -276,6 +287,71 @@ async function resetDemoClient(id) {
             }
         }
     });
+}
+
+async function duplicateDemoClient(demoId) {
+    try {
+        // 1. Obtener datos del demo
+        const response = await fetch(`/api/clients/${demoId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) {
+            showToast('Error al cargar datos del demo', 'error');
+            return;
+        }
+        
+        const demoClient = await response.json();
+        
+        // 2. Crear nuevo cliente basado en el demo
+        const timestamp = Date.now();
+        const newClient = {
+            name: `${demoClient.name} (Copia ${new Date().toLocaleDateString()})`,
+            whatsapp_token: '',  // Limpiar tokens sensibles
+            phone_number_id: `client_${timestamp}`,
+            verify_token: `verify_${timestamp}`,
+            system_instruction: demoClient.system_instruction || '',
+            email: '',  // El usuario debe poner su propio email
+            calendly_url: demoClient.calendly_url || '',
+            menu: demoClient.menu_json || { options: [] }
+        };
+        
+        console.log("Creating new client from demo:", newClient);
+        
+        // 3. Guardar nuevo cliente
+        const createResponse = await fetch('/api/clients', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(newClient)
+        });
+        
+        if (createResponse.ok) {
+            showToast('Cliente creado exitosamente. Ahora puedes editarlo.', 'success');
+            
+            // Recargar lista y abrir el nuevo cliente para editar
+            await fetchClients();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Obtener el ID del nuevo cliente (último creado)
+            const allClients = await fetch('/api/clients', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).then(r => r.json());
+            
+            const newClientData = allClients.find(c => c.phone_number_id === newClient.phone_number_id);
+            if (newClientData) {
+                editClient(newClientData.id);
+            }
+        } else {
+            const errorText = await createResponse.text();
+            showToast('Error al crear cliente: ' + errorText, 'error');
+        }
+    } catch (error) {
+        console.error("Error duplicando demo:", error);
+        showToast('Error de conexión: ' + error.message, 'error');
+    }
 }
 
 function showConfirmReset(options) {
