@@ -162,8 +162,8 @@ async function fetchClients() {
         // En la tabla general (Admin), mostrar el email de login si existe
         let actionsHtml = `<button class="btn btn-primary" onclick="editClient('${client.id}')">Editar</button>`;
 
-        // Agregar botón especial para clientes de demostración (cualquier cliente cuyo ID empiece con 'demo_')
-        if (String(client.id || '').startsWith('demo_')) {
+        // Agregar botón especial para clientes de demostración (cualquier cliente cuyo phone_number_id empiece con 'demo_')
+        if (String(client.phone_number_id || '').startsWith('demo_')) {
             actionsHtml += ` <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="resetDemoClient('${client.id}')" title="Restaurar a configuración original">Restablecer</button>`;
         }
 
