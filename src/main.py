@@ -555,10 +555,19 @@ async def create_client(request: Request, current_user: str = Depends(get_curren
 
 @app.put("/api/clients/{client_id}")
 async def update_client(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
+    print(f"📥 PUT /api/clients/{client_id} called")
     data = await request.json()
+    print(f"📦 Request data keys: {list(data.keys())}")
+    
     # Map 'menu' from frontend to 'menu_json' in DB
     if 'menu' in data:
-        data['menu_json'] = json.dumps(data.pop('menu'))
+        print(f"🔄 Converting 'menu' to 'menu_json'...")
+        try:
+            data['menu_json'] = json.dumps(data.pop('menu'))
+            print(f"✅ menu_json created successfully")
+        except Exception as e:
+            print(f"❌ Error serializing menu: {e}")
+            raise HTTPException(status_code=400, detail=f"Error serializing menu: {str(e)}")
     
     # Convertir a int si es un ID numérico
     try:
@@ -566,9 +575,12 @@ async def update_client(client_id: str, request: Request, current_user: str = De
     except (ValueError, TypeError):
         client_id_int = client_id  # Usar el string original si no es numérico
 
+    print(f"🔧 Calling database.update_client with client_id={client_id_int}")
     if database.update_client(client_id_int, data):
         return {"status": "updated"}
-    raise HTTPException(status_code=400, detail="Error updating client")
+    else:
+        print(f"❌ database.update_client returned False")
+        raise HTTPException(status_code=400, detail="Error updating client")
 
 @app.get("/api/clients/{client_id}/menu")
 async def get_client_menu(client_id: int, current_user: str = Depends(get_current_user)):

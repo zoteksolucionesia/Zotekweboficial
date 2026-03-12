@@ -157,6 +157,15 @@ def init_db():
         if 'plan' not in client_columns:
             print("🔧 Agregando columna 'plan' a la tabla 'clients'...")
             cursor.execute("ALTER TABLE clients ADD COLUMN plan TEXT DEFAULT 'free'")
+        
+        # Agregar columnas nuevas de SaaS (email, calendly_url)
+        if 'email' not in client_columns:
+            print("🔧 Agregando columna 'email' a la tabla 'clients'...")
+            cursor.execute("ALTER TABLE clients ADD COLUMN email TEXT DEFAULT ''")
+        
+        if 'calendly_url' not in client_columns:
+            print("🔧 Agregando columna 'calendly_url' a la tabla 'clients'...")
+            cursor.execute("ALTER TABLE clients ADD COLUMN calendly_url TEXT DEFAULT ''")
 
         conn.commit()
         conn.close()
@@ -232,29 +241,45 @@ def list_clients():
 
 def update_client(client_id, data):
     """Actualiza los datos de un cliente. Si no existe en BD (ej. demo), lo inserta."""
+    print(f"🔧 update_client called with client_id={client_id}")
+    print(f"📦 Data received: {data}")
+    
     fields = []
     values = []
     for key, value in data.items():
         if key != 'id' and key != 'created_at':
             fields.append(f"{key} = ?")
-            values.append(value if not isinstance(value, (dict, list)) else json.dumps(value))
-    
+            # Manejar menu_json especialmente
+            if key == 'menu_json':
+                try:
+                    values.append(json.dumps(value) if isinstance(value, (dict, list)) else value)
+                    print(f"✅ menu_json serialized successfully")
+                except Exception as e:
+                    print(f"❌ Error serializing menu_json: {e}")
+                    values.append(json.dumps({'options': []}))
+            else:
+                values.append(value if not isinstance(value, (dict, list)) else json.dumps(value))
+
     if not fields:
+        print("❌ No fields to update")
         return False
-        
+
     values.append(client_id)
     query = f"UPDATE clients SET {', '.join(fields)} WHERE id = ?"
-    
+    print(f"📝 SQL Query: {query}")
+    print(f"📋 Values count: {len(values)}")
+
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute(query, values)
         rows_affected = cursor.rowcount
-        
+        print(f"✅ Rows affected: {rows_affected}")
+
         if rows_affected == 0:
             # El cliente no existía en BD (probablemente un demo). Insertar con el ID dado.
             print(f"⚠️ Client {client_id} not in DB, inserting...")
-            
+
             # Asegurar campos NOT NULL con valores por defecto
             defaults = {
                 'name': data.get('name', 'Cliente'),
@@ -262,27 +287,28 @@ def update_client(client_id, data):
                 'phone_number_id': data.get('phone_number_id', f'client_{client_id}'),
                 'verify_token': data.get('verify_token', ''),
             }
-            
+
             insert_cols = ['id']
             insert_vals = [client_id]
-            
+
             # Primero agregar los defaults
             for key, val in defaults.items():
                 if key not in [k for k in data.keys()]:
                     insert_cols.append(key)
                     insert_vals.append(val)
-            
+
             # Luego agregar los datos del usuario
             for key, value in data.items():
                 if key != 'id' and key != 'created_at':
                     insert_cols.append(key)
                     insert_vals.append(value if not isinstance(value, (dict, list)) else json.dumps(value))
-            
+
             placeholders = ', '.join(['?'] * len(insert_cols))
             insert_query = f"INSERT INTO clients ({', '.join(insert_cols)}) VALUES ({placeholders})"
+            print(f"📝 INSERT Query: {insert_query}")
             cursor.execute(insert_query, insert_vals)
 
-        
+
         conn.commit()
         conn.close()
         return True
