@@ -392,16 +392,31 @@ def get_client_by_id(client_id):
         return None
 
 def delete_client_db_entry(client_id):
-    """Elimina un cliente de la base de datos (usado para resetear demos)."""
+    """Elimina un cliente de la base de datos (usado para resetear demos o eliminar clientes)."""
+    print(f"🗑️ delete_client_db_entry called with client_id={client_id} (type: {type(client_id).__name__})")
+    
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
+        
+        # Ejecutar DELETE
         cursor.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+        rows_deleted = cursor.rowcount
+        print(f"🗑️ Rows deleted: {rows_deleted}")
+        
         conn.commit()
         conn.close()
-        return True
+        
+        if rows_deleted > 0:
+            print(f"✅ Client {client_id} deleted successfully")
+            return True
+        else:
+            print(f"⚠️ Client {client_id} not found in DB")
+            return False
     except Exception as e:
         print(f"❌ ERROR delete_client: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def list_client_documents(client_id):

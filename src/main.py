@@ -612,19 +612,26 @@ async def reset_client(client_id: str, current_user: str = Depends(get_current_u
 @app.delete("/api/clients/{client_id}")
 async def delete_client(client_id: str, current_user: str = Depends(get_current_user)):
     """Elimina permanentemente un cliente de la base de datos."""
+    print(f"📥 DELETE /api/clients/{client_id} called")
+    
     # Convertir a int si es un ID numérico
     try:
         client_id_int = int(client_id)
     except (ValueError, TypeError):
         client_id_int = client_id  # Usar el string original si no es numérico
     
+    print(f"🔧 Using client_id_int={client_id_int} (type: {type(client_id_int).__name__})")
+    
     # Prevenir eliminación de demos hardcodeados
     if client_id_int in [9991, 9992, 9993]:
+        print(f"⚠️ Attempted to delete demo client {client_id_int}")
         raise HTTPException(status_code=403, detail="No se pueden eliminar clientes de demostración")
     
     if database.delete_client_db_entry(client_id_int):
         return {"status": "deleted"}
-    raise HTTPException(status_code=400, detail="Error deleting client")
+    else:
+        print(f"❌ Failed to delete client {client_id_int}")
+        raise HTTPException(status_code=400, detail="Error deleting client")
 
 @app.get("/api/clients/{client_id}")
 async def get_client(client_id: int, current_user: str = Depends(get_current_user)):
