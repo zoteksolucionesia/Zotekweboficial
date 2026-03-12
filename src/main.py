@@ -554,13 +554,19 @@ async def create_client(request: Request, current_user: str = Depends(get_curren
     raise HTTPException(status_code=400, detail="Error creating client")
 
 @app.put("/api/clients/{client_id}")
-async def update_client(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+async def update_client(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     data = await request.json()
     # Map 'menu' from frontend to 'menu_json' in DB
     if 'menu' in data:
         data['menu_json'] = json.dumps(data.pop('menu'))
-        
-    if database.update_client(client_id, data):
+    
+    # Convertir a int si es un ID numérico
+    try:
+        client_id_int = int(client_id)
+    except (ValueError, TypeError):
+        client_id_int = client_id  # Usar el string original si no es numérico
+
+    if database.update_client(client_id_int, data):
         return {"status": "updated"}
     raise HTTPException(status_code=400, detail="Error updating client")
 

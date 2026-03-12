@@ -240,38 +240,85 @@ function closeModal() {
 }
 
 async function resetDemoClient(id) {
-    if (!confirm(`¿Estás seguro de que deseas restablecer el cliente de ejemplo '${id}' a su configuración original? Se perderán todos los cambios que hayas hecho en sus menús y respuestas.`)) {
-        return;
-    }
+    // Mostrar modal elegante en lugar de confirm() nativo
+    showConfirmReset({
+        clientId: id,
+        title: '¿Restablecer cliente de ejemplo?',
+        message: `¿Estás seguro de que deseas restablecer el cliente '${id}' a su configuración original? Se perderán todos los cambios que hayas hecho en sus menús y respuestas.`,
+        onConfirm: async () => {
+            try {
+                const response = await fetch(`/api/clients/${id}/reset`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
 
-    try {
-        const response = await fetch(`/api/clients/${id}/reset`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        const rawText = await response.text();
-        if (response.ok) {
-            showToast(`Cliente '${id}' restablecido correctamente.`, 'success');
-            
-            // Recargar lista de clientes
-            await fetchClients();
-            
-            // Pequeña pausa para asegurar que la lista se actualizó
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            // Abrir automáticamente el formulario de edición para este cliente
-            editClient(id);
-        } else {
-            let msg = rawText;
-            try { msg = JSON.parse(rawText).detail || JSON.parse(rawText).error || rawText; } catch (_) { }
-            console.error('Reset error:', response.status, rawText);
-            showToast('Error al restablecer (' + response.status + '): ' + msg, 'error');
+                const rawText = await response.text();
+                if (response.ok) {
+                    showToast(`Cliente '${id}' restablecido correctamente.`, 'success');
+                    
+                    // Recargar lista de clientes
+                    await fetchClients();
+                    
+                    // Pequeña pausa para asegurar que la lista se actualizó
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    
+                    // Abrir automáticamente el formulario de edición para este cliente
+                    editClient(id);
+                } else {
+                    let msg = rawText;
+                    try { msg = JSON.parse(rawText).detail || JSON.parse(rawText).error || rawText; } catch (_) { }
+                    console.error('Reset error:', response.status, rawText);
+                    showToast('Error al restablecer (' + response.status + '): ' + msg, 'error');
+                }
+            } catch (error) {
+                console.error("Error de red reseteando cliente:", error);
+                showToast('Error de red: ' + error.message, 'error');
+            }
         }
-    } catch (error) {
-        console.error("Error de red reseteando cliente:", error);
-        showToast('Error de red: ' + error.message, 'error');
+    });
+}
+
+function showConfirmReset(options) {
+    const overlay = document.getElementById('confirmDeleteOverlay');
+    const titleEl = document.getElementById('confirmDeleteTitle');
+    const messageEl = document.getElementById('confirmDeleteMessage');
+    const cancelBtn = document.getElementById('confirmDeleteCancel');
+    const okBtn = document.getElementById('confirmDeleteOk');
+
+    titleEl.textContent = options.title || '¿Estás seguro?';
+    messageEl.textContent = options.message || '';
+    okBtn.textContent = 'Restablecer';
+    cancelBtn.textContent = 'Cancelar';
+
+    const onConfirm = options.onConfirm || (() => { });
+    const onCancel = options.onCancel || (() => { });
+
+    function close() {
+        overlay.classList.remove('active');
+        overlay.setAttribute('aria-hidden', 'true');
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+        overlay.onclick = null;
     }
+
+    okBtn.onclick = () => {
+        close();
+        onConfirm();
+    };
+    cancelBtn.onclick = () => {
+        close();
+        onCancel();
+    };
+
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    overlay.onclick = (e) => {
+        if (e.target === overlay) {
+            close();
+            onCancel();
+        }
+    };
 }
 
 async function editClient(id) {
