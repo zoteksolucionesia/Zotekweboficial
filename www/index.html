@@ -1,23 +1,31 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zotek Soluciones IA | Automatización Inteligente</title>
+    <title>Zotek AI | Automatización Inteligente & Agentes</title>
     <meta name="description"
-        content="Soluciones avanzadas de IA, chatbots y automatización de procesos para tu negocio.">
+        content="Plataforma AI-Native de automatización. Orquesta agentes inteligentes para ventas, soporte y procesos internos.">
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
         rel="stylesheet">
 
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2.20">
 </head>
 
 <body>
+    <script>
+        // Force cleanup of stale admin sessions on landing page
+        if (localStorage.getItem('zotek_token')) {
+            console.log("🧹 Cleaning stale admin session...");
+            localStorage.removeItem('zotek_token');
+            sessionStorage.clear();
+        }
+    </script>
 
     <div class="bg-blobs">
         <div class="blob blob-1"></div>
@@ -25,119 +33,171 @@
     </div>
 
     <header>
-        <div class="logo-container">
-            <svg width="160" height="60" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg"
-                aria-label="Zotek Logo">
-                <style>
-                    /* Animación para el círculo principal */
-                    @keyframes pulse {
-                        0% {
-                            transform: scale(1);
-                        }
-
-                        50% {
-                            transform: scale(1.1);
-                        }
-
-                        100% {
-                            transform: scale(1);
-                        }
-                    }
-
-                    .circle-main {
-                        animation: pulse 2s infinite ease-in-out;
-                    }
-
-                    /* Animación para los puntos */
-                    @keyframes rotateDots {
-                        0% {
-                            transform: rotate(0deg);
-                        }
-
-                        100% {
-                            transform: rotate(360deg);
-                        }
-                    }
-
-                    .dot-group {
-                        animation: rotateDots 5s linear infinite;
-                    }
-                </style>
-
-                <!-- Icono IA / Chip tecnológico (centrado) -->
-                <g transform="translate(35, 30)">
-                    <!-- Círculo principal -->
-                    <circle r="14" cx="0" cy="0" fill="#00bcd4" class="circle-main" />
-
-                    <!-- Grupo de puntos rotatorios -->
-                    <g class="dot-group">
-                        <circle r="4" cx="-18" cy="-18" fill="#ff0066" fill-opacity="0.7" />
-                        <circle r="4" cx="18" cy="-18" fill="#ff0066" fill-opacity="0.7" />
-                        <circle r="4" cx="-18" cy="18" fill="#ff0066" fill-opacity="0.7" />
-                        <circle r="4" cx="18" cy="18" fill="#ff0066" fill-opacity="0.7" />
-                    </g>
-
-                    <!-- Líneas conectando puntos -->
-                    <line x1="-18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-                    <line x1="18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-                    <line x1="-18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-                    <line x1="18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-                </g>
-
-                <!-- Texto "Zotek" en azul (visible en ambos modos) -->
-                <text x="65" y="38" fill="#1565C0" font-family="'Space Grotesk', 'Segoe UI', sans-serif" font-size="28"
-                    font-weight="600" dominant-baseline="middle" text-anchor="start">Zotek</text>
-            </svg>
-        </div>
-        <nav>
-            <a href="#demo"
-                style="color: var(--text-main); text-decoration: none; margin-right: 20px; font-weight: 500; transition: color 0.3s;"
-                onmouseover="this.style.color='var(--primary-color)'"
-                onmouseout="this.style.color='var(--text-main)'">Probar bots</a>
-            <a href="/login" class="nav-btn"
-                style="padding: 8px 16px; background: rgba(0, 188, 212, 0.1); border: 1px solid rgba(0, 188, 212, 0.2); border-radius: 6px; color: var(--text-main); text-decoration: none; font-weight: 500; transition: all 0.3s;"
-                onmouseover="this.style.background='var(--primary-color)'; this.style.color='#000';"
-                onmouseout="this.style.background='rgba(0, 188, 212, 0.1)'; this.style.color='var(--text-main)';">Login</a>
+        <a href="/" class="logo-container">
+            <img src="/Logo-zotek_animado.svg" alt="Zotek Logo" class="logo-login" style="height: 60px;">
+        </a>
+        
+        <nav class="nav-links">
+            <a href="#probar" class="nav-link">Modelos</a>
+            <a href="#soluciones" class="nav-link">Soluciones</a>
+            <a href="#precios" class="nav-link">Precios</a>
         </nav>
+
+        <div style="display: flex; gap: 1rem;">
+            <a href="/admin/login.html" class="nav-btn">
+                Dashboard
+            </a>
+            <a href="#probar" class="nav-btn primary-outline">
+                Comenzar
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </a>
+        </div>
     </header>
 
     <main>
         <section class="hero">
-            <h1>Impulsamos tu <span style="color: var(--primary-color)">Potencial</span> con Inteligencia Artificial
+            <div class="badge">
+                <div class="badge-dot"></div>
+                Generación de Agentes con IA de Google
+            </div>
+            
+            <h1 class="font-display">
+                <span class="text-gradient">El motor AI-Native para</span><br>
+                <span class="text-gradient-primary">automatizar tu negocio.</span>
             </h1>
-            <p>Creamos agentes inteligentes y procesos automatizados que transforman tu negocio y optimizan tu tiempo.
+            
+            <p>
+                Orquesta agentes inteligentes que entienden tu contexto, interactúan con tus clientes en WhatsApp y ejecutan flujos de trabajo en segundos.
             </p>
-            <a href="/api/redirect/whatsapp" class="cta-button">Hablemos en WhatsApp</a>
+            
+            <div class="hero-cta">
+                <a href="#probar" class="btn-primary">
+                    Probar Agentes Demo
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </a>
+                <a href="/admin/login.html" class="btn-secondary">
+                    Ir al Dashboard
+                </a>
+            </div>
         </section>
 
-        <section class="services" id="demo">
-            <div class="service-card">
-                <h3>Chatbots Inteligentes</h3>
-                <p>Asistentes 24/7 en WhatsApp y Web que entienden a tus clientes y cierran ventas automáticamente.</p>
-                <div class="demo-buttons">
-                    <h4 class="demo-title">Pruébalo Gratis Ahora:</h4>
-                    <a href="/api/redirect/whatsapp?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Restaurante"
-                        target="_blank" class="demo-btn">🍕 Demo Restaurante</a>
-                    <a href="/api/redirect/whatsapp?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Clínica"
-                        target="_blank" class="demo-btn">🏥 Demo Clínica</a>
-                    <a href="/api/redirect/whatsapp?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Tienda"
-                        target="_blank" class="demo-btn">🛍️ Demo Tienda</a>
+        <section class="services-section" id="probar">
+            <div class="section-header">
+                <h2 class="text-gradient font-display" id="soluciones">Agentes Especializados</h2>
+                <p>Nuestros agentes entienden contexto, analizan intenciones y cierran procesos sin supervisión.</p>
+            </div>
+
+            <div class="services-grid">
+                <!-- Service 1: Agents -->
+                <div class="service-card" id="card-1">
+                    <div class="service-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1v4h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1v4h1a2 2 0 0 1 2 2H8a2 2 0 0 1 2-2v-4h1a2 2 0 0 1 2-2v-2a2 2 0 0 1-2-2h-1V6h1a2 2 0 0 1 2-2h1z"/></svg>
+                    </div>
+                    <h3>Agentes Zotek</h3>
+                    <p>Agentes conversacionales hyper-realistas conectados directamente a tu WhatsApp Business.</p>
+                    
+                    <div class="demo-dock">
+                        <div class="demo-title">Interactúa en Vivo</div>
+                        <div class="demo-list">
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20información%20sobre%20tus%20servicios" target="_blank" class="demo-item featured">
+                                <div><span class="emoji">🤖</span> Agente Maestro Zotek</div>
+                                <span class="badge-new">OFICIAL</span>
+                                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </a>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Clínica%20Dental" target="_blank" class="demo-item">
+                                <div><span class="emoji">🏥</span> SonrisaPerfecta IA</div>
+                                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </a>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Psicólogo" target="_blank" class="demo-item">
+                                <div><span class="emoji">🧠</span> MenteSana Bot</div>
+                                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </a>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Restaurante" target="_blank" class="demo-item">
+                                <div><span class="emoji">🍕</span> GourmetBot 2026</div>
+                                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </a>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Salón%20de%20Belleza" target="_blank" class="demo-item">
+                                <div><span class="emoji">💇‍♀️</span> GlamourBot 2026</div>
+                                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </a>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Tienda%20de%20Ropa" target="_blank" class="demo-item">
+                                <div><span class="emoji">🛍️</span> StyleBot 2026</div>
+                                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </a>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="service-card">
-                <h3>Automatización RPA</h3>
-                <p>Elimina tareas repetitivas. Conectamos tus herramientas favoritas para que todo fluya sin esfuerzo
-                    humano.</p>
-            </div>
-            <div class="service-card">
-                <h3>Consultoría IA</h3>
-                <p>No solo te damos la herramienta, diseñamos la estrategia de IA que tu empresa necesita para escalar.
-                </p>
+
+                <!-- Service 2: Workflows -->
+                <div class="service-card" id="card-2">
+                    <div class="service-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    </div>
+                    <h3>Espacios de Trabajo y Bases de Datos</h3>
+                    <p>Gestión de clientes donde los agentes actualizan la base de datos automáticamente con cada interacción.</p>
+                    
+                     <div class="demo-dock" style="border: none; margin-top: 1rem; padding-top: 0;">
+                        <ul style="list-style: none; color: var(--text-secondary); font-size: 0.95rem; display: flex; flex-direction: column; gap: 0.8rem;">
+                            <li style="display: flex; gap: 0.8rem; align-items: center;"><svg style="color: var(--primary)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Sincronización en tiempo real</li>
+                            <li style="display: flex; gap: 0.8rem; align-items: center;"><svg style="color: var(--primary)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Detección de intenciones IA</li>
+                            <li style="display: flex; gap: 0.8rem; align-items: center;"><svg style="color: var(--primary)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Sanitización de datos GDPR</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Service 3: Integrations -->
+                <div class="service-card" id="card-3">
+                    <div class="service-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    </div>
+                    <h3>Análisis y Métricas</h3>
+                    <p>Métricas precisas y análisis de sentimientos de cada conversación procesada por nuestra infraestructura.</p>
+                    
+                    <div class="demo-dock" style="border: none; margin-top: 1rem; padding-top: 0;">
+                        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; padding: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                                <span style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Tiempo Resp. IA</span>
+                                <span style="font-size: 0.85rem; color: #00e5ff; font-weight: 600;">~0.7s</span>
+                            </div>
+                            <div style="width: 100%; background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px;">
+                                <div style="width: 90%; background: #00e5ff; height: 100%; border-radius: 2px; box-shadow: 0 0 10px #00e5ff;"></div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; margin-top: 1.5rem;">
+                                <span style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Ahorro Consultas DB</span>
+                                <span style="font-size: 0.85rem; color: #8b5cf6; font-weight: 600;">80%</span>
+                            </div>
+                             <div style="width: 100%; background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px;">
+                                <div style="width: 80%; background: #8b5cf6; height: 100%; border-radius: 2px; box-shadow: 0 0 10px #8b5cf6;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
 
-    <script src="script.js"></script>
+    <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20necesito%20ayuda%20con%20una%20implementación%20de%20IA" 
+       target="_blank" class="whatsapp-float" title="Habla con un experto">
+        <i class="fab fa-whatsapp"></i>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp" width="35">
+        <span class="whatsapp-tooltip">¿Hablamos por WhatsApp? 🚀</span>
+    </a>
+
+
+    <script src="script.js?v=2.20"></script>
+    <script>
+        // Efecto hover brillante en las tarjetas (Glassmorphism avanzado)
+        document.querySelectorAll('.service-card').forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
+    </script>
 </body>
 
 </html>

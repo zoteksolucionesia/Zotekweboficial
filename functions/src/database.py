@@ -87,52 +87,88 @@ def add_knowledge_entry(client_id, content, source_file=None):
     return True
 
 def list_clients():
-    """Retorna una lista de todos los clientes, incluyendo los de demostración."""
-    clients_ref = get_db().collection('clients').stream()
-    clients = []
-    
-    # Inyectar clientes demo
-    demo_clients = [
-        {
-            "id": "demo_restaurante", 
-            "name": "🍕 Demo Restaurante V9", 
-            "phone": "521550000001",
-            "phone_number_id": "demo_123", 
-            "email": "demo@zotek.ia",
-            "response_type": "text",
-            "gemini_prompt": "Eres el asistente de una Pizzería Gourmet. Saluda con entusiasmo y ofrece las pizzas del día.",
-            "created_at": "2024-01-01 00:00:00"
-        },
-        {
-            "id": "demo_clinica", 
-            "name": "🏥 Demo Clínica Dental", 
-            "phone": "521550000002",
-            "phone_number_id": "demo_456", 
-            "email": "demo@zotek.ia",
-            "response_type": "text",
-            "gemini_prompt": "Eres el asistente de una Clínica Dental. Ayuda a los pacientes a conocer los servicios de ortodoncia y limpieza.",
-            "created_at": "2024-01-01 00:00:00"
-        },
-        {
-            "id": "demo_tienda", 
-            "name": "🛍️ Demo Tienda e-Commerce", 
-            "phone": "521550000003",
-            "phone_number_id": "demo_789", 
-            "email": "demo@zotek.ia",
-            "response_type": "text",
-            "gemini_prompt": "Eres el asistente de una tienda de gadgets tecnológicos. Recomienda los mejores productos según las necesidades del cliente.",
-            "created_at": "2024-01-01 00:00:00"
-        }
-    ]
-    clients.extend(demo_clients)
-    
-    for doc in clients_ref:
-        if doc.id in ["demo_restaurante", "demo_clinica", "demo_tienda"]:
-            continue
-        client_data = doc.to_dict()
-        client_data['id'] = doc.id
-        clients.append(client_data)
-    return clients
+    """Retorna una lista de todos los clientes registrados en Firestore."""
+    try:
+        clients_ref = get_db().collection('clients').stream()
+        clients = []
+
+        for doc in clients_ref:
+            client_data = doc.to_dict()
+            client_data['id'] = doc.id
+            clients.append(client_data)
+        
+        return clients
+    except Exception as e:
+        print(f"❌ ERROR listing clients: {e}")
+        return []
+
+def add_client(data):
+    """Crea un nuevo cliente en Firestore."""
+    try:
+        # Generar un ID único basado en el nombre si no tiene
+        doc_ref = get_db().collection('clients').document()
+        data['created_at'] = firestore.SERVER_TIMESTAMP
+        doc_ref.set(data)
+        return True
+    except Exception as e:
+        print(f"❌ ERROR adding client: {e}")
+        return False
+
+def update_client(client_id, data):
+    """Actualiza la configuración de un cliente existente."""
+    try:
+        doc_ref = get_db().collection('clients').document(str(client_id))
+        doc_ref.update(data)
+        return True
+    except Exception as e:
+        print(f"❌ ERROR updating client: {e}")
+        return False
+
+def delete_client_db_entry(client_id):
+    """Elimina un cliente y sus subcolecciones (limpieza básica)."""
+    try:
+        # Nota: En Firestore, borrar un documento no borra automáticamente sus subcolecciones
+        # Pero para este nivel de SaaS, manejar el documento principal es el primer paso.
+        doc_ref = get_db().collection('clients').document(str(client_id))
+        doc_ref.delete()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR deleting client: {e}")
+        return False
+
+def duplicate_client(original_id):
+    """Realiza una duplicación profunda (Clonación cerebral) de un bot en Firestore."""
+    try:
+        db = get_db()
+        original_ref = db.collection('clients').document(str(original_id))
+        doc = original_ref.get()
+        
+        if not doc.exists:
+            return None
+            
+        data = doc.to_dict()
+        data['name'] = f"{data.get('name', 'Copia')} (Copia)"
+        data['created_at'] = firestore.SERVER_TIMESTAMP
+        # Limpiar datos sensibles para la copia
+        data.pop('phone_number_id', None)
+        data.pop('whatsapp_token', None)
+        
+        # 1. Crear el nuevo documento
+        new_ref = db.collection('clients').document()
+        new_ref.set(data)
+        new_id = new_ref.id
+        
+        # 2. Clonar Subcolección de Conocimientos (PDFs/Textos)
+        knowledge_ref = original_ref.collection('knowledge').stream()
+        for knowledge_doc in knowledge_ref:
+            k_data = knowledge_doc.to_dict()
+            new_ref.collection('knowledge').add(k_data)
+            
+        data['id'] = new_id
+        return data
+    except Exception as e:
+        print(f"❌ ERROR duplicating client: {e}")
+        return None
 
 def update_client(client_id, data):
     """Actualiza los datos de un cliente."""
@@ -162,11 +198,30 @@ def add_client(data):
 
 def get_client_by_id(client_id):
     """Obtiene un cliente por su ID (document string en Firestore)."""
-    doc_ref = get_db().collection('clients').document(str(client_id)).get()
-    if doc_ref.exists:
-        client_data = doc_ref.to_dict()
-        client_data['id'] = doc_ref.id
-        return client_data
+    # Demos hardcodeados como respaldo de emergencia o para IDs específicos
+    demo_ids = {
+        "demo_restaurante": {"id": "demo_restaurante", "name": "🍕 La Trattoria Demo", "phone_number_id": "demo_restaurante", "system_instruction": "Eres el asistente del restaurante La Trattoria..."},
+        "demo_clinica": {"id": "demo_clinica", "name": "🏥 Clínica San Juan Demo", "phone_number_id": "demo_clinica", "system_instruction": "Eres el asistente de la Clínica San Juan..."},
+        "demo_tienda": {"id": "demo_tienda", "name": "🛍️ Urban Vibe Style Demo", "phone_number_id": "demo_tienda", "system_instruction": "Eres el asistente de la tienda Urban Vibe..."},
+        "demo_dental_001": {"id": "demo_dental_001", "name": "🦷 SonrisaPerfecta IA Demo", "phone_number_id": "demo_dental_001", "system_instruction": "Eres el asistente de SonrisaPerfecta IA..."},
+        "demo_psychology_001": {"id": "demo_psychology_001", "name": "🧠 MenteSana Bot Demo", "phone_number_id": "demo_psychology_001", "system_instruction": "Eres el asistente del Dr. Alejandro Ruiz..."}
+    }
+    
+    cid_str = str(client_id)
+    if cid_str in demo_ids:
+        return demo_ids[cid_str]
+
+    try:
+        db = firestore.client()
+        doc_ref = db.collection('clients').document(cid_str).get()
+        
+        if doc_ref.exists:
+            client_data = doc_ref.to_dict()
+            client_data['id'] = doc_ref.id
+            return client_data
+    except Exception as e:
+        print(f"❌ ERROR get_client_by_id (Firestore): {e}")
+    
     return None
 
 def list_client_documents(client_id):
@@ -236,10 +291,15 @@ def get_client_chats(client_id, limit=50):
 
 # --- GESTIÓN DE SESIONES DE DEMO (SANDBOX) ---
 
-def get_user_session(user_number):
-    """Obtiene la sesión de sandbox actual para un número de usuario."""
+def get_session_id(user_number, phone_number_id):
+    """Genera un ID único para la sesión combinando el usuario y el bot."""
+    return f"{user_number}_{phone_number_id}"
+
+def get_user_session(user_number, phone_number_id):
+    """Obtiene la sesión de sandbox actual para un número de usuario y bot específico."""
     try:
-        doc_ref = get_db().collection('sandbox_sessions').document(str(user_number)).get()
+        sid = get_session_id(user_number, phone_number_id)
+        doc_ref = get_db().collection('sandbox_sessions').document(sid).get()
         if doc_ref.exists:
             return doc_ref.to_dict()
         return None
@@ -247,20 +307,22 @@ def get_user_session(user_number):
         print(f"❌ ERROR GET USER SESSION: {e}")
         return None
 
-def save_user_session(user_number, session_data):
-    """Guarda o actualiza la sesión de sandbox para un número de usuario."""
+def save_user_session(user_number, phone_number_id, session_data):
+    """Guarda o actualiza la sesión de sandbox para un número de usuario y bot específico."""
     try:
+        sid = get_session_id(user_number, phone_number_id)
         session_data['updated_at'] = firestore.SERVER_TIMESTAMP
-        get_db().collection('sandbox_sessions').document(str(user_number)).set(session_data, merge=True)
+        get_db().collection('sandbox_sessions').document(sid).set(session_data, merge=True)
         return True
     except Exception as e:
         print(f"❌ ERROR SAVE USER SESSION: {e}")
         return False
 
-def delete_user_session(user_number):
-    """Elimina la sesión de sandbox de un usuario (para salir de la demo)."""
+def delete_user_session(user_number, phone_number_id):
+    """Elimina la sesión de sandbox de un usuario para un bot específico."""
     try:
-        get_db().collection('sandbox_sessions').document(str(user_number)).delete()
+        sid = get_session_id(user_number, phone_number_id)
+        get_db().collection('sandbox_sessions').document(sid).delete()
         return True
     except Exception as e:
         print(f"❌ ERROR DELETE USER SESSION: {e}")

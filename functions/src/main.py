@@ -112,17 +112,114 @@ async def test_whatsapp(to: str = "523123173431"):
     
     return results
 
-# El resto de rutas de UI (/login, /admin-control) han sido eliminadas
-# ya que Firebase Hosting las maneja mediante rewrites en firebase.json
+# === SECURITY HELPERS ===
 
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(hours=8))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# === AUTH API ===
+
+@app.post("/api/auth/login")
+async def login(request: Request):
+    data = await request.json()
+    email = data.get("email")
+    password = data.get("password")
+    
+    # Simple hardcoded check for admin
+    if email == ADMIN_EMAIL and password == os.getenv("ADMIN_PASSWORD", "Zotek!SecureAdmin9X$2026"):
+        access_token = create_access_token(data={"sub": email})
+        return {"access_token": access_token, "token_type": "bearer"}
+    
+    # Check other admins
+    if email in ADMIN_EMAILS and password == os.getenv("ADMIN_PASSWORD"):
+        access_token = create_access_token(data={"sub": email})
+        return {"access_token": access_token, "token_type": "bearer"}
+        
+    raise HTTPException(status_code=401, detail="Credenciales incorrectas")
+
+@app.get("/api/me")
+async def get_me(current_user: str = Depends(get_current_user)):
+    return {
+        "email": current_user,
+        "role": "admin" if current_user == ADMIN_EMAIL else "client"
+    }
+
+# === CLIENTS API ===
+
+@app.get("/api/clients")
+async def list_clients(current_user: str = Depends(get_current_user)):
+    return database.list_clients()
+
+@app.get("/api/clients/{client_id}")
+async def get_client(client_id: str, current_user: str = Depends(get_current_user)):
+    client = database.get_client_by_id(client_id)
+    if client: return client
+    raise HTTPException(status_code=404, detail="Client not found")
+
+@app.post("/api/clients")
+async def create_client(request: Request, current_user: str = Depends(get_current_user)):
+    data = await request.json()
+    import json
+    if 'menu' in data:
+        data['menu_json'] = json.dumps(data.pop('menu'))
+    if database.add_client(data):
+        return {"status": "created"}
+    raise HTTPException(status_code=400, detail="Error creating client")
+
+@app.put("/api/clients/{client_id}")
+async def update_client(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
+    data = await request.json()
+    import json
+    if 'menu' in data:
+        data['menu_json'] = json.dumps(data.pop('menu'))
+    if database.update_client(client_id, data):
+        return {"status": "updated"}
+    raise HTTPException(status_code=400, detail="Error updating client")
+
+@app.delete("/api/clients/{client_id}")
+async def delete_client(client_id: str, current_user: str = Depends(get_current_user)):
+    # Prevent deletion of demos
+    if str(client_id) in ["demo_dental", "demo_psychology", "demo_restaurant", "demo_salon", "demo_retail"]:
+        raise HTTPException(status_code=403, detail="No se pueden eliminar demos")
+    if database.delete_client_db_entry(client_id):
+        return {"status": "deleted"}
+    raise HTTPException(status_code=400, detail="Error deleting client")
+
+@app.post("/api/clients/{client_id}/duplicate")
+async def duplicate_client(client_id: str, current_user: str = Depends(get_current_user)):
+    new_client = database.duplicate_client(client_id)
+    if new_client:
+        return {"status": "duplicated", "new_client_id": new_client["id"]}
+    raise HTTPException(status_code=400, detail="Error duplicating client")
+
+@app.get("/api/clients/{client_id}/documents")
+async def list_documents(client_id: str, current_user: str = Depends(get_current_user)):
+    return database.list_client_documents(client_id)
+
+
+
+# === GLOBAL STATE & INIT ===
 
 # Cache for WhatsApp retries
 PROCESSED_MESSAGES = deque(maxlen=100)
 
-# Initialize DB at module level (Firebase copies DB to /tmp, locally creates tables)
+# Initialize DB at module level
 database.init_db()
 
-# Initialize Gemini at module level (startup events don't fire in our custom ASGI bridge)
+# Initialize Gemini at module level
 gemini = None
 print(f"GEMINI_API_KEY present: {bool(GEMINI_API_KEY)}, starts: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'NONE'}"); sys.stdout.flush()
 try:
@@ -131,7 +228,6 @@ try:
 except Exception as e:
     print(f"GeminiEngine INIT FAILED: {e}"); sys.stdout.flush()
     gemini = None
-
 
 # === WEBHOOK ===
 
@@ -173,13 +269,15 @@ async def recibir_mensaje(request: Request):
                         print(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}"); sys.stdout.flush()
                         
                         # --- VERIFICAR SESIÓN DEMO PRIMERO ---
-                        session = database.get_user_session(numero_usuario)
+                        session = database.get_user_session(numero_usuario, phone_number_id)
                         demo_client_id = None
-                        if session and session.get("demo_mode"):
-                            demo_mode = session.get("demo_mode")
+                        if session and session.get('demo_mode'):
+                            demo_mode = session['demo_mode']
                             if demo_mode == "Restaurante": demo_client_id = "demo_restaurante"
                             elif demo_mode == "Clínica" or demo_mode == "Clinica": demo_client_id = "demo_clinica"
                             elif demo_mode == "Tienda": demo_client_id = "demo_tienda"
+                            elif demo_mode == "Dental": demo_client_id = "demo_dental_001"
+                            elif demo_mode == "Psicólogo" or demo_mode == "Psicología": demo_client_id = "demo_psychology_001"
                         
                         # Obtener siempre el cliente real primero (propietario del número base)
                         real_client = database.get_client_by_phone_id(phone_number_id)
@@ -205,7 +303,6 @@ async def recibir_mensaje(request: Request):
                         
                         # 1. Detectar tipo de mensaje
                         texto_usuario = ""
-                        texto_menu = "" # Default to avoid NameError
                         if message.get('type') == 'text':
                             texto_usuario = message.get('text', {}).get('body', "")
                         elif message.get('type') == 'interactive':
@@ -219,36 +316,44 @@ async def recibir_mensaje(request: Request):
                         
                         # --- INTERCEPCIÓN DE DEMOS (SANDBOX) ---
                         texto_lower = texto_usuario.lower().strip()
-                        if "quiero probar la demo de" in texto_lower:
-                            # Identificar el tipo de demo
-                            tipo_demo = None
-                            if "restaurante" in texto_lower: tipo_demo = "Restaurante"
-                            elif "clínica" in texto_lower or "clinica" in texto_lower: tipo_demo = "Clínica"
-                            elif "tienda" in texto_lower: tipo_demo = "Tienda"
+                        tipo_demo = None
+                        if "restaurante" in texto_lower: tipo_demo = "Restaurante"
+                        elif "clínica" in texto_lower or "clinica" in texto_lower: tipo_demo = "Clínica"
+                        elif "tienda" in texto_lower: tipo_demo = "Tienda"
+                        elif "dental" in texto_lower: tipo_demo = "Dental"
+                        elif "psicólogo" in texto_lower or "psicologo" in texto_lower: tipo_demo = "Psicólogo"
                             
-                            if tipo_demo:
-                                print(f"[Demo] Iniciando sesión de demo para {numero_usuario} modo: {tipo_demo}"); sys.stdout.flush()
-                                database.save_user_session(numero_usuario, {"demo_mode": tipo_demo})
-                                
-                                # Send welcome message with buttons for the demo
-                                if tipo_demo == "Restaurante":
-                                    texto_welcome = "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?"
-                                    opciones = ["Ver Menú", "Hacer Reserva", "Horarios"]
-                                elif tipo_demo == "Clínica":
-                                    texto_welcome = "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?"
-                                    opciones = ["Agendar Cita", "Especialidades", "Ubicación"]
-                                else: # Tienda
-                                    texto_welcome = "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?"
-                                    opciones = ["Ver Catálogo", "Tallas", "Devoluciones"]
+                        if tipo_demo:
+                            print(f"[Demo] Iniciando sesión de demo para {numero_usuario} modo: {tipo_demo}"); sys.stdout.flush()
+                            database.save_user_session(numero_usuario, phone_number_id, {"demo_mode": tipo_demo})
+                            
+                            # Send welcome message with buttons for the demo
+                            if tipo_demo == "Restaurante":
+                                texto_welcome = "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?"
+                                opciones = ["Ver Menú", "Hacer Reserva", "Horarios"]
+                            elif tipo_demo == "Clínica":
+                                texto_welcome = "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?"
+                                opciones = ["Agendar Cita", "Especialidades", "Ubicación"]
+                            elif tipo_demo == "Tienda":
+                                texto_welcome = "¡Hola! Bienvenido a *Urban Vibe Style* 🕶️. ¿Cómo podemos ayudarte con tu estilo hoy?"
+                                opciones = ["Ver Catálogo", "Tallas", "Devoluciones"]
+                            elif tipo_demo == "Dental":
+                                texto_welcome = "¡Hola! Bienvenido a *SonrisaPerfecta IA*. 🦷 Especialistas en tu sonrisa. ¿Qué necesitas?"
+                                opciones = ["Agendar Cita", "Precios", "Ubicación"]
+                            elif tipo_demo == "Psicólogo":
+                                texto_welcome = "Hola, bienvenido al consultorio del *Dr. Alejandro Ruiz*. 🧠 ¿Cómo puedo apoyarte hoy?"
+                                opciones = ["Agendar Sesión", "Información", "Costos"]
+                            else: 
+                                texto_welcome = f"¡Hola! Bienvenido a la demo de {tipo_demo}. ¿En qué puedo ayudarte?"
+                                opciones = ["Información", "Contacto"]
 
-                                whatsapp_service.enviar_menu_botones(numero_usuario, texto_welcome, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                return {"status": "demo_started"}
+                            whatsapp_service.enviar_menu_botones(numero_usuario, texto_welcome, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                            return {"status": "demo_started"}
 
                         # Comprobar si desea salir de la demo
                         if texto_lower in ["salir", "terminar", "terminar demo", "salir demo"]:
-                            session = database.get_user_session(numero_usuario)
                             if session and session.get("demo_mode"):
-                                database.delete_user_session(numero_usuario)
+                                database.delete_user_session(numero_usuario, phone_number_id)
                                 print(f"[Demo] Terminando sesión de demo para {numero_usuario}"); sys.stdout.flush()
                                 msg_salida = "Has salido del modo demo. Ahora vuelvo a ser el asistente general de Zotek Soluciones IA. ¿En qué más puedo ayudarte?"
                                 whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, client_data['whatsapp_token'], client_data['phone_number_id'])
@@ -281,6 +386,12 @@ async def recibir_mensaje(request: Request):
                                     # Comparar con título completo (con icono) y con solo el título
                                     if str(full_title).lower().strip() == texto.lower().strip(): return opt
                                     if str(title).lower().strip() == texto.lower().strip(): return opt
+                                    
+                                    # Caso especial: Si ya tiene el emoji, no duplicarlo
+                                    if icon and title.startswith(icon):
+                                        full_title = title
+                                    
+                                    if str(full_title).lower().strip() == texto.lower().strip(): return opt
 
                                     if is_dict and opt.get('submenu') and opt['submenu'].get('options'):
                                         found = buscar_opcion(opt['submenu']['options'], texto)
@@ -301,7 +412,10 @@ async def recibir_mensaje(request: Request):
                                     for o in sub['options']:
                                         t = o.get('title', 'Opción') if isinstance(o, dict) else str(o)
                                         i = o.get('icon', '') if isinstance(o, dict) else ''
-                                        titles.append(f"{i} {t}".strip())
+                                        if i and t.startswith(i):
+                                            titles.append(t.strip())
+                                        else:
+                                            titles.append(f"{i} {t}".strip())
                                         
                                     if len(titles) == 0:
                                         msg = sub.get('text', f"Opciones para {match['title']}:")
@@ -340,22 +454,6 @@ async def recibir_mensaje(request: Request):
                                             whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     return {"status": "predefined_sent"}
 
-                            if not match and menu_data.get('fallback_text'):
-                                print(f"DEBUG: No menu match found. Sending fallback_text for {client_data['name']}"); sys.stdout.flush()
-                                fallback_msg = menu_data['fallback_text']
-                                opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
-                                opciones = []
-                                for opt in opciones_raw:
-                                    t = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
-                                    i = opt.get('icon', '') if isinstance(opt, dict) else ''
-                                    opciones.append(f"{i} {t}".strip())
-                                
-                                if len(opciones) > 0:
-                                    if len(opciones) > 3:
-                                        whatsapp_service.enviar_menu_lista(numero_usuario, fallback_msg, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    else:
-                                        whatsapp_service.enviar_menu_botones(numero_usuario, fallback_msg, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Fallback enviado: {fallback_msg}]")
                                     return {"status": "fallback_sent"}
 
                         # Keywords de menú (hola, menu, etc.)
@@ -374,7 +472,10 @@ async def recibir_mensaje(request: Request):
                                 for opt in opciones_raw:
                                     t = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
                                     i = opt.get('icon', '') if isinstance(opt, dict) else ''
-                                    opciones.append(f"{i} {t}".strip())
+                                    if i and t.startswith(i):
+                                        opciones.append(t.strip())
+                                    else:
+                                        opciones.append(f"{i} {t}".strip())
                                 
                                 print(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}"); sys.stdout.flush()
                                 try:
@@ -393,11 +494,31 @@ async def recibir_mensaje(request: Request):
                                 print(f"[Webhook] Menu has 0 options. Allowing Gemini to handle the greeting."); sys.stdout.flush()
                                 # Do not return here. Let it fall through to Gemini.
 
+                        if not match and menu_data.get('fallback_text'):
+                            print(f"DEBUG: No menu match found. Sending fallback_text for {client_data['name']}"); sys.stdout.flush()
+                            fallback_msg = menu_data['fallback_text']
+                            opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
+                            opciones = []
+                            for opt in opciones_raw:
+                                t = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
+                                i = opt.get('icon', '') if isinstance(opt, dict) else ''
+                                if i and t.startswith(i):
+                                    opciones.append(t.strip())
+                                else:
+                                    opciones.append(f"{i} {t}".strip())
+                            
+                            if len(opciones) > 0:
+                                if len(opciones) > 3:
+                                    whatsapp_service.enviar_menu_lista(numero_usuario, fallback_msg, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                else:
+                                    whatsapp_service.enviar_menu_botones(numero_usuario, fallback_msg, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Fallback enviado: {fallback_msg}]")
+
                         # Proceso con Gemini
                         if gemini is None: return {"status": "no_gemini"}
                         
                         # --- INYECCIÓN DE CONTEXTO DEMO ---
-                        session = database.get_user_session(numero_usuario)
+                        session = database.get_user_session(numero_usuario, phone_number_id)
                         if session and session.get('demo_mode'):
                             demo_mode = session['demo_mode']
                             if demo_mode == "Restaurante":
@@ -407,8 +528,14 @@ async def recibir_mensaje(request: Request):
                                 if not client_data.get('name'): client_data['name'] = "Clínica San Juan"
                                 if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente de la 'Clínica San Juan'. Ayudas a pacientes a agendar citas médicas (Medicina general, Odontología, Pediatría) y das información de ubicación. Sé empático, breve, profesional y tranquilizador."
                             elif demo_mode == "Tienda":
-                                if not client_data.get('name'): client_data['name'] = "Moda Urbana Tienda"
-                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente de la tienda de ropa 'Moda Urbana'. Ayudas a encontrar prendas (camisetas, jeans, tenis), verificar disponibilidad de tallas y hacer devoluciones. Usa emojis, sé casual, vendedor, dinámico y muy breve."
+                                if not client_data.get('name'): client_data['name'] = "Urban Vibe Style"
+                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente de la tienda de ropa 'Urban Vibe'. Ayudas a encontrar prendas, verificar tallas y rastrear pedidos. Sé casual y moderno."
+                            elif demo_mode == "Dental":
+                                if not client_data.get('name'): client_data['name'] = "SonrisaPerfecta IA"
+                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente virtual de la clínica dental 'SonrisaPerfecta IA'. Ayudas a agendar citas odontológicas, das información de precios y ubicación. Sé profesional, amable y pulcro."
+                            elif demo_mode == "Psicólogo":
+                                if not client_data.get('name'): client_data['name'] = "MenteSana Bot"
+                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente del Dr. Alejandro Ruiz. Ayudas a agendar sesiones de terapia, das costos y horarios. Sé muy respetuoso, puntual y empático."
                             print(f"[Demo] Inyectando contexto de {demo_mode} para Gemini."); sys.stdout.flush()
                         
                         prompt = texto_usuario
@@ -661,6 +788,39 @@ async def get_client(client_id: str, current_user: str = Depends(get_current_use
     raise HTTPException(status_code=404, detail="Client not found")
 
 
+@app.delete("/api/clients/{client_id}")
+async def delete_client(client_id: str, current_user: str = Depends(get_current_user)):
+    """Elimina permanentemente un cliente de Firebase."""
+    print(f"📥 DELETE /api/clients/{client_id} called")
+    
+    # Prevenir eliminación de demos hardcodeados
+    if str(client_id).startswith('demo_'):
+        print(f"⚠️ Attempted to delete demo client {client_id}")
+        raise HTTPException(status_code=403, detail="No se pueden eliminar clientes de demostración")
+    
+    try:
+        # Eliminar documento del cliente
+        db = database.get_db()
+        
+        # Primero eliminar knowledge entries
+        knowledge_ref = db.collection('clients').document(client_id).collection('knowledge')
+        for doc in knowledge_ref.stream():
+            doc.reference.delete()
+        
+        # Eliminar config/menu si existe
+        menu_ref = db.collection('clients').document(client_id).collection('config').document('menu')
+        menu_ref.delete()
+        
+        # Finalmente eliminar el documento del cliente
+        db.collection('clients').document(client_id).delete()
+        
+        print(f"✅ Cliente {client_id} eliminado exitosamente")
+        return {"status": "deleted"}
+    except Exception as e:
+        print(f"❌ Error eliminando cliente: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al eliminar cliente: {str(e)}")
+
+
 @app.get("/api/clients/{client_id}/documents")
 async def list_documents(client_id: str, current_user: str = Depends(get_current_user)):
     return database.list_client_documents(client_id)
@@ -740,6 +900,32 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
                 ],
                 "fallback_text": "Ups, no reconozco eso. Aquí tienes lo que puedo hacer por ti en Moda Urbana:"
             }
+        },
+        "dental": {
+            "name": "SonrisaPerfecta IA (Dental)",
+            "is_active": True,
+            "menu": {
+                "text": "¡Hola! Bienvenido a *SonrisaPerfecta IA*. 🦷 Especialistas en tu sonrisa. ¿Qué necesitas?",
+                "options": [
+                    {"title": "Agendar Cita", "icon": "📅", "response": "Contamos con horarios disponibles de Lunes a Viernes."},
+                    {"title": "Precios", "icon": "💰", "response": "Limpieza: $500, Blanqueamiento: $2000, Consulta: $300."},
+                    {"title": "Ubicación", "icon": "📍", "response": "Calle Odontología #456, Col. Dental."}
+                ],
+                "fallback_text": "No comprendo. Selecciona una opción para continuar:"
+            }
+        },
+        "psychology": {
+            "name": "MenteSana Bot (Psicólogo)",
+            "is_active": True,
+            "menu": {
+                "text": "Hola, bienvenido al consultorio del *Dr. Alejandro Ruiz*. 🧠 ¿Cómo puedo apoyarte hoy?",
+                "options": [
+                    {"title": "Agendar Sesión", "icon": "📅", "response": "Me encantaría ayudarte a agendar. ¿Buscas sesión online o presencial?"},
+                    {"title": "Información", "icon": "ℹ️", "response": "El Dr. Ruiz se especializa en Terapia Cognitivo-Conductual."},
+                    {"title": "Costos", "icon": "💰", "response": "La sesión de 50 minutos tiene un costo de $900 MXN."}
+                ],
+                "fallback_text": "Por favor selecciona una de las opciones administrativas:"
+            }
         }
     }
     db = database.get_db()
@@ -761,6 +947,10 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
         template_key = 'clinica'
     elif 'tienda' in phone_id or 'tienda' in client_id.lower() or phone_id == 'demo_789':
         template_key = 'tienda'
+    elif 'dental' in phone_id or 'dental' in client_id.lower():
+        template_key = 'dental'
+    elif 'psychology' in phone_id or 'psychology' in client_id.lower() or 'psicologo' in client_id.lower():
+        template_key = 'psychology'
     
     # Si no se pudo determinar, intentar por el nombre del cliente
     if not template_key:
