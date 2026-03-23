@@ -1,5 +1,6 @@
 const token = localStorage.getItem('zotek_token');
 let currentUser = null;
+let currentClientData = null;
 
 /* Toast Notifications System */
 function showToast(message, type = 'info') {
@@ -473,6 +474,7 @@ async function editClient(id) {
         }
 
         const client = await response.json();
+        currentClientData = client;
         console.log("Client loaded:", client);
 
         document.getElementById('clientId').value = client.id;
@@ -480,11 +482,15 @@ async function editClient(id) {
         document.getElementById('whatsappToken').value = client.whatsapp_token || '';
         document.getElementById('phoneNumberId').value = client.phone_number_id || '';
         document.getElementById('verifyToken').value = client.verify_token || '';
-        document.getElementById('systemInstruction').value = client.system_instruction || '';
 
         // SaaS Phase 3 fields
         document.getElementById('clientEmail').value = client.email || '';
         document.getElementById('calendlyUrl').value = client.calendly_url || '';
+
+        // VAPI & Calendar configs
+        document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
+        document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
+        document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
 
         // Clean UI state before loading menu
         currentEditingPath = null;
@@ -516,7 +522,8 @@ async function viewClient(id) {
         }
 
         const client = await response.json();
-        console.log("Client loaded:", client);
+        currentClientData = client;
+        console.log("Client loaded (view mode):", client);
 
         // Llenar el formulario con los datos del cliente
         document.getElementById('clientId').value = client.id;
@@ -524,9 +531,13 @@ async function viewClient(id) {
         document.getElementById('whatsappToken').value = client.whatsapp_token || '';
         document.getElementById('phoneNumberId').value = client.phone_number_id || '';
         document.getElementById('verifyToken').value = client.verify_token || '';
-        document.getElementById('systemInstruction').value = client.system_instruction || '';
+
+        // SaaS Phase 3 fields
         document.getElementById('clientEmail').value = client.email || '';
         document.getElementById('calendlyUrl').value = client.calendly_url || '';
+        document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
+        document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
+        document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
 
         // Cargar menú
         await loadClientMenu(id);
@@ -581,6 +592,10 @@ async function saveClient(event) {
     }
 
     const id = document.getElementById('clientId').value;
+
+    // Recuperar instrucción del sistema desde el DOM si está visible, o desde la variable global
+    const sysInstEl = document.getElementById('systemInstruction');
+    const finalSystemInstruction = sysInstEl ? sysInstEl.value : (currentClientData ? currentClientData.system_instruction : '');
     
     // Debug: Log del menú actual
     console.log("=== SAVE CLIENT DEBUG ===");
@@ -592,9 +607,12 @@ async function saveClient(event) {
         whatsapp_token: document.getElementById('whatsappToken').value,
         phone_number_id: document.getElementById('phoneNumberId').value,
         verify_token: document.getElementById('verifyToken').value,
-        system_instruction: document.getElementById('systemInstruction').value,
+        system_instruction: finalSystemInstruction,
         email: document.getElementById('clientEmail').value,
         calendly_url: document.getElementById('calendlyUrl').value,
+        vapi_target: document.getElementById('vapiTarget').value,
+        vapi_professional_phone: document.getElementById('vapiProfessionalPhone').value,
+        google_calendar_id: document.getElementById('googleCalendarId').value,
         menu: {
             ...currentMenu
         }
@@ -878,13 +896,13 @@ function showBotHome() {
         
         <div class="form-group welcome-msg-box">
             <div class="editor-section-title"><i class="fas fa-comment-dots"></i> Mensaje de Bienvenida</div>
-            <textarea id="menuWelcomeText" class="menu-field-input" rows="2" placeholder="Ej: Hola, bienvenido a..." style="margin-top: 5px; width: 100%; font-size: 0.9rem;">${escapeHtml(currentMenu.text || '')}</textarea>
+            <textarea id="menuWelcomeText" class="menu-field-input" rows="4" placeholder="Ej: Hola, bienvenido a..." style="margin-top: 5px; width: 100%; font-size: 0.9rem;">${escapeHtml(currentMenu.text || '')}</textarea>
             <div class="editor-help-text">Este es el primer mensaje que envía el bot junto con el menú principal.</div>
         </div>
 
         <div class="fallback-box">
             <h5><i class="fas fa-redo-alt"></i> Respuesta de Navegación (Fallback)</h5>
-            <textarea id="menuFallbackText" class="menu-field-input" rows="2" placeholder="Ej: No entendí eso. Aquí tienes el menú de nuevo:" style="margin-top: 8px; width: 100%; font-size: 0.85rem;">${escapeHtml(currentMenu.fallback_text || '')}</textarea>
+            <textarea id="menuFallbackText" class="menu-field-input" rows="3" placeholder="Ej: No entendí eso. Aquí tienes el menú de nuevo:" style="margin-top: 8px; width: 100%; font-size: 0.85rem;">${escapeHtml(currentMenu.fallback_text || '')}</textarea>
             <div class="editor-help-text">Mensaje que se envía cuando el usuario escribe algo que el bot no reconoce, para guiarlo de vuelta al menú.</div>
         </div>
 
@@ -900,6 +918,12 @@ function showBotHome() {
                 <p>Gestiona los documentos PDF del bot.</p>
             </div>
         </div>
+
+        <div class="form-group" style="margin-top: 30px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; border: 1px solid rgba(0, 210, 255, 0.2); box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+            <div class="editor-section-title" style="color: var(--primary); margin-bottom: 10px; font-size: 1.1rem; font-weight: 600;"><i class="fas fa-brain"></i> Instrucciones del Sistema (Contexto Bot / VAPI)</div>
+            <textarea id="systemInstruction" class="menu-field-input" rows="8" placeholder="Tu principal objetivo no es solo chatear, sino actuar como un consultor proactivo que guía a los pacientes..." style="width: 100%; font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.5);">${escapeHtml(currentClientData && currentClientData.system_instruction ? currentClientData.system_instruction : '')}</textarea>
+            <div class="editor-help-text" style="margin-top: 8px; color: #aaa;">Define la personalidad, objetivos y el comportamiento general del Asistente de IA (Gemini / VAPI).</div>
+        </div>
     `;
 
     const welcomeInput = document.getElementById('menuWelcomeText');
@@ -913,6 +937,15 @@ function showBotHome() {
     if (fallbackInput) {
         fallbackInput.oninput = (e) => {
             currentMenu.fallback_text = e.target.value;
+        };
+    }
+
+    const sysInstInput = document.getElementById('systemInstruction');
+    if (sysInstInput) {
+        sysInstInput.oninput = (e) => {
+            if (currentClientData) {
+                currentClientData.system_instruction = e.target.value;
+            }
         };
     }
 }

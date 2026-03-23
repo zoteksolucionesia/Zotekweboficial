@@ -59,6 +59,123 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 app = FastAPI()
 
+# --- PROCESAMIENTO DE AGENTES ---
+def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_number_id, whatsapp_token):
+    """
+    Ejecuta las acciones autónomas solicitadas por el Agente Gemini.
+    """
+    for tool in tool_calls:
+        name = tool.get('name')
+        args_raw = tool.get('args')
+        try:
+            args = dict(args_raw) if args_raw is not None else {}
+        except Exception:
+            args = {}
+
+        print(f"🤖 AGENTE EJECUTANDO HERRAMIENTA: {name} con {args}"); sys.stdout.flush()
+        
+        if name == "activar_demo":
+            tipo = args.get('tipo', 'restaurante')
+            # ID de cliente de la demo en la DB
+            demo_id_db = {
+                "restaurante": "demo_restaurant",
+                "clinica": "demo_dental",
+                "tienda": "demo_retail",
+                "dental": "demo_dental",
+                "psicologo": "demo_psychology",
+                "salon": "demo_salon"
+            }.get(tipo, "demo_restaurant")
+            
+            # Guardar en sandbox_sessions
+            session_data = {"demo_mode": demo_id_db, "last_interaction": str(datetime.now())}
+            database.save_user_session(numero_usuario, phone_number_id, session_data)
+            
+            # Avisar al usuario que cargamos la demo
+            whatsapp_service.enviar_mensaje_whatsapp(
+                numero_usuario, 
+                f"🔧 Activando modo demostración: {tipo.capitalize()}...", 
+                whatsapp_token, 
+                phone_number_id
+            )
+            
+            # Obtener datos de la demo para enviar su menú inicial
+            demo_client = database.get_client_by_id(demo_id_db)
+            if demo_client and demo_client.get('menu_json'):
+                try:
+                    menu = json.loads(demo_client['menu_json'])
+                    whatsapp_service.enviar_menu_lista(
+                        numero_usuario,
+                        menu.get('text', 'Bienvenido a la demo.'),
+                        "Ver Opciones",
+                        "Menú de Demo",
+                        [opt.get('title') for opt in menu.get('options', [])],
+                        whatsapp_token,
+                        phone_number_id
+                    )
+                except:
+                    pass
+
+        elif name == "enviar_menu_interactivo":
+            mensaje = args.get('mensaje', 'Elige una opción:')
+            opciones = args.get('opciones', [])
+            if not opciones: continue
+            
+            if len(opciones) <= 3:
+                whatsapp_service.enviar_menu_botones(numero_usuario, mensaje, opciones, whatsapp_token, phone_number_id)
+            else:
+                whatsapp_service.enviar_menu_lista(numero_usuario, mensaje, "Ver Opciones", "Opciones", opciones, whatsapp_token, phone_number_id)
+
+        elif name == "capturar_lead":
+            interes = args.get('interes', 'Interés general en Zotek')
+            nombre = args.get('nombre', 'Desconocido')
+            print(f"💰 NUEVO LEAD DETECTADO: {nombre} ({numero_usuario}) - Interés: {interes}")
+            # Guardar lead en historial o enviar email a admin
+            try:
+                msg_lead = f"NUEVO LEAD DE ZOTEK\n\nNombre: {nombre}\nTel: {numero_usuario}\nInterés: {interes}"
+                # Aquí podrías llamar a una función de envío de email
+            except:
+                pass
+
+        elif name == "ejecutar_automatizacion_n8n":
+            datos_brutos = args.get('datos', {})
+            datos = {}
+            try:
+                datos.update(dict(datos_brutos))
+            except:
+                pass
+            
+            workflow_id = args.get('workflow_id', 'general')
+            webhook_url = os.getenv("N8N_WEBHOOK_URL")
+            
+            if not webhook_url:
+                print("❌ ERROR: N8N_WEBHOOK_URL no configurada en .env")
+                continue
+                
+            print(f"🔗 DISPARANDO n8n WEBHOOK: {webhook_url}")
+            try:
+                # Incluir metadatos del usuario
+                datos['phone_number'] = numero_usuario
+                datos['client_id'] = client_data.get('id')
+                datos['timestamp'] = str(datetime.now())
+                
+                # Llamada asíncrona (fire and forget o esperar)
+                import requests
+                response = requests.post(webhook_url, json=datos, timeout=10)
+                print(f"✅ RESPUESTA n8n ({response.status_code}): {response.text[:50]}")
+            except Exception as e:
+                print(f"🔥 ERROR AL LLAMAR n8n: {e}")
+
+        elif name == "finalizar_demo":
+            database.delete_user_session(numero_usuario, phone_number_id)
+            whatsapp_service.enviar_mensaje_whatsapp(
+                numero_usuario,
+                "✅ Has salido del modo demo. Ahora vuelves a hablar con el asistente principal de Zotek.",
+                whatsapp_token,
+                phone_number_id
+            )
+
+
+
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
@@ -806,8 +923,11 @@ async def recibir_mensaje(request: Request):
                                 print(f"[Webhook] Menu has 0 options. Allowing Gemini to handle the greeting."); sys.stdout.flush()
                                 # Do not return here. Let it fall through to Gemini.
 
-                        # Fallback text - only if menu_data exists and no match was found
-                        if menu_data and not match and menu_data.get('fallback_text'):
+                        # Obtenemos si es el maestro Zotek para decidir si saltamos el fallback del menú
+                        es_zotek_maestro = str(client_data.get('id', '')) == '10'
+
+                        # Fallback text - only if menu_data exists and no match was found (Y NO ES ZOTEK MAESTRO)
+                        if menu_data and not match and menu_data.get('fallback_text') and not es_zotek_maestro:
                             print(f"DEBUG: No menu match found. Sending fallback_text for {client_data['name']}"); sys.stdout.flush()
                             fallback_msg = menu_data['fallback_text']
                             opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
@@ -873,8 +993,8 @@ async def recibir_mensaje(request: Request):
                         contexto_pdf = ""
 
                         if knowledge and len(knowledge) > 0:
-                            # Unir todo el conocimiento disponible
-                            contexto_pdf = "\n\n".join([k['content'] for k in knowledge])
+                            # el conocimiento ya viene como un string concatenado desde database.py
+                            contexto_pdf = knowledge
 
                             # Inyectar en system_instruction temporalmente
                             original_instruction = client_data.get('system_instruction', '')
@@ -894,24 +1014,40 @@ INSTRUCCIONES:
                             print(f"[RAG] Injected {len(contexto_pdf)} chars of knowledge context"); sys.stdout.flush()
                         else:
                             print(f"[RAG] No knowledge base found for client {client_data['id']}"); sys.stdout.flush()
+                               # ============================================
+                        # LLAMADA AL MOTOR DE IA (AGENTE O LEGACY)
                         # ============================================
-                        # FIN RAG
-                        # ============================================
+                        print(f"[Webhook] Calling AI Engine for: '{prompt[:50]}...'"); sys.stdout.flush()
 
-                        print(f"[Webhook] Calling Gemini for: '{prompt[:50]}...'"); sys.stdout.flush()
-
-                        # Verificar si Gemini está disponible
                         if gemini is None:
-                            print(f"❌ ERROR: Gemini not initialized. Cannot process request."); sys.stdout.flush()
-                            if not skip_whatsapp:
-                                fallback_msg = "Gracias por tu mensaje. En este momento estoy experimentando dificultades técnicas. Por favor intenta más tarde."
-                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, fallback_msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+                            print(f"❌ ERROR: Gemini not initialized."); sys.stdout.flush()
                             return {"status": "no_gemini"}
 
-                        res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
-                        print(f"[Webhook] Gemini response preview: {res_ai[:80]}"); sys.stdout.flush()
+                        # Si es el Bot Maestro de Zotek (ID 10), usar flujo de Agente Inteligente
+                        es_zotek_maestro = str(client_data.get('id', '')) == '10'
+                        
+                        if es_zotek_maestro:
+                            print(f"🚀 INICIANDO FLUJO DE AGENTE PARA ZOTEK (ID 10)"); sys.stdout.flush()
+                            agent_output = gemini.generar_respuesta_agente(prompt, client_data, numero_usuario)
+                            res_ai = agent_output.get('text', '')
+                            tool_calls = agent_output.get('tool_calls', [])
+                            
+                            # Ejecutar acciones autónomas si el agente lo solicitó
+                            if tool_calls:
+                                ejecutar_herramientas_agente(
+                                    tool_calls, 
+                                    numero_usuario, 
+                                    client_data, 
+                                    phone_number_id, 
+                                    client_data.get('whatsapp_token', '')
+                                )
+                        else:
+                            # Flujo tradicional para otros clientes
+                            res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
 
-                        # Parse dynamic [OPCIONES]: generated by Gemini
+                        print(f"[Webhook] AI response: {res_ai[:80]}..."); sys.stdout.flush()
+
+                        # Parse dynamic [OPCIONES]: generated by Gemini (Fallback legacy)
                         texto_para_enviar = res_ai
                         opciones_dinamicas = []
                         if "[OPCIONES]:" in res_ai:

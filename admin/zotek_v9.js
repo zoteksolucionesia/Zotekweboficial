@@ -201,6 +201,11 @@ async function editClient(id) {
     document.getElementById('clientEmail').value = client.email || '';
     document.getElementById('calendlyUrl').value = client.calendly_url || '';
 
+    // VAPI & Calendar configs
+    document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
+    document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
+    document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
+
     // Load Menu
     await loadClientMenu(id);
 
@@ -218,6 +223,9 @@ async function saveClient(event) {
         system_instruction: document.getElementById('systemInstruction').value,
         email: document.getElementById('clientEmail').value,
         calendly_url: document.getElementById('calendlyUrl').value,
+        vapi_target: document.getElementById('vapiTarget').value,
+        vapi_professional_phone: document.getElementById('vapiProfessionalPhone').value,
+        google_calendar_id: document.getElementById('googleCalendarId').value,
         menu: {
             ...currentMenu,
             text: document.getElementById('menuWelcomeText').value

@@ -524,10 +524,10 @@
         <form id="clientForm" onsubmit="saveClient(event)">
             <input type="hidden" id="clientId">
 
-            <div class="editor-grid">
-                <div class="editor-left">
+            <div class="editor-grid" style="min-height: 85vh; padding-bottom: 20px;">
+                <div class="editor-left" style="overflow-y: auto; max-height: 85vh; padding-right: 8px; display: block;">
                     <!-- Configuración General -->
-                    <div class="settings-card" style="margin-bottom: 20px;">
+                    <div class="settings-card" style="margin-bottom: 20px; flex-shrink: 0; min-height: max-content;">
                         <div class="settings-card-header">
                             <h3><i class="fas fa-sliders-h"></i> Configuración General</h3>
                         </div>
@@ -562,9 +562,24 @@
                                     <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
                                 </div>
                             </div>
+
+                            <h4 style="color: var(--primary); margin: 15px 0 10px 0; font-size: 1rem;">VAPI y Calendario</h4>
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div class="form-group">
+                                    <label>A quién llamar (Objetivo VAPI)</label>
+                                    <select id="vapiTarget" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+                                        <option value="paciente">Al Paciente (Cliente final)</option>
+                                        <option value="profesional">Al Profesional (Especialista)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Teléfono del Profesional</label>
+                                    <input type="text" id="vapiProfessionalPhone" placeholder="+52...">
+                                </div>
+                            </div>
                             <div class="form-group">
-                                <label>Instrucciones del Sistema (Contexto Bot)</label>
-                                <textarea id="systemInstruction" rows="4"></textarea>
+                                <label>Google Calendar ID (o Correo)</label>
+                                <input type="email" id="googleCalendarId" placeholder="usuario@gmail.com">
                             </div>
                         </div>
                     </div>
@@ -640,7 +655,7 @@
         </div>
     </div>
 
-    <script src="/admin/zotek_v9.js?v=2.17"></script>
+    <script src="/admin/zotek_v9.js?v=2.20"></script>
     <script src="/admin/email-leads.js?v=1.0"></script>
     <script src="/admin/automations.js?v=1.0"></script>
 </body>

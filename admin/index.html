@@ -337,7 +337,27 @@
                                 <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
                             </div>
                         </div>
+
+                        <h4 style="color: var(--primary); margin: 15px 0 10px 0; font-size: 1rem;">VAPI y Calendario</h4>
+                        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group">
+                                <label>A quién llamar (Objetivo VAPI)</label>
+                                <select id="vapiTarget" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+                                    <option value="paciente">Al Paciente (Cliente final)</option>
+                                    <option value="profesional">Al Profesional (Especialista)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Teléfono del Profesional</label>
+                                <input type="text" id="vapiProfessionalPhone" placeholder="+52...">
+                            </div>
+                        </div>
                         <div class="form-group">
+                            <label>Google Calendar ID (o Correo)</label>
+                            <input type="email" id="googleCalendarId" placeholder="usuario@gmail.com">
+                        </div>
+
+                        <div class="form-group" style="margin-top: 15px;">
                             <label>Instrucciones del Sistema (Contexto Bot)</label>
                             <textarea id="systemInstruction" rows="2"></textarea>
                         </div>

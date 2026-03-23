@@ -986,6 +986,189 @@ async def cancel_appointment(client_id: int, appointment_id: int,
         raise HTTPException(status_code=400, detail=str(e))
 
 
+
+# ============================================
+# VAPI - SERVICIO DE LLAMADAS DE RECORDATORIO
+# ============================================
+
+@app.post("/api/reminders/run")
+async def run_reminder_job(current_user: str = Depends(get_current_user)):
+    """
+    Ejecuta el trabajo de recordatorios: busca citas próximas (24h) y
+    llama a los pacientes usando VAPI en nombre del cliente profesional.
+    
+    Puede ser invocado por:
+    - Cloud Scheduler (CRON) cada hora
+    - El administrador desde el panel manualmente
+    
+    Solo aplica a clientes con plan 'pro' o 'enterprise'.
+    """
+    from .services.vapi_service import vapi
+    from .services.calendar_service import (
+        get_upcoming_appointments_for_reminders,
+        format_fecha_legible,
+    )
+
+    if not Config.VAPI_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="VAPI no configurado. Agrega VAPI_API_KEY en .env"
+        )
+
+    resultados = {
+        "citas_encontradas": 0,
+        "llamadas_iniciadas": 0,
+        "errores": 0,
+        "detalle": []
+    }
+
+    citas = get_upcoming_appointments_for_reminders(
+        hours_ahead=Config.VAPI_REMINDER_HOURS_AHEAD
+    )
+    resultados["citas_encontradas"] = len(citas)
+
+    for cita in citas:
+        cita_id = cita["cita_id"]
+        numero = cita.get("cliente_telefono", "")
+        nombre_paciente = cita.get("paciente_nombre", "Paciente")
+        nombre_profesional = cita.get("client_name", "el profesional")
+        fecha_raw = cita.get("fecha_hora", "")
+        motivo = cita.get("motivo")
+
+        if not numero:
+            print(f"⚠️  Cita {cita_id}: sin número de teléfono, omitiendo.")
+            resultados["errores"] += 1
+            resultados["detalle"].append({"cita_id": cita_id, "error": "sin_telefono"})
+            continue
+
+        # Marcar como 'llamando' antes de disparar
+        database.update_appointment_reminder_status(cita_id, "llamando")
+
+        fecha_legible = format_fecha_legible(fecha_raw)
+
+        resultado_vapi = vapi.iniciar_llamada_recordatorio(
+            numero_paciente=numero,
+            nombre_paciente=nombre_paciente,
+            fecha_cita=fecha_legible,
+            nombre_profesional=nombre_profesional,
+            motivo=motivo,
+        )
+
+        if resultado_vapi.get("success"):
+            call_id = resultado_vapi.get("call_id")
+            database.update_appointment_reminder_status(cita_id, "llamado", call_id)
+            resultados["llamadas_iniciadas"] += 1
+            resultados["detalle"].append({"cita_id": cita_id, "call_id": call_id, "status": "ok"})
+        else:
+            error_msg = resultado_vapi.get("error", "desconocido")
+            database.update_appointment_reminder_status(cita_id, "fallido")
+            resultados["errores"] += 1
+            resultados["detalle"].append({"cita_id": cita_id, "error": error_msg})
+
+    print(f"📞 VAPI CRON: {resultados['llamadas_iniciadas']} llamadas / {resultados['errores']} errores")
+    return resultados
+
+
+@app.post("/api/vapi/webhook")
+async def vapi_webhook(request: Request):
+    """
+    Webhook que VAPI llama cuando termina una llamada.
+    Actualiza el estado final de la cita en la base de datos.
+    
+    VAPI envía: call_id, status ('ended', 'failed'), summary, transcript, etc.
+    """
+    try:
+        data = await request.json()
+        call_id = data.get("id") or data.get("call", {}).get("id")
+        status = data.get("status", "")
+        end_reason = data.get("endedReason", "")
+
+        print(f"📞 VAPI Webhook: call_id={call_id}, status={status}, end_reason={end_reason}")
+
+        if call_id:
+            # Buscar la cita con este call_id y actualizar su estado
+            final_status = "llamado" if status in ("ended",) else "fallido"
+            try:
+                import psycopg2
+                conn = database.get_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE citas SET reminder_status = %s
+                    WHERE vapi_call_id = %s
+                """, (final_status, call_id))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                print(f"✅ VAPI Webhook: cita actualizada a '{final_status}' para call_id={call_id}")
+            except Exception as db_err:
+                print(f"❌ VAPI Webhook DB error: {db_err}")
+
+        return {"status": "received"}
+    except Exception as e:
+        print(f"🔥 VAPI Webhook Error: {e}")
+        return {"status": "error", "detail": str(e)}
+
+
+@app.get("/api/clients/{client_id}/appointments")
+async def list_appointments(client_id: int, current_user: str = Depends(get_current_user)):
+    """Retorna la lista de citas de un cliente (para el dashboard admin)."""
+    return database.get_appointments_by_client(client_id)
+
+
+@app.post("/api/clients/{client_id}/appointments")
+async def create_appointment(client_id: int, request: Request,
+                             current_user: str = Depends(get_current_user)):
+    """
+    Crea una nueva cita para un cliente.
+    El bot de WhatsApp también puede crear citas cuando registra una reserva.
+    """
+    data = await request.json()
+    paciente_nombre = data.get("paciente_nombre", "")
+    cliente_telefono = data.get("cliente_telefono", "")
+    fecha_hora = data.get("fecha_hora", "")
+    motivo = data.get("motivo")
+
+    if not all([paciente_nombre, cliente_telefono, fecha_hora]):
+        raise HTTPException(
+            status_code=400,
+            detail="paciente_nombre, cliente_telefono y fecha_hora son requeridos"
+        )
+
+    cita_id = database.save_appointment(
+        client_id=client_id,
+        paciente_nombre=paciente_nombre,
+        cliente_telefono=cliente_telefono,
+        fecha_hora=fecha_hora,
+        motivo=motivo,
+    )
+    if cita_id:
+        return {"status": "created", "cita_id": cita_id}
+    raise HTTPException(status_code=400, detail="Error creando la cita")
+
+
+@app.post("/api/reminders/test-call")
+async def test_vapi_call(request: Request, current_user: str = Depends(get_current_user)):
+    """
+    Endpoint de prueba para verificar la conexión con VAPI.
+    Permite al admin hacer una llamada de prueba sin necesidad de una cita real.
+    """
+    from .services.vapi_service import vapi
+
+    data = await request.json()
+    numero = data.get("numero")  # ej. '+5215512345678'
+    if not numero:
+        raise HTTPException(status_code=400, detail="'numero' es requerido (formato: +52155...)")
+
+    resultado = vapi.iniciar_llamada_recordatorio(
+        numero_paciente=numero,
+        nombre_paciente=data.get("nombre_paciente", "Usuario de Prueba"),
+        fecha_cita=data.get("fecha_cita", "mañana a las 3 de la tarde"),
+        nombre_profesional=data.get("nombre_profesional", "la Dra. González"),
+        nombre_consultorio=data.get("nombre_consultorio", "el consultorio"),
+    )
+    return resultado
+
+
 # Static Files Mounts (After all specific routes)
 if os.path.exists(WWW_DIR):
     print(f" Mounting static files from {WWW_DIR}")

@@ -47,10 +47,24 @@ def init_db():
                 plan TEXT DEFAULT 'free',
                 email TEXT DEFAULT '',
                 calendly_url TEXT DEFAULT '',
+                vapi_target TEXT DEFAULT 'paciente',
+                vapi_professional_phone TEXT,
+                google_calendar_id TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
+        # Migración segura de columnas en clients
+        for col, col_type in [
+            ('vapi_target', "TEXT DEFAULT 'paciente'"),
+            ('vapi_professional_phone', 'TEXT'),
+            ('google_calendar_id', 'TEXT')
+        ]:
+            try:
+                cursor.execute(f'ALTER TABLE clients ADD COLUMN IF NOT EXISTS {col} {col_type}')
+            except Exception:
+                pass
+
         # Tabla de Base de Conocimientos (Extraído de PDFs)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS knowledge_base (
@@ -71,9 +85,22 @@ def init_db():
                 paciente_nombre TEXT,
                 fecha_hora TEXT,
                 motivo TEXT,
+                reminder_status TEXT DEFAULT NULL,
+                vapi_call_id TEXT DEFAULT NULL,
+                reminder_intentos INTEGER DEFAULT 0,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Agregar columnas de VAPI si no existen (migración segura)
+        for col, col_type in [
+            ('reminder_status', 'TEXT'),
+            ('vapi_call_id', 'TEXT'),
+            ('reminder_intentos', 'INTEGER DEFAULT 0'),
+        ]:
+            try:
+                cursor.execute(f'ALTER TABLE citas ADD COLUMN IF NOT EXISTS {col} {col_type}')
+            except Exception:
+                pass
 
         # Tabla de Message Logs (para métricas y facturación)
         cursor.execute('''
@@ -279,9 +306,10 @@ def duplicate_client(client_id):
             INSERT INTO clients (
                 name, whatsapp_token, phone_number_id, verify_token,
                 system_instruction, stripe_api_key, bank_name, clabe,
-                beneficiary_name, menu_json, plan, email, calendly_url
+                beneficiary_name, menu_json, plan, email, calendly_url,
+                vapi_target, vapi_professional_phone, google_calendar_id
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             ) RETURNING id
         ''', (
             new_name, 
@@ -296,7 +324,10 @@ def duplicate_client(client_id):
             json.dumps(original.get('menu_json')) if isinstance(original.get('menu_json'), dict) else original.get('menu_json'),
             original.get('plan', 'free'), 
             "", 
-            original.get('calendly_url', '')
+            original.get('calendly_url', ''),
+            original.get('vapi_target', 'paciente'),
+            original.get('vapi_professional_phone', ''),
+            original.get('google_calendar_id', '')
         ))
         
         new_client_id = cursor.fetchone()['id']
@@ -500,6 +531,80 @@ def clear_conversation_history(phone_number: str = None, older_than_days: int = 
         conn.close()
     except Exception as e:
         print(f" ERROR clear_conversation_history (PG): {e}")
+
+def update_appointment_reminder_status(
+    cita_id: int,
+    status: str,
+    vapi_call_id: str = None
+):
+    """
+    Actualiza el estado de recordatorio de una cita.
+    
+    Args:
+        cita_id: ID de la cita.
+        status: 'pendiente' | 'llamando' | 'llamado' | 'fallido' | 'fallido_max'
+        vapi_call_id: ID de la llamada en VAPI para tracking.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE citas
+            SET 
+                reminder_status = %s,
+                vapi_call_id = COALESCE(%s, vapi_call_id),
+                reminder_intentos = reminder_intentos + 1
+            WHERE id = %s
+        """, (status, vapi_call_id, cita_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"✅ DB: Cita {cita_id} actualizada → reminder_status='{status}'")
+    except Exception as e:
+        print(f"❌ ERROR update_appointment_reminder_status: {e}")
+
+
+def get_appointments_by_client(client_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+    """Obtiene las citas de un cliente, para mostrar en el dashboard admin."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT * FROM citas 
+            WHERE client_id = %s 
+            ORDER BY fecha_hora DESC 
+            LIMIT %s
+        """, (client_id, limit))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"❌ ERROR get_appointments_by_client: {e}")
+        return []
+
+
+def save_appointment(client_id: int, paciente_nombre: str, cliente_telefono: str,
+                     fecha_hora: str, motivo: str = None) -> Optional[int]:
+    """Guarda una nueva cita en la base de datos."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO citas (client_id, paciente_nombre, cliente_telefono, fecha_hora, motivo)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+        """, (client_id, paciente_nombre, cliente_telefono, fecha_hora, motivo))
+        cita_id = cursor.fetchone()[0]
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"✅ DB: Cita guardada con ID={cita_id} para cliente {client_id}")
+        return cita_id
+    except Exception as e:
+        print(f"❌ ERROR save_appointment: {e}")
+        return None
+
 
 if __name__ == "__main__":
     init_db()

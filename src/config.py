@@ -28,6 +28,20 @@ class Config:
     
     # WhatsApp
     WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")  # Para verificar firma de webhooks
+
+    # ============================================
+    # VAPI - Llamadas de voz automatizadas
+    # ============================================
+    VAPI_API_KEY = os.getenv("VAPI_API_KEY")
+    VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")       # ID del asistente de voz en VAPI
+    VAPI_PHONE_NUMBER_ID = os.getenv("VAPI_PHONE_NUMBER_ID") # Número de Zotek en VAPI
+
+    # Planes que tienen acceso al servicio de llamadas de recordatorio
+    VAPI_ENABLED_PLANS = ["pro", "enterprise"]
+    # Horas de antelación para enviar llamada de recordatorio
+    VAPI_REMINDER_HOURS_AHEAD = 24
+    # Máximo de intentos de llamada por cita
+    VAPI_MAX_INTENTOS = 2
     
     # ============================================
     # CONFIGURACIÓN DE GEMINI

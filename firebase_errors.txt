@@ -1,0 +1,16 @@
+No typical error keywords found.
+2026-03-23T15:57:13.636065Z ? api-handler: [DEBUG] message_type RAW: text
+2026-03-23T15:57:13.636082Z ? api-handler: [DEBUG] message RAW: {'from': '5213123173431', 'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABIYFjNFQjBDRDVFODY3OEFGRTBFQzYwMjkA', 'timestamp': '1774281432', 'text': {'body': 'salir'}, 'type': 'text'}
+2026-03-23T15:57:13.636088Z ? api-handler: [DEBUG] texto_usuario DESPUES de extraer: 'salir'
+2026-03-23T15:57:13.636092Z ? api-handler: [DEBUG] message_type: text
+2026-03-23T15:57:14.239764Z ? api-handler: [Webhook] Bot is ACTIVE. WhatsApp token present: True, token starts: EAAoC7oYRllsBQZ...
+2026-03-23T15:57:14.239809Z ? api-handler: [DEBUG] session_is_demo: None
+2026-03-23T15:57:14.239839Z ? api-handler: [DEBUG] demo_phone_id_from_session: None
+2026-03-23T15:57:14.239895Z ? api-handler: [DEBUG] menu_data loaded, options count: 3
+2026-03-23T15:57:14.239956Z ? api-handler: [DEBUG] buscar_opcion: texto='salir', cleaned='salir'
+2026-03-23T15:57:14.240011Z ? api-handler: [DEBUG]   checking option: title='Probar Demos IA 🧪', cleaned='probar demos ia'
+2026-03-23T15:57:14.240060Z ? api-handler: [DEBUG]   checking option: title='Ver Planes y Precios 💰', cleaned='ver planes y precios'
+2026-03-23T15:57:14.240155Z ? api-handler: [DEBUG]   checking option: title='Hablar con Consultor 📞', cleaned='hablar con consultor'
+2026-03-23T15:57:14.240199Z ? api-handler: DEBUG: No menu match found. Sending fallback_text for Zotek Soluciones IA (Agente Autónomo)
+2026-03-23T15:57:15.863197Z I api-handler: 
+2026-03-23T15:57:15.884613Z ? api-handler: DEBUG: Webhook data received: {'object': 'whatsapp_business_account', 'entry': [{'id': '1575472160399413', 'changes': [{'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '5213123775877', 'phone_number_id': '980996958435648'}, 'statuses': [{'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABEYEkMwODlERUFFODgyNDMwRDRBMwA=', 'status': 'sent', 'timestamp': '1774281435', 'recipient_id': '5213123173431', 'pricing': {'billable': False, 'pricing_model': 'PMP', 'category': 'service', 'type': 'free_customer_service'}}]}, 'field': 'messages'}]}]}
