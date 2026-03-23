@@ -161,16 +161,16 @@ async function fetchClients() {
     allClients.forEach(client => {
         // En la tabla general (Admin), mostrar el email de login si existe
         const isDemo = String(client.phone_number_id || '').startsWith('demo_');
-        
-        // Los demos solo pueden ser restablecidos o duplicados, no editados directamente
+
+        // Los demos solo pueden ser visualizados o duplicados, no editados directamente
         let actionsHtml = '';
         if (isDemo) {
             actionsHtml = `
-                <button class="btn btn-outline-primary" onclick="duplicateDemoClient('${client.id}')" title="Crear cliente basado en este demo">
-                    <i class="fas fa-copy"></i> Duplicar
+                <button class="btn btn-outline-info" onclick="viewClient('${client.id}')" title="Ver configuración del demo">
+                    <i class="fas fa-eye"></i> Visualizar
                 </button>
-                <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="resetDemoClient('${client.id}')" title="Restaurar a configuración original">
-                    <i class="fas fa-undo"></i> Restablecer
+                <button class="btn btn-outline-primary" style="margin-left: 5px;" onclick="duplicateDemoClient('${client.id}')" title="Crear cliente basado en este demo">
+                    <i class="fas fa-copy"></i> Duplicar
                 </button>
             `;
         } else {
@@ -251,8 +251,16 @@ function openModal(isEdit = false) {
 }
 
 function closeModal() {
+    // Si venimos de viewClient, restaurar estado normal
+    if (window.viewClientCleanup) {
+        window.viewClientCleanup();
+    }
+    
     showSection('clients');
     document.getElementById('clientForm').reset();
+    
+    // Restaurar título del modal
+    document.getElementById('modalTitle').textContent = 'Agregar Nuevo Cliente';
 }
 
 async function resetDemoClient(id) {
@@ -295,82 +303,83 @@ async function resetDemoClient(id) {
 }
 
 async function duplicateDemoClient(demoId) {
-    try {
-        // 1. Obtener datos del demo
-        const response = await fetch(`/api/clients/${demoId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) {
-            showToast('Error al cargar datos del demo', 'error');
-            return;
-        }
-
-        const demoClient = await response.json();
-        console.log("Demo client loaded:", demoClient);
-
-        // 2. Crear nuevo cliente basado en el demo
-        const timestamp = Date.now();
-        
-        // Parsear menu_json si es string (viene del backend como JSON string)
-        let menuData = { options: [] };
-        if (demoClient.menu_json) {
+    // Usar modal personalizado en lugar de confirm() nativo
+    showConfirmDuplicate({
+        demoId: demoId,
+        title: '💎 Duplicar Agente Inteligente',
+        message: '¿Deseas crear una copia exacta de este bot? Clonaremos sus instrucciones de Gemini, toda su base de conocimientos (PDFs) y su menú interactivo de forma instantánea.',
+        onConfirm: async () => {
             try {
-                menuData = typeof demoClient.menu_json === 'string' 
-                    ? JSON.parse(demoClient.menu_json) 
-                    : demoClient.menu_json;
-            } catch (e) {
-                console.error("Error parsing menu_json:", e);
+                showToast('🚀 Clonando cerebro del bot. Esto puede tomar unos segundos...', 'info');
+
+                const response = await fetch(`/api/clients/${demoId}/duplicate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showToast('✅ Bot clonado exitosamente con todos sus manuales.', 'success');
+
+                    // Recargar lista y abrir el nuevo cliente
+                    await fetchClients();
+                    
+                    if (data.new_client_id) {
+                        setTimeout(() => {
+                            editClient(data.new_client_id);
+                        }, 800);
+                    }
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    showToast('❌ Error al duplicar: ' + (errorData.detail || 'Error del servidor'), 'error');
+                }
+            } catch (error) {
+                console.error("Error duplicando demo:", error);
+                showToast('⚠️ Error de conexión: ' + error.message, 'error');
             }
         }
-        
-        const newClient = {
-            name: `${demoClient.name} (Copia ${new Date().toLocaleDateString()})`,
-            whatsapp_token: '',  // Limpiar tokens sensibles
-            phone_number_id: `client_${timestamp}`,
-            verify_token: `verify_${timestamp}`,
-            system_instruction: demoClient.system_instruction || '',
-            email: '',  // El usuario debe poner su propio email
-            calendly_url: demoClient.calendly_url || '',
-            menu: menuData  // Copiar menú completo con opciones
-        };
+    });
+}
 
-        console.log("Creating new client from demo:", newClient);
+function showConfirmDuplicate(options) {
+    const overlay = document.getElementById('confirmDeleteOverlay');
+    const titleEl = document.getElementById('confirmDeleteTitle');
+    const messageEl = document.getElementById('confirmDeleteMessage');
+    const cancelBtn = document.getElementById('confirmDeleteCancel');
+    const okBtn = document.getElementById('confirmDeleteOk');
 
-        // 3. Guardar nuevo cliente
-        const createResponse = await fetch('/api/clients', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(newClient)
-        });
+    titleEl.innerHTML = `<i class="fas fa-copy" style="color: var(--primary);"></i> ${options.title || 'Duplicar'}`;
+    messageEl.textContent = options.message || '';
+    
+    // Cambiar estilo del botón temporalmente para que sea azul (primario) en lugar de rojo (danger)
+    okBtn.textContent = 'Sí, Duplicar';
+    okBtn.className = 'btn btn-primary';
+    cancelBtn.textContent = 'Ahora no';
 
-        if (createResponse.ok) {
-            showToast('Cliente creado exitosamente. Ahora puedes editarlo.', 'success');
-
-            // Recargar lista y abrir el nuevo cliente para editar
-            await fetchClients();
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Obtener el ID del nuevo cliente (último creado)
-            const allClients = await fetch('/api/clients', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.json());
-
-            const newClientData = allClients.find(c => c.phone_number_id === newClient.phone_number_id);
-            if (newClientData) {
-                editClient(newClientData.id);
-            }
-        } else {
-            const errorText = await createResponse.text();
-            showToast('Error al crear cliente: ' + errorText, 'error');
-        }
-    } catch (error) {
-        console.error("Error duplicando demo:", error);
-        showToast('Error de conexión: ' + error.message, 'error');
+    function close() {
+        overlay.classList.remove('active');
+        overlay.setAttribute('aria-hidden', 'true');
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+        // Restaurar botón original
+        setTimeout(() => {
+            okBtn.className = 'btn btn-danger';
+        }, 300);
     }
+
+    okBtn.onclick = () => {
+        close();
+        options.onConfirm();
+    };
+    cancelBtn.onclick = () => {
+        close();
+    };
+
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
 }
 
 function showConfirmReset(options) {
@@ -439,7 +448,6 @@ async function deleteClient(id, name) {
         });
 
         if (response.ok) {
-            showToast(`Cliente "${name}" eliminado correctamente.`, 'success');
             await fetchClients();
         } else {
             const errorText = await response.text();
@@ -488,6 +496,77 @@ async function editClient(id) {
     } catch (e) {
         console.error("Error in editClient:", e);
         showToast('Error interno al editar: ' + e.message, 'error');
+    }
+}
+
+/**
+ * Visualiza un cliente en modo solo lectura (usando el modal de edición con campos deshabilitados)
+ */
+async function viewClient(id) {
+    try {
+        console.log("View client called for id:", id);
+        const response = await fetch(`/api/clients/${id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            console.error("HTTP error:", response.status);
+            showToast('Error de servidor al cargar cliente', 'error');
+            return;
+        }
+
+        const client = await response.json();
+        console.log("Client loaded:", client);
+
+        // Llenar el formulario con los datos del cliente
+        document.getElementById('clientId').value = client.id;
+        document.getElementById('clientName').value = client.name;
+        document.getElementById('whatsappToken').value = client.whatsapp_token || '';
+        document.getElementById('phoneNumberId').value = client.phone_number_id || '';
+        document.getElementById('verifyToken').value = client.verify_token || '';
+        document.getElementById('systemInstruction').value = client.system_instruction || '';
+        document.getElementById('clientEmail').value = client.email || '';
+        document.getElementById('calendlyUrl').value = client.calendly_url || '';
+
+        // Cargar menú
+        await loadClientMenu(id);
+
+        // Deshabilitar TODOS los campos del formulario
+        const form = document.getElementById('clientForm');
+        const inputs = form.querySelectorAll('input, textarea, select');
+        inputs.forEach(input => {
+            input.disabled = true;
+        });
+
+        // Ocultar botones de guardar y cancelar
+        const saveBtn = document.querySelector('button[type="submit"]');
+        const cancelBtn = document.getElementById('cancelBtn');
+        
+        if (saveBtn) saveBtn.style.display = 'none';
+        if (cancelBtn) cancelBtn.textContent = 'Cerrar';
+
+        // Cambiar título del modal
+        document.getElementById('modalTitle').textContent = `👁️ Visualizando: ${client.name}`;
+
+        // Mostrar el modal de edición
+        openModal(true);
+
+        // Guardar referencia para restaurar después
+        window.viewClientCleanup = () => {
+            // Re-habilitar campos
+            inputs.forEach(input => {
+                input.disabled = false;
+            });
+            // Restaurar botones
+            if (saveBtn) saveBtn.style.display = 'inline-block';
+            if (cancelBtn) cancelBtn.textContent = 'Cancelar';
+            // Limpiar referencia
+            delete window.viewClientCleanup;
+        };
+
+    } catch (e) {
+        console.error("Error in viewClient:", e);
+        showToast('Error interno al visualizar: ' + e.message, 'error');
     }
 }
 
@@ -1210,6 +1289,78 @@ async function loadChats() {
     } catch (e) {
         console.error(e);
         container.innerHTML = '<p class="chat-placeholder">Error al cargar el historial. Intenta de nuevo.</p>';
+    }
+}
+
+async function exportChats() {
+    const clientId = document.getElementById('chat-client-selector').value;
+    const limit = document.getElementById('chat-limit').value || '50';
+
+    if (!clientId) {
+        showToast('Selecciona un cliente primero', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/clients/${clientId}/chats?limit=${limit}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const chats = await res.json();
+
+        if (!chats || chats.length === 0) {
+            showToast('No hay chats para exportar', 'info');
+            return;
+        }
+
+        let csv = 'Usuario,Mensaje,Respuesta,Timestamp\n';
+        chats.forEach(chat => {
+            const message = (chat.message || '').replace(/"/g, '""');
+            const response = (chat.response || '').replace(/"/g, '""');
+            csv += `"${chat.user_number}","${message}","${response}","${chat.timestamp || ''}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `chats_${clientId}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        showToast(`${chats.length} chats exportados correctamente`, 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Error al exportar: ' + e.message, 'error');
+    }
+}
+
+async function clearChats() {
+    const clientId = document.getElementById('chat-client-selector').value;
+
+    if (!clientId) {
+        showToast('Selecciona un cliente primero', 'warning');
+        return;
+    }
+
+    if (!confirm('¿Estás seguro de que deseas vaciar TODOS los chats de este cliente? Esta acción no se puede deshacer.')) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/clients/${clientId}/clear-chats`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (data.status === 'cleared') {
+            showToast(`${data.deleted_count || 'Todos los'} chats eliminados correctamente`, 'success');
+            loadChats();
+        } else {
+            showToast('Error: ' + (data.detail || 'Error desconocido'), 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        showToast('Error al vaciar chats: ' + e.message, 'error');
     }
 }
 

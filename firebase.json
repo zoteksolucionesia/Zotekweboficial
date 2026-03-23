@@ -12,6 +12,7 @@
     }
   ],
   "hosting": {
+    "site": "zotek-ia",
     "public": "www",
     "ignore": [
       "firebase.json",

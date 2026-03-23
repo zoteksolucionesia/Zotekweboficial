@@ -1,0 +1,15 @@
+﻿2026-03-16T00:54:12.493012Z ? api-handler: DEBUG: Webhook data received: {'object': 'whatsapp_business_account', 'entry': [{'id': '1575472160399413', 'changes': [{'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '5213123775877', 'phone_number_id': '980996958435648'}, 'contacts': [{'profile': {'name': 'ZurdOmar'}, 'wa_id': '5213123173431'}], 'messages': [{'context': {'from': '5213123775877', 'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABEYEkY3NjEzRjU1QjdGRDAyMUQ0NQA='}, 'from': '5213123173431', 'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABIYIEFDQTRFNUZBQzNDQjhCMEFBRTJENTRFN0MxNzFCODM5AA==', 'timestamp': '1773622451', 'type': 'interactive', 'interactive': {'type': 'button_reply', 'button_reply': {'id': 'btn_0', 'title': 'Ropa'}}}]}, 'field': 'messages'}]}]}
+2026-03-16T00:54:12.493044Z ? api-handler: [Webhook] Message from 5213123173431, phoneID=980996958435648
+2026-03-16T00:54:12.565462Z ? api-handler: [Webhook] Sesi├│n Demo activa, cargando cliente: demo_tienda
+2026-03-16T00:54:12.565532Z ? api-handler: Ô£à Client Found: ­ƒøì´©Å Demo Tienda e-Commerce (ID: demo_tienda)
+2026-03-16T00:54:12.565625Z ? api-handler: DEBUG: Texto de usuario detectado: 'Ropa'
+2026-03-16T00:54:12.565869Z ? api-handler: [Webhook] Bot is ACTIVE. WhatsApp token present: True, token starts: EAAoC7oYRllsBQZ...
+2026-03-16T00:54:12.631055Z ? api-handler: [Demo] Inyectando contexto de Tienda para Gemini.
+2026-03-16T00:54:12.631309Z ? api-handler: [Webhook] Calling Gemini for: '[Men├║]: Ropa...'
+2026-03-16T00:54:13.346986Z ? api-handler: [Webhook] Gemini response preview: ┬íHola! En Moda Urbana tenemos una gran variedad de ropa para que encuentres tu e
+2026-03-16T00:54:13.867594Z ? api-handler: Ô£à WHATSAPP [5213123173431]: ┬íHola! En Moda Urbana tenemos una gran variedad de...
+2026-03-16T00:54:14.522785Z ? api-handler: [Webhook] WhatsApp send result: True
+2026-03-16T00:54:14.751554Z I api-handler: 
+2026-03-16T00:54:14.758161Z ? api-handler: DEBUG: Webhook data received: {'object': 'whatsapp_business_account', 'entry': [{'id': '1575472160399413', 'changes': [{'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '5213123775877', 'phone_number_id': '980996958435648'}, 'statuses': [{'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABEYEkNCQTFFOEIzMTBGMzU0QTMwRgA=', 'status': 'sent', 'timestamp': '1773622454', 'recipient_id': '5213123173431', 'pricing': {'billable': False, 'pricing_model': 'PMP', 'category': 'service', 'type': 'free_customer_service'}}]}, 'field': 'messages'}]}]}
+2026-03-16T00:54:15.332272Z I api-handler: 
+2026-03-16T00:54:15.338601Z ? api-handler: DEBUG: Webhook data received: {'object': 'whatsapp_business_account', 'entry': [{'id': '1575472160399413', 'changes': [{'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '5213123775877', 'phone_number_id': '980996958435648'}, 'statuses': [{'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABEYEkMwNkQ3Qzc0MkFGMzgyQTA5NgA=', 'status': 'sent', 'timestamp': '1773622454', 'recipient_id': '5213123173431', 'pricing': {'billable': False, 'pricing_model': 'PMP', 'category': 'service', 'type': 'free_customer_service'}}]}, 'field': 'messages'}]}]}

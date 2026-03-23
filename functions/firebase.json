@@ -1,0 +1,9 @@
+{
+  "functions": [
+    {
+      "source": ".",
+      "runtime": "python313",
+      "codebase": "default"
+    }
+  ]
+}

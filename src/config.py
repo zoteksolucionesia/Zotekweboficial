@@ -23,6 +23,7 @@ class Config:
     VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
     SECRET_KEY = os.getenv("SECRET_KEY", "ZOTEK_SECRET_DEFAULT_CHANGE_ME")
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "zoteksolucionesia@gmail.com")
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Zotek!SecureAdmin9X$2026")
     EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
     
     # WhatsApp

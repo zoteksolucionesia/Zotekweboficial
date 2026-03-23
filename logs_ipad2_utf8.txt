@@ -1,0 +1,15 @@
+﻿2026-03-10T19:41:52.362896Z W api-handler: 
+2026-03-10T19:41:52.397739Z I api-handler: Starting new instance. Reason: AUTOSCALING - Instance started due to configured scaling factors (e.g. CPU utilization, request throughput, etc.) or no existing capacity for current traffic.
+2026-03-10T19:41:58.072471Z ? api-handler: Ôä╣´©Å Firestore no requiere init_db tradicional. Esquema bajo demanda.
+2026-03-10T19:41:58.072495Z ? api-handler: GEMINI_API_KEY present: True, starts: AIzaSyBB7q
+2026-03-10T19:41:58.464788Z ? api-handler: GeminiEngine initialized OK
+2026-03-10T19:41:58.535186Z I api-handler: Default STARTUP TCP probe succeeded after 1 attempt for container "worker" on port 8080.
+2026-03-12T22:17:50.085746Z W api-handler: 
+2026-03-12T22:17:50.127802Z I api-handler: Starting new instance. Reason: AUTOSCALING - Instance started due to configured scaling factors (e.g. CPU utilization, request throughput, etc.) or no existing capacity for current traffic.
+2026-03-12T22:17:56.520243Z ? api-handler: Ôä╣´©Å Firestore no requiere init_db tradicional. Esquema bajo demanda.
+2026-03-12T22:17:56.520340Z ? api-handler: GEMINI_API_KEY present: True, starts: AIzaSyBB7q
+2026-03-12T22:17:57.042357Z ? api-handler: GeminiEngine initialized OK
+2026-03-12T22:17:57.116898Z I api-handler: Default STARTUP TCP probe succeeded after 1 attempt for container "worker" on port 8080.
+2026-03-12T22:17:57.304051Z W api-handler: 
+2026-03-12T22:18:03.949367Z I api-handler: 
+2026-03-12T22:18:03.955765Z ? api-handler: Intentando enviar email a zoteksolucionesia@gmail.com...

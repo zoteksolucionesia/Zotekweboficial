@@ -1,0 +1,6 @@
+ID: 5 | Name:  Demo SonrisaPerfecta IA | PhoneID: demo_dental
+ID: 6 | Name:  Demo MenteSana Bot | PhoneID: demo_psychology
+ID: 7 | Name:  Demo GourmetBot 2026 | PhoneID: demo_restaurant
+ID: 8 | Name:  Demo GlamourBot 2026 | PhoneID: demo_salon
+ID: 9 | Name:  Demo StyleBot 2026 | PhoneID: demo_retail
+ID: 10 | Name: Zotek Soluciones IA | PhoneID: 980996958435648

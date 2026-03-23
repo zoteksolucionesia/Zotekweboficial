@@ -1,0 +1,16 @@
+﻿2026-03-16T00:53:46.184186Z ? api-handler: GEMINI_API_KEY present: True, starts: AIzaSyBB7q
+2026-03-16T00:53:46.486566Z ? api-handler: GeminiEngine initialized OK
+2026-03-16T00:53:46.548292Z I api-handler: Default STARTUP TCP probe succeeded after 1 attempt for container "worker" on port 8080.
+2026-03-16T00:53:47.074449Z ? api-handler: [Redirect] No numbers found in DB, using fallback: 523123775877
+2026-03-16T00:53:53.025155Z I api-handler: 
+2026-03-16T00:53:53.035536Z ? api-handler: DEBUG: Webhook data received: {'object': 'whatsapp_business_account', 'entry': [{'id': '1575472160399413', 'changes': [{'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '5213123775877', 'phone_number_id': '980996958435648'}, 'contacts': [{'profile': {'name': 'ZurdOmar'}, 'wa_id': '5213123173431'}], 'messages': [{'from': '5213123173431', 'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABIYIEFDMEIwNTc1NTlBMEU5RjUzNjlEMkVFQTdENjY4RjZEAA==', 'timestamp': '1773622429', 'text': {'body': 'Hola Zotek, quiero probar la demo de Tienda'}, 'type': 'text'}]}, 'field': 'messages'}]}]}
+2026-03-16T00:53:53.035569Z ? api-handler: [Webhook] Message from 5213123173431, phoneID=980996958435648
+2026-03-16T00:53:53.106937Z ? api-handler: /layers/google.python.pip/pip/lib/python3.13/site-packages/google/cloud/firestore_v1/base_collection.py:317: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+  return query.where(field_path, op_string, value)
+2026-03-16T00:53:53.169364Z ? api-handler: [Webhook] Sesi├│n Demo activa, cargando cliente: demo_tienda
+2026-03-16T00:53:53.169421Z ? api-handler: Ô£à Client Found: ­ƒøì´©Å Demo Tienda e-Commerce (ID: demo_tienda)
+2026-03-16T00:53:53.169460Z ? api-handler: DEBUG: Texto de usuario detectado: 'Hola Zotek, quiero probar la demo de Tienda'
+2026-03-16T00:53:53.169519Z ? api-handler: [Demo] Iniciando sesi├│n de demo para 5213123173431 modo: Tienda
+2026-03-16T00:53:57.136147Z I api-handler: 
+2026-03-16T00:53:57.142180Z ? api-handler: DEBUG: Webhook data received: {'object': 'whatsapp_business_account', 'entry': [{'id': '1575472160399413', 'changes': [{'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '5213123775877', 'phone_number_id': '980996958435648'}, 'statuses': [{'id': 'wamid.HBgNNTIxMzEyMzE3MzQzMRUCABEYEkIwRTg0Q0QyNTk4MDc0NTFGQwA=', 'status': 'sent', 'timestamp': '1773622436', 'recipient_id': '5213123173431', 'pricing': {'billable': False, 'pricing_model': 'PMP', 'category': 'service', 'type': 'free_customer_service'}}]}, 'field': 'messages'}]}]}
+2026-03-16T00:53:57.521340Z I api-handler: 

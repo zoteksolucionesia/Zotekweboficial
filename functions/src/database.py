@@ -1,333 +1,657 @@
-import firebase_admin
-from firebase_admin import credentials, firestore
 import os
+import json
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+from typing import Optional, Dict, Any, List
 
-# Inicializar Firebase Admin si no está inicializado
-try:
-    firebase_admin.initialize_app(options={'projectId': 'zotek-ia'})
-except ValueError:
-    # Ya estaba inicializado
-    pass
+# Cargar variables de entorno
+load_dotenv()
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_connection():
+    """Obtiene una conexión a la base de datos PostgreSQL de InsForge."""
+    if not DATABASE_URL:
+        raise ValueError("⚠️ DATABASE_URL no está configurada. Configura la variable en Firebase Functions.")
+    try:
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        return conn
+    except Exception as e:
+        print(f"❌ Error conectando a PostgreSQL: {e}")
+        raise e
 
 _db = None
 
 def get_db():
+    """Compatibilidad con código existente que llama get_db()."""
     global _db
     if _db is None:
-        _db = firestore.client()
+        _db = get_connection()
     return _db
-
-# Usage: Whenever you need db, call get_db()
 
 def init_db():
     """
-    En Firestore no es estrictamente necesario inicializar el esquema,
-    pero podemos usar esto para asegurar que existan los índices o datos base.
+    Inicializa la base de datos con el esquema multitenencia relacional.
+    En producción, las tablas ya deberían existir.
     """
-    print("ℹ️ Firestore no requiere init_db tradicional. Esquema bajo demanda.")
-    pass
+    print("🗄️ Inicializando base de datos PostgreSQL (InsForge)...")
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Tabla de Clientes
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS clients (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                whatsapp_token TEXT NOT NULL,
+                phone_number_id TEXT NOT NULL UNIQUE,
+                verify_token TEXT NOT NULL,
+                system_instruction TEXT,
+                stripe_api_key TEXT,
+                bank_name TEXT,
+                clabe TEXT,
+                beneficiary_name TEXT,
+                menu_json JSONB,
+                plan TEXT DEFAULT 'free',
+                email TEXT DEFAULT '',
+                calendly_url TEXT DEFAULT '',
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Tabla de Base de Conocimientos
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS knowledge_base (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                source_file TEXT,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Tabla de Citas
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS citas (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                cliente_telefono TEXT,
+                paciente_nombre TEXT,
+                fecha_hora TEXT,
+                motivo TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Tabla de Message Logs
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS message_logs (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+                direction TEXT NOT NULL,
+                phone_number TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Índices para message_logs
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_message_logs_client ON message_logs(client_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_message_logs_date ON message_logs(created_at)')
+
+        # Tabla de Historial de Conversación
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversation_history (
+                id SERIAL PRIMARY KEY,
+                phone_number TEXT NOT NULL,
+                content TEXT NOT NULL,
+                is_user INTEGER NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Índices para conversation_history
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversation_phone ON conversation_history(phone_number)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversation_date ON conversation_history(created_at)')
+
+        # Tabla de Sesiones Sandbox (para demos)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sandbox_sessions (
+                id SERIAL PRIMARY KEY,
+                user_number TEXT NOT NULL,
+                phone_number_id TEXT NOT NULL,
+                demo_mode TEXT,
+                session_data JSONB,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_number, phone_number_id)
+            )
+        ''')
+
+        # Tabla de Chats (historial por cliente)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS client_chats (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+                user_number TEXT NOT NULL,
+                message TEXT,
+                response TEXT,
+                timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_chats_client ON client_chats(client_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_chats_user ON client_chats(user_number)')
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ Base de datos PostgreSQL inicializada (Tablas verificadas).")
+    except Exception as e:
+        print(f"❌ Error al inicializar PostgreSQL: {e}")
+        raise e
+
 
 def get_client_by_phone_id(phone_number_id):
-    """Obtiene los datos de un cliente por su Phone Number ID o número de WhatsApp."""
+    """Obtiene los datos de un cliente por su Phone Number ID."""
     try:
-        db = get_db()
-        clients_ref = db.collection('clients')
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM clients WHERE phone_number_id = %s", (str(phone_number_id),))
+        client = cursor.fetchone()
+        cursor.close()
+        conn.close()
         
-        # 1. Intentar por phone_number_id (ID numérico de Meta)
-        query = clients_ref.where('phone_number_id', '==', str(phone_number_id)).stream()
-        for doc in query:
-            client_data = doc.to_dict()
-            client_data['id'] = doc.id
-            return client_data
-            
-        # 2. Intentar por whatsapp_number (por si Meta envía el número en el webhook)
-        query = clients_ref.where('whatsapp_number', '==', str(phone_number_id)).stream()
-        for doc in query:
-            client_data = doc.to_dict()
-            client_data['id'] = doc.id
-            return client_data
-            
+        if client:
+            client_dict = dict(client)
+            # Convertir menu_json a string si es dict para compatibilidad
+            if isinstance(client_dict.get('menu_json'), dict):
+                client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
+            return client_dict
         return None
     except Exception as e:
         print(f"❌ ERROR get_client_by_phone_id: {e}")
         return None
 
+
 def get_client_by_email(email):
-    """Obtiene un cliente por su email de login (SaaS Phase 3)."""
-    if not email: return None
-    clients_ref = get_db().collection('clients')
-    query = clients_ref.where('email', '==', str(email).lower().strip()).stream()
-    
-    for doc in query:
-        client_data = doc.to_dict()
-        client_data['id'] = doc.id
-        return client_data
-    return None
-
-def get_client_knowledge(client_id):
-    """Retorna el contenido de la base de conocimientos de un cliente."""
-    # Buscamos en la subcolección 'knowledge' del cliente
-    knowledge_ref = get_db().collection('clients').document(str(client_id)).collection('knowledge').stream()
-    
-    entries = [doc.to_dict().get('content', '') for doc in knowledge_ref]
-    if not entries:
-        return "Sin base de conocimiento configurada."
-    return "\n\n".join(entries)
-
-def add_knowledge_entry(client_id, content, source_file=None):
-    """Agrega una nueva entrada a la base de conocimientos de un cliente."""
-    client_ref = get_db().collection('clients').document(str(client_id))
-    knowledge_ref = client_ref.collection('knowledge').document() # ID automático
-    
-    knowledge_ref.set({
-        'content': content,
-        'source_file': source_file,
-        'updated_at': firestore.SERVER_TIMESTAMP
-    })
-    return True
-
-def list_clients():
-    """Retorna una lista de todos los clientes registrados en Firestore."""
+    """Obtiene un cliente por su email de login."""
+    if not email:
+        return None
     try:
-        clients_ref = get_db().collection('clients').stream()
-        clients = []
-
-        for doc in clients_ref:
-            client_data = doc.to_dict()
-            client_data['id'] = doc.id
-            clients.append(client_data)
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM clients WHERE email = %s", (str(email).lower().strip(),))
+        client = cursor.fetchone()
+        cursor.close()
+        conn.close()
         
-        return clients
+        if client:
+            client_dict = dict(client)
+            if isinstance(client_dict.get('menu_json'), dict):
+                client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
+            return client_dict
+        return None
     except Exception as e:
-        print(f"❌ ERROR listing clients: {e}")
-        return []
-
-def add_client(data):
-    """Crea un nuevo cliente en Firestore."""
-    try:
-        # Generar un ID único basado en el nombre si no tiene
-        doc_ref = get_db().collection('clients').document()
-        data['created_at'] = firestore.SERVER_TIMESTAMP
-        doc_ref.set(data)
-        return True
-    except Exception as e:
-        print(f"❌ ERROR adding client: {e}")
-        return False
-
-def update_client(client_id, data):
-    """Actualiza la configuración de un cliente existente."""
-    try:
-        doc_ref = get_db().collection('clients').document(str(client_id))
-        doc_ref.update(data)
-        return True
-    except Exception as e:
-        print(f"❌ ERROR updating client: {e}")
-        return False
-
-def delete_client_db_entry(client_id):
-    """Elimina un cliente y sus subcolecciones (limpieza básica)."""
-    try:
-        # Nota: En Firestore, borrar un documento no borra automáticamente sus subcolecciones
-        # Pero para este nivel de SaaS, manejar el documento principal es el primer paso.
-        doc_ref = get_db().collection('clients').document(str(client_id))
-        doc_ref.delete()
-        return True
-    except Exception as e:
-        print(f"❌ ERROR deleting client: {e}")
-        return False
-
-def duplicate_client(original_id):
-    """Realiza una duplicación profunda (Clonación cerebral) de un bot en Firestore."""
-    try:
-        db = get_db()
-        original_ref = db.collection('clients').document(str(original_id))
-        doc = original_ref.get()
-        
-        if not doc.exists:
-            return None
-            
-        data = doc.to_dict()
-        data['name'] = f"{data.get('name', 'Copia')} (Copia)"
-        data['created_at'] = firestore.SERVER_TIMESTAMP
-        # Limpiar datos sensibles para la copia
-        data.pop('phone_number_id', None)
-        data.pop('whatsapp_token', None)
-        
-        # 1. Crear el nuevo documento
-        new_ref = db.collection('clients').document()
-        new_ref.set(data)
-        new_id = new_ref.id
-        
-        # 2. Clonar Subcolección de Conocimientos (PDFs/Textos)
-        knowledge_ref = original_ref.collection('knowledge').stream()
-        for knowledge_doc in knowledge_ref:
-            k_data = knowledge_doc.to_dict()
-            new_ref.collection('knowledge').add(k_data)
-            
-        data['id'] = new_id
-        return data
-    except Exception as e:
-        print(f"❌ ERROR duplicating client: {e}")
+        print(f"❌ ERROR get_client_by_email: {e}")
         return None
 
-def update_client(client_id, data):
-    """Actualiza los datos de un cliente."""
-    try:
-        # Limpiar el ID de los datos para no guardarlo como campo si viene incluido
-        if 'id' in data:
-            del data['id']
-            
-        get_db().collection('clients').document(str(client_id)).update(data)
-        return True
-    except Exception as e:
-        print(f"❌ ERROR UPDATE CLIENT (Firestore): {e}")
-        return False
-
-def add_client(data):
-    """Agrega un nuevo cliente."""
-    try:
-        # Firestore puede generar el ID solo
-        doc_ref = get_db().collection('clients').document()
-        doc_data = data.copy()
-        doc_data['created_at'] = firestore.SERVER_TIMESTAMP
-        doc_ref.set(doc_data)
-        return True
-    except Exception as e:
-        print(f"❌ ERROR ADD CLIENT (Firestore): {e}")
-        return False
 
 def get_client_by_id(client_id):
-    """Obtiene un cliente por su ID (document string en Firestore)."""
-    # Demos hardcodeados como respaldo de emergencia o para IDs específicos
+    """Obtiene un cliente por su ID."""
+    # Demos hardcodeados como respaldo - IDs REALES en PostgreSQL
     demo_ids = {
-        "demo_restaurante": {"id": "demo_restaurante", "name": "🍕 La Trattoria Demo", "phone_number_id": "demo_restaurante", "system_instruction": "Eres el asistente del restaurante La Trattoria..."},
-        "demo_clinica": {"id": "demo_clinica", "name": "🏥 Clínica San Juan Demo", "phone_number_id": "demo_clinica", "system_instruction": "Eres el asistente de la Clínica San Juan..."},
-        "demo_tienda": {"id": "demo_tienda", "name": "🛍️ Urban Vibe Style Demo", "phone_number_id": "demo_tienda", "system_instruction": "Eres el asistente de la tienda Urban Vibe..."},
-        "demo_dental_001": {"id": "demo_dental_001", "name": "🦷 SonrisaPerfecta IA Demo", "phone_number_id": "demo_dental_001", "system_instruction": "Eres el asistente de SonrisaPerfecta IA..."},
-        "demo_psychology_001": {"id": "demo_psychology_001", "name": "🧠 MenteSana Bot Demo", "phone_number_id": "demo_psychology_001", "system_instruction": "Eres el asistente del Dr. Alejandro Ruiz..."}
+        "demo_restaurant": {"id": "demo_restaurant", "name": "🤖 Demo GourmetBot 2026", "phone_number_id": "demo_restaurant", "system_instruction": "Eres el asistente virtual experto del Restaurante 'La Mesa Elegante'..."},
+        "demo_dental": {"id": "demo_dental", "name": "🤖 Demo SonrisaPerfecta IA", "phone_number_id": "demo_dental", "system_instruction": "Eres el asistente virtual de la clínica 'Sonrisa Perfecta'..."},
+        "demo_psychology": {"id": "demo_psychology", "name": "🤖 Demo MenteSana Bot", "phone_number_id": "demo_psychology", "system_instruction": "Eres el asistente administrativo virtual del Dr. Alejandro Ruiz..."},
+        "demo_salon": {"id": "demo_salon", "name": "🤖 Demo GlamourBot 2026", "phone_number_id": "demo_salon", "system_instruction": "Eres el asistente virtual del salón de belleza 'Estilo y Glamour'..."},
+        "demo_retail": {"id": "demo_retail", "name": "🤖 Demo StyleBot 2026", "phone_number_id": "demo_retail", "system_instruction": "Eres un 'Personal Shopper' de la marca de moda 'Urban Vibe'..."},
+        # IDs alternativos con _001 para compatibilidad
+        "demo_restaurant_001": {"id": "demo_restaurant_001", "name": "🤖 Demo GourmetBot 2026", "phone_number_id": "demo_restaurant_001", "system_instruction": "Eres el asistente virtual experto del Restaurante 'La Mesa Elegante'..."},
+        "demo_dental_001": {"id": "demo_dental_001", "name": "🤖 Demo SonrisaPerfecta IA", "phone_number_id": "demo_dental_001", "system_instruction": "Eres el asistente virtual de la clínica 'Sonrisa Perfecta'..."},
+        "demo_psychology_001": {"id": "demo_psychology_001", "name": "🤖 Demo MenteSana Bot", "phone_number_id": "demo_psychology_001", "system_instruction": "Eres el asistente administrativo virtual del Dr. Alejandro Ruiz..."},
+        "demo_salon_001": {"id": "demo_salon_001", "name": "🤖 Demo GlamourBot 2026", "phone_number_id": "demo_salon_001", "system_instruction": "Eres el asistente virtual del salón de belleza 'Estilo y Glamour'..."},
+        "demo_retail_001": {"id": "demo_retail_001", "name": "🤖 Demo StyleBot 2026", "phone_number_id": "demo_retail_001", "system_instruction": "Eres un 'Personal Shopper' de la marca de moda 'Urban Vibe'..."}
     }
-    
+
     cid_str = str(client_id)
     if cid_str in demo_ids:
         return demo_ids[cid_str]
 
     try:
-        db = firestore.client()
-        doc_ref = db.collection('clients').document(cid_str).get()
-        
-        if doc_ref.exists:
-            client_data = doc_ref.to_dict()
-            client_data['id'] = doc_ref.id
-            return client_data
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM clients WHERE id = %s", (client_id,))
+        client = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if client:
+            client_dict = dict(client)
+            if isinstance(client_dict.get('menu_json'), dict):
+                client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
+            return client_dict
+        return None
     except Exception as e:
-        print(f"❌ ERROR get_client_by_id (Firestore): {e}")
+        print(f"❌ ERROR get_client_by_id: {e}")
+        return None
+
+
+def get_client_knowledge(client_id):
+    """Retorna el contenido de la base de conocimientos de un cliente."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT content FROM knowledge_base WHERE client_id = %s", (client_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        if not rows:
+            return "Sin base de conocimiento configurada."
+        return "\n\n".join([row[0] for row in rows])
+    except Exception as e:
+        print(f"❌ ERROR get_client_knowledge: {e}")
+        return ""
+
+
+def add_knowledge_entry(client_id, content, source_file=None):
+    """Agrega una nueva entrada a la base de conocimientos de un cliente."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO knowledge_base (client_id, content, source_file)
+            VALUES (%s, %s, %s)
+        ''', (client_id, content, source_file))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR add_knowledge_entry: {e}")
+        return False
+
+
+def list_clients():
+    """Retorna una lista de todos los clientes registrados."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        clients = []
+        for row in rows:
+            client_dict = dict(row)
+            if isinstance(client_dict.get('menu_json'), dict):
+                client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
+            clients.append(client_dict)
+        return clients
+    except Exception as e:
+        print(f"❌ ERROR list_clients: {e}")
+        return []
+
+
+def add_client(data):
+    """Crea un nuevo cliente en PostgreSQL."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Preparar datos
+        menu_json = data.pop('menu_json', None)
+        if isinstance(menu_json, str):
+            try:
+                menu_json = json.loads(menu_json)
+            except:
+                menu_json = None
+        
+        cursor.execute('''
+            INSERT INTO clients (
+                name, whatsapp_token, phone_number_id, verify_token,
+                system_instruction, email, calendly_url, menu_json, is_active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        ''', (
+            data.get('name', ''),
+            data.get('whatsapp_token', ''),
+            data.get('phone_number_id', ''),
+            data.get('verify_token', ''),
+            data.get('system_instruction', ''),
+            data.get('email', ''),
+            data.get('calendly_url', ''),
+            menu_json,
+            data.get('is_active', True)
+        ))
+        
+        new_id = cursor.fetchone()['id']
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR add_client: {e}")
+        return False
+
+
+def update_client(client_id, data):
+    """Actualiza la configuración de un cliente existente."""
+    try:
+        # Eliminar campos que no se deben actualizar
+        data = {k: v for k, v in data.items() if k not in ['id', 'created_at']}
+        
+        if not data:
+            return False
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Construir UPDATE dinámico
+        fields = []
+        values = []
+        for key, value in data.items():
+            if key == 'menu_json' and isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except:
+                    pass
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value)
+            fields.append(f"{key} = %s")
+            values.append(value)
+        
+        values.append(client_id)
+        query = f"UPDATE clients SET {', '.join(fields)} WHERE id = %s"
+        cursor.execute(query, values)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR update_client: {e}")
+        return False
+
+
+def delete_client_db_entry(client_id):
+    """Elimina un cliente y sus datos relacionados."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Eliminar en cascada (las FK tienen ON DELETE CASCADE)
+        cursor.execute("DELETE FROM clients WHERE id = %s", (client_id,))
+        
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return deleted
+    except Exception as e:
+        print(f"❌ ERROR delete_client: {e}")
+        return False
+
+
+def duplicate_client(original_id):
+    """Duplica un cliente incluyendo su base de conocimientos."""
+    import time
     
-    return None
+    original = get_client_by_id(original_id)
+    if not original:
+        return None
+
+    timestamp = int(time.time() * 1000)
+    new_name = f"{original.get('name', 'Copia')} (Copia {time.strftime('%Y-%m-%d')})"
+    new_phone_number_id = f"client_{timestamp}"
+    new_verify_token = f"verify_{timestamp}"
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        menu_json = original.get('menu_json')
+        if isinstance(menu_json, str):
+            try:
+                menu_json = json.loads(menu_json)
+            except:
+                menu_json = None
+
+        cursor.execute('''
+            INSERT INTO clients (
+                name, whatsapp_token, phone_number_id, verify_token,
+                system_instruction, email, calendly_url, menu_json, is_active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        ''', (
+            new_name,
+            "",  # whatsapp_token vacío para el nuevo cliente
+            new_phone_number_id,
+            new_verify_token,
+            original.get('system_instruction', ''),
+            "",
+            original.get('calendly_url', ''),
+            menu_json,
+            original.get('is_active', True)
+        ))
+
+        new_client_id = cursor.fetchone()['id']
+
+        # Copiar base de conocimientos
+        cursor.execute("SELECT content, source_file FROM knowledge_base WHERE client_id = %s", (original_id,))
+        kb_docs = cursor.fetchall()
+        for doc in kb_docs:
+            cursor.execute('''
+                INSERT INTO knowledge_base (client_id, content, source_file)
+                VALUES (%s, %s, %s)
+            ''', (new_client_id, doc['content'], doc['source_file']))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return get_client_by_id(new_client_id)
+    except Exception as e:
+        print(f"❌ ERROR duplicate_client: {e}")
+        return None
+
 
 def list_client_documents(client_id):
     """Lista los archivos de conocimiento de un cliente."""
-    knowledge_ref = get_db().collection('clients').document(str(client_id)).collection('knowledge').stream()
-    
-    docs = []
-    for doc in knowledge_ref:
-        doc_data = doc.to_dict()
-        # Convertir timestamp a string si es necesario para el frontend
-        updated_at = doc_data.get('updated_at')
-        if updated_at:
-            doc_data['updated_at'] = str(updated_at)
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute('''
+            SELECT id, source_file, updated_at 
+            FROM knowledge_base 
+            WHERE client_id = %s
+            ORDER BY updated_at DESC
+        ''', (client_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
         
-        docs.append({
-            'id': doc.id,
-            'source_file': doc_data.get('source_file') or 'Documento sin nombre',
-            'updated_at': doc_data.get('updated_at', '')
-        })
-    return docs
+        docs = []
+        for row in rows:
+            docs.append({
+                'id': row['id'],
+                'source_file': row['source_file'] or 'Documento sin nombre',
+                'updated_at': str(row['updated_at']) if row['updated_at'] else ''
+            })
+        return docs
+    except Exception as e:
+        print(f"❌ ERROR list_client_documents: {e}")
+        return []
 
 
 def delete_knowledge_entry(client_id, doc_id):
-    """Elimina una entrada de la base de conocimientos de un cliente."""
+    """Elimina una entrada de la base de conocimientos."""
     try:
-        doc_ref = get_db().collection('clients').document(str(client_id)).collection('knowledge').document(str(doc_id))
-        doc_ref.delete()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM knowledge_base 
+            WHERE client_id = %s AND id = %s
+        ''', (client_id, doc_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
         return True
     except Exception as e:
-        print(f"❌ ERROR DELETE KNOWLEDGE (Firestore): {e}")
+        print(f"❌ ERROR delete_knowledge_entry: {e}")
         return False
 
+
 def save_chat_message(client_id, user_number, message, response):
-    """Guarda un mensaje de chat en Firestore para el historial."""
+    """Guarda un mensaje de chat en la base de datos."""
     try:
-        chat_ref = get_db().collection('clients').document(str(client_id)).collection('chats').document()
-        chat_ref.set({
-            'user_number': user_number,
-            'message': message,
-            'response': response,
-            'timestamp': firestore.SERVER_TIMESTAMP
-        })
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO client_chats (client_id, user_number, message, response)
+            VALUES (%s, %s, %s, %s)
+        ''', (client_id, user_number, message, response))
+        conn.commit()
+        cursor.close()
+        conn.close()
         return True
     except Exception as e:
-        print(f"❌ ERROR SAVE CHAT (Firestore): {e}")
+        print(f"❌ ERROR save_chat_message: {e}")
         return False
+
 
 def get_client_chats(client_id, limit=50):
     """Obtiene los últimos mensajes de chat de un cliente."""
     try:
-        chats_ref = get_db().collection('clients').document(str(client_id)).collection('chats')
-        query = chats_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit).stream()
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute('''
+            SELECT id, user_number, message, response, timestamp
+            FROM client_chats
+            WHERE client_id = %s
+            ORDER BY timestamp DESC
+            LIMIT %s
+        ''', (client_id, limit))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
         
         chats = []
-        for doc in query:
-            chat_data = doc.to_dict()
-            chat_data['id'] = doc.id
-            # Convertir timestamp a ISO string para JSON
-            ts = chat_data.get('timestamp')
-            if ts:
-                chat_data['timestamp'] = ts.isoformat()
-            chats.append(chat_data)
+        for row in rows:
+            chats.append({
+                'id': row['id'],
+                'user_number': row['user_number'],
+                'message': row['message'],
+                'response': row['response'],
+                'timestamp': str(row['timestamp']) if row['timestamp'] else ''
+            })
         return chats
     except Exception as e:
-        print(f"❌ ERROR GET CHATS (Firestore): {e}")
+        print(f"❌ ERROR get_client_chats: {e}")
         return []
+
 
 # --- GESTIÓN DE SESIONES DE DEMO (SANDBOX) ---
 
-def get_session_id(user_number, phone_number_id):
-    """Genera un ID único para la sesión combinando el usuario y el bot."""
-    return f"{user_number}_{phone_number_id}"
-
 def get_user_session(user_number, phone_number_id):
-    """Obtiene la sesión de sandbox actual para un número de usuario y bot específico."""
+    """Obtiene la sesión de sandbox actual para un usuario y bot."""
     try:
-        sid = get_session_id(user_number, phone_number_id)
-        doc_ref = get_db().collection('sandbox_sessions').document(sid).get()
-        if doc_ref.exists:
-            return doc_ref.to_dict()
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute('''
+            SELECT demo_mode, session_data, updated_at
+            FROM sandbox_sessions
+            WHERE user_number = %s AND phone_number_id = %s
+            ORDER BY updated_at DESC
+            LIMIT 1
+        ''', (user_number, phone_number_id))
+        session = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if session:
+            result = dict(session)
+            # Parsear session_data si es JSON string
+            if isinstance(result.get('session_data'), str):
+                try:
+                    result['session_data'] = json.loads(result['session_data'])
+                except:
+                    result['session_data'] = {}
+            return result
         return None
     except Exception as e:
-        print(f"❌ ERROR GET USER SESSION: {e}")
+        print(f"❌ ERROR get_user_session: {e}")
         return None
+
 
 def save_user_session(user_number, phone_number_id, session_data):
-    """Guarda o actualiza la sesión de sandbox para un número de usuario y bot específico."""
+    """Guarda o actualiza la sesión de sandbox."""
     try:
-        sid = get_session_id(user_number, phone_number_id)
-        session_data['updated_at'] = firestore.SERVER_TIMESTAMP
-        get_db().collection('sandbox_sessions').document(sid).set(session_data, merge=True)
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        demo_mode = session_data.get('demo_mode', '')
+        session_data_json = json.dumps(session_data)
+        
+        # UPSERT: Insertar o actualizar si ya existe
+        cursor.execute('''
+            INSERT INTO sandbox_sessions (user_number, phone_number_id, demo_mode, session_data)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_number, phone_number_id) 
+            DO UPDATE SET demo_mode = %s, session_data = %s, updated_at = CURRENT_TIMESTAMP
+        ''', (user_number, phone_number_id, demo_mode, session_data_json, demo_mode, session_data_json))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
         return True
     except Exception as e:
-        print(f"❌ ERROR SAVE USER SESSION: {e}")
+        print(f"❌ ERROR save_user_session: {e}")
         return False
+
 
 def delete_user_session(user_number, phone_number_id):
-    """Elimina la sesión de sandbox de un usuario para un bot específico."""
+    """Elimina la sesión de sandbox de un usuario."""
     try:
-        sid = get_session_id(user_number, phone_number_id)
-        get_db().collection('sandbox_sessions').document(sid).delete()
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM sandbox_sessions
+            WHERE user_number = %s AND phone_number_id = %s
+        ''', (user_number, phone_number_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
         return True
     except Exception as e:
-        print(f"❌ ERROR DELETE USER SESSION: {e}")
+        print(f"❌ ERROR delete_user_session: {e}")
         return False
 
+
+def track_message(client_id, direction="outbound", phone_number=None):
+    """Registra un mensaje en message_logs para métricas."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO message_logs (client_id, direction, phone_number)
+            VALUES (%s, %s, %s)
+        ''', (client_id, direction, phone_number))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ ERROR track_message: {e}")
+
+
 if __name__ == "__main__":
-    # Prueba rápida
-    pass
+    # Prueba de conexión
+    print("Probando conexión a PostgreSQL...")
+    try:
+        init_db()
+        print("✅ Conexión exitosa")
+    except Exception as e:
+        print(f"❌ Error: {e}")

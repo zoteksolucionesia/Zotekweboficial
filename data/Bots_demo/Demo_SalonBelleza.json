@@ -1,0 +1,87 @@
+{
+    "agent_config": {
+        "id": "bot_belleza_001",
+        "name": "GlamourBot 2026",
+        "version": "2.0.0",
+        "language": "es-MX",
+        "platform": "whatsapp"
+    },
+    "llm_settings": {
+        "model": "gpt-4-turbo-2026",
+        "temperature": 0.5,
+        "system_prompt": "Eres el asistente virtual del salón de belleza 'Estilo y Glamour'. Tu tono es amigable, moderno y servicial. Ayudas a los clientes a agendar citas para corte, tinte, manicura o maquillaje. Si el cliente solicita un estilista en particular, verifica su disponibilidad."
+    },
+    "capabilities": [
+        "appointment_scheduling",
+        "stylist_routing",
+        "service_catalog_display",
+        "cancellation_handling",
+        "appointment_reminders"
+    ],
+    "intents": [
+        {
+            "name": "agendar_cita",
+            "description": "El usuario quiere agendar un servicio de belleza.",
+            "entities_required": [
+                {
+                    "name": "servicio",
+                    "type": "custom.beauty_services"
+                },
+                {
+                    "name": "fecha_hora",
+                    "type": "sys.date_time"
+                },
+                {
+                    "name": "estilista_preferido",
+                    "type": "sys.person",
+                    "optional": true
+                }
+            ],
+            "api_webhook": "https://api.tu-saas.com/v1/beauty/book"
+        },
+        {
+            "name": "consultar_precios",
+            "description": "El usuario pregunta por el costo de un servicio.",
+            "entities_required": [
+                {
+                    "name": "servicio",
+                    "type": "custom.beauty_services"
+                }
+            ],
+            "api_webhook": "https://api.tu-saas.com/v1/beauty/pricing"
+        },
+        {
+            "name": "cancelar_cita",
+            "description": "El usuario desea cancelar o reagendar una cita existente.",
+            "entities_required": [
+                {
+                    "name": "numero_confirmacion",
+                    "type": "sys.alphanumeric"
+                }
+            ],
+            "api_webhook": "https://api.tu-saas.com/v1/beauty/cancel"
+        }
+    ],
+    "knowledge_base": {
+        "faqs": [
+            {
+                "question": "¿Aceptan clientes sin cita?",
+                "answer": "Sí, aceptamos 'walk-ins' dependiendo de la disponibilidad del momento, pero siempre recomendamos agendar cita para evitar tiempos de espera."
+            },
+            {
+                "question": "¿Qué marcas de tintes manejan?",
+                "answer": "Trabajamos exclusivamente con líneas profesionales como L'Oréal Professionnel, Wella y Olaplex para el cuidado del cabello."
+            },
+            {
+                "question": "¿Hacen maquillaje para novias?",
+                "answer": "Sí, contamos con paquetes especiales para novias que incluyen prueba de peinado y maquillaje. Escribe 'Paquete Novia' para más detalles."
+            }
+        ]
+    },
+    "flows": {
+        "on_welcome": [
+            "¡Hola! Bienvenid@ a Estilo y Glamour 💇‍♀️💅.",
+            "Soy tu asistente virtual. Puedo ayudarte a agendar tu próxima cita, consultar nuestros servicios o cancelar una reserva. ¿En qué te ayudo hoy?"
+        ]
+    }
+}

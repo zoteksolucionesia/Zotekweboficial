@@ -13,18 +13,18 @@ def add_example_clients():
     examples = [
         {
             "id": "demo_restaurante",
-            "name": "Restaurante La Trattoria",
+            "name": "🤖 Demo GourmetBot 2026",
             "email": "restaurante@ejemplo.com",
             "phone_number_id": "demo_123",
             "is_active": True,
             "menu": {
-                "text": "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?",
+                "text": "¡Bienvenido a *GourmetBot 2026*! 👋 Soy tu asistente virtual del restaurante 'La Mesa Elegante'. ¿Qué te gustaría hacer hoy?",
                 "options": [
                     {"title": "Ver Menú", "icon": "🍕", "response": "Nuestro menú incluye pizzas a la leña, pastas frescas y postres italianos."},
                     {"title": "Hacer Reserva", "icon": "📅", "response": "Indícanos la fecha y hora para verificar disponibilidad."},
                     {"title": "Horarios", "icon": "⏰", "response": "Estamos abiertos todos los días de 12:00 PM a 11:00 PM."}
                 ],
-                "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de La Trattoria:"
+                "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de GourmetBot 2026:"
             }
         },
         {

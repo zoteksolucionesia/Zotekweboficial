@@ -1,0 +1,271 @@
+{
+  "generated_at": "2026-03-13",
+  "total_demos": 5,
+  "demos": [
+    {
+      "id": "demo_dental_001",
+      "firestore_data": {
+        "name": "🤖 Demo SonrisaPerfecta IA",
+        "phone_number_id": "demo_dental_001",
+        "email": "dental@demo.zotek.ia",
+        "phone": "52155000000223",
+        "system_instruction": "Eres el asistente virtual de la clínica 'Sonrisa Perfecta'. Eres profesional, empático y claro. Tu principal función es agendar citas, hacer triage dental básico (identificar urgencias como dolor intenso o sangrado) y enviar recordatorios. NUNCA des diagnósticos médicos, sugiere siempre una valoración presencial.",
+        "gemini_prompt": "Eres el asistente virtual experto de SonrisaPerfecta IA. Eres el asistente virtual de la clínica 'Sonrisa Perfecta'. Eres profesional, empático y claro. Tu principal función es agendar citas, hacer triage dental básico (identificar urgencias como dolor intenso o sangrado) y enviar recordatorios. NUNCA des diagnósticos médicos, sugiere siempre una valoración presencial.",
+        "response_type": "text",
+        "calendly_url": "https://calendly.com/dental-demo",
+        "bank_name": "BBVA",
+        "clabe": "012180012345678901",
+        "beneficiary_name": "SonrisaPerfecta IA Demo SA de CV",
+        "menu_json": {
+          "text": "¡Hola! Gracias por comunicarte con Clínica Sonrisa Perfecta 🦷.\nSoy tu asistente virtual. Escribe '1' para Agendar cita, '2' para Urgencias, o hazme cualquier pregunta sobre nuestros servicios.",
+          "options": [
+            {
+              "title": "📅 Agendar Cita",
+              "icon": "📅",
+              "response": "Para el usuario solicita una cita para valoración, limpieza o tratamiento., proporciona más detalles."
+            },
+            {
+              "title": "🚨 Urgencia",
+              "icon": "🚨",
+              "response": "Entiendo, esto parece ser una urgencia. Por favor, comunícate inmediatamente al número de emergencias 24/7: 555-0199 o acude a la clínica. ¿Deseas que notifique al doctor de guardia?"
+            },
+            {
+              "title": "📄 Validar Seguro",
+              "icon": "📄",
+              "response": "Para el usuario pregunta si aceptan su seguro de gastos médicos., proporciona más detalles."
+            },
+            {
+              "title": "💰 Costos",
+              "icon": "💰",
+              "response": "Aceptamos tarjetas con MSI y seguros de gastos médicos."
+            },
+            {
+              "title": "⏰ Horarios",
+              "icon": "⏰",
+              "response": "Lun-Vie: 9AM-8PM, Sáb: 9AM-3PM, Dom: Solo urgencias"
+            },
+            {
+              "title": "📍 Ubicación",
+              "icon": "📍",
+              "response": "Av. Reforma #123, CDMX"
+            }
+          ],
+          "fallback_text": "No entendí tu solicitud. Selecciona una opción del menú."
+        },
+        "created_at": "2026-03-13 00:00:00",
+        "whatsapp_token": "",
+        "verify_token": "demo_token_dental"
+      }
+    },
+    {
+      "id": "demo_psychology_001",
+      "firestore_data": {
+        "name": "🤖 Demo MenteSana Bot",
+        "phone_number_id": "demo_psychology_001",
+        "email": "psychology@demo.zotek.ia",
+        "phone": "52155000000172",
+        "system_instruction": "Eres el asistente administrativo virtual del Dr. Alejandro Ruiz, psicólogo clínico. Eres empático, profesional y sumamente respetuoso de la privacidad. TU ÚNICA FUNCIÓN es agendar sesiones, dar información sobre costos y modalidades (online/presencial). BAJO NINGUNA CIRCUNSTANCIA debes dar consejo psicológico, terapia o diagnósticos. Si detectas palabras relacionadas con suicidio, autolesión o crisis severa, debes derivar inmediatamente a los números de emergencia.",
+        "gemini_prompt": "Eres el asistente virtual experto de MenteSana Bot. Eres el asistente administrativo virtual del Dr. Alejandro Ruiz, psicólogo clínico. Eres empático, profesional y sumamente respetuoso de la privacidad. TU ÚNICA FUNCIÓN es agendar sesiones, dar información sobre costos y modalidades (online/presencial). BAJO NINGUNA CIRCUNSTANCIA debes dar consejo psicológico, terapia o diagnósticos. Si detectas palabras relacionadas con suicidio, autolesión o crisis severa, debes derivar inmediatamente a los números de emergencia.",
+        "response_type": "text",
+        "calendly_url": "https://calendly.com/psychology-demo",
+        "bank_name": "Banorte",
+        "clabe": "072180056789012345",
+        "beneficiary_name": "MenteSana Bot Demo SA de CV",
+        "menu_json": {
+          "text": "Hola, te comunicas al consultorio del Dr. Alejandro Ruiz, psicólogo clínico.\nSoy su asistente virtual. Puedo ayudarte a agendar una sesión, consultar costos o resolver dudas administrativas. *Nota: Este chat no es para atención de crisis o terapia.* ¿Cómo te puedo ayudar?",
+          "options": [
+            {
+              "title": "📅 Agendar Sesión",
+              "icon": "📅",
+              "response": "Para el usuario solicita una cita para terapia., proporciona más detalles."
+            },
+            {
+              "title": "🚨 Crisis/Emergencia",
+              "icon": "🚨",
+              "response": "⚠️ Soy un asistente virtual automatizado y no puedo ofrecer ayuda clínica. Si te encuentras en una crisis o peligro inmediato, por favor comunícate a la Línea de la Vida de inmediato al 800-911-2000 o acude a la sala de urgencias más cercana. No estás solo."
+            },
+            {
+              "title": "ℹ️ Info Terapia",
+              "icon": "📅",
+              "response": "Las sesiones tienen una duración de 50 minutos. El Dr. Ruiz maneja un enfoque cognitivo-conductual basado en evidencia. ¿Deseas consultar la disponibilidad de horarios?"
+            },
+            {
+              "title": "💰 Costos",
+              "icon": "💰",
+              "response": "Individual: $800, Pareja: $1,200, Familiar: $1,500"
+            },
+            {
+              "title": "📍 Online",
+              "icon": "💻",
+              "response": "Sesiones por videollamada disponibles"
+            },
+            {
+              "title": "⏰ Horarios",
+              "icon": "⏰",
+              "response": "Lun-Vie: 8AM-9PM, Sáb: 9AM-3PM"
+            }
+          ],
+          "fallback_text": "No entendí tu solicitud. Selecciona una opción del menú."
+        },
+        "created_at": "2026-03-13 00:00:00",
+        "whatsapp_token": "",
+        "verify_token": "demo_token_psychology"
+      }
+    },
+    {
+      "id": "demo_restaurant_001",
+      "firestore_data": {
+        "name": "🤖 Demo GourmetBot 2026",
+        "phone_number_id": "demo_restaurant_001",
+        "email": "restaurant@demo.zotek.ia",
+        "phone": "52155000000550",
+        "system_instruction": "Eres el asistente virtual experto del Restaurante 'La Mesa Elegante'. Tu objetivo es tomar pedidos, gestionar reservas y resolver dudas. Responde de manera amable, rápida y apetitosa. Si te envían notas de voz, procésalas para extraer el pedido. Si el usuario tiene restricciones alimentarias, prioriza recomendar platillos seguros.",
+        "gemini_prompt": "Eres el asistente virtual experto de GourmetBot 2026. Eres el asistente virtual experto del Restaurante 'La Mesa Elegante'. Tu objetivo es tomar pedidos, gestionar reservas y resolver dudas. Responde de manera amable, rápida y apetitosa. Si te envían notas de voz, procésalas para extraer el pedido. Si el usuario tiene restricciones alimentarias, prioriza recomendar platillos seguros.",
+        "response_type": "text",
+        "calendly_url": "https://calendly.com/restaurant-demo",
+        "bank_name": "Santander",
+        "clabe": "014180098765432109",
+        "beneficiary_name": "GourmetBot 2026 Demo SA de CV",
+        "menu_json": {
+          "text": "¡Hola! Bienvenido a La Mesa Elegante 🍽️. Soy tu asistente virtual.\nPuedo ayudarte a:\n1️⃣ Hacer una reserva\n2️⃣ Pedir a domicilio\n3️⃣ Ver el menú\n¿Qué se te antoja hoy?",
+          "options": [
+            {
+              "title": "📅 Hacer Reserva",
+              "icon": "📅",
+              "response": "Para el usuario quiere reservar una mesa., proporciona más detalles."
+            },
+            {
+              "title": "🛵 Pedir Domicilio",
+              "icon": "🛵",
+              "response": "Para el usuario quiere pedir comida para entrega., proporciona más detalles."
+            },
+            {
+              "title": "📋 Consultar Menu",
+              "icon": "📋",
+              "response": "Aquí tienes nuestro menú digital interactivo: [Enlace]. ¿Tienes algún antojo en particular o alguna alergia que deba considerar?"
+            },
+            {
+              "title": "🌱 Opciones Veganas",
+              "icon": "🌱",
+              "response": "Menú 100% plant-based disponible"
+            },
+            {
+              "title": "⏰ Horarios",
+              "icon": "⏰",
+              "response": "Mar-Dom: 1PM-11PM, Lun: Cerrado"
+            },
+            {
+              "title": "📍 Ubicación",
+              "icon": "📍",
+              "response": "Polanco, CDMX. Pet-friendly"
+            }
+          ],
+          "fallback_text": "No entendí tu solicitud. Selecciona una opción del menú."
+        },
+        "created_at": "2026-03-13 00:00:00",
+        "whatsapp_token": "",
+        "verify_token": "demo_token_restaurant"
+      }
+    },
+    {
+      "id": "demo_salon_001",
+      "firestore_data": {
+        "name": "🤖 Demo GlamourBot 2026",
+        "phone_number_id": "demo_salon_001",
+        "email": "salon@demo.zotek.ia",
+        "phone": "52155000000796",
+        "system_instruction": "Eres el asistente virtual del salón de belleza 'Estilo y Glamour'. Tu tono es amigable, moderno y servicial. Ayudas a los clientes a agendar citas para corte, tinte, manicura o maquillaje. Si el cliente solicita un estilista en particular, verifica su disponibilidad.",
+        "gemini_prompt": "Eres el asistente virtual experto de GlamourBot 2026. Eres el asistente virtual del salón de belleza 'Estilo y Glamour'. Tu tono es amigable, moderno y servicial. Ayudas a los clientes a agendar citas para corte, tinte, manicura o maquillaje. Si el cliente solicita un estilista en particular, verifica su disponibilidad.",
+        "response_type": "text",
+        "calendly_url": "",
+        "bank_name": "HSBC",
+        "clabe": "021180067890123456",
+        "beneficiary_name": "GlamourBot 2026 Demo SA de CV",
+        "menu_json": {
+          "text": "¡Hola! Bienvenid@ a Estilo y Glamour 💇‍♀️💅.\nSoy tu asistente virtual. Puedo ayudarte a agendar tu próxima cita, consultar nuestros servicios o cancelar una reserva. ¿En qué te ayudo hoy?",
+          "options": [
+            {
+              "title": "📅 Agendar Cita",
+              "icon": "📅",
+              "response": "Para el usuario quiere agendar un servicio de belleza., proporciona más detalles."
+            },
+            {
+              "title": "💰 Precios",
+              "icon": "✨",
+              "response": "Para el usuario pregunta por el costo de un servicio., proporciona más detalles."
+            },
+            {
+              "title": "🔄 Cancelar/Reagendar",
+              "icon": "📅",
+              "response": "Para el usuario desea cancelar o reagendar una cita existente., proporciona más detalles."
+            },
+            {
+              "title": "📍 Ubicación",
+              "icon": "📍",
+              "response": "Plaza Las Américas, CDMX"
+            },
+            {
+              "title": "⏰ Horarios",
+              "icon": "⏰",
+              "response": "Mar-Sáb: 10AM-8PM, Dom: 10AM-3PM"
+            }
+          ],
+          "fallback_text": "No entendí tu solicitud. Selecciona una opción del menú."
+        },
+        "created_at": "2026-03-13 00:00:00",
+        "whatsapp_token": "",
+        "verify_token": "demo_token_salon"
+      }
+    },
+    {
+      "id": "demo_retail_001",
+      "firestore_data": {
+        "name": "🤖 Demo StyleBot 2026",
+        "phone_number_id": "demo_retail_001",
+        "email": "retail@demo.zotek.ia",
+        "phone": "52155000000128",
+        "system_instruction": "Eres un 'Personal Shopper' de la marca de moda 'Urban Vibe'. Eres moderno, persuasivo y experto en tendencias 2026. Puedes analizar fotos que envíen los usuarios para recomendar prendas similares de nuestro catálogo. Ayudas con tallas, rastreo de pedidos y devoluciones.",
+        "gemini_prompt": "Eres el asistente virtual experto de StyleBot 2026. Eres un 'Personal Shopper' de la marca de moda 'Urban Vibe'. Eres moderno, persuasivo y experto en tendencias 2026. Puedes analizar fotos que envíen los usuarios para recomendar prendas similares de nuestro catálogo. Ayudas con tallas, rastreo de pedidos y devoluciones.",
+        "response_type": "text",
+        "calendly_url": "",
+        "bank_name": "Scotiabank",
+        "clabe": "044180034567890123",
+        "beneficiary_name": "StyleBot 2026 Demo SA de CV",
+        "menu_json": {
+          "text": "¡Qué onda! Bienvenido a Urban Vibe 🕶️.\nPuedes enviarme la foto de un outfit que te guste para buscarlo en la tienda, preguntar por el estatus de tu orden o pedir asesoría de estilo. ¿Qué buscas hoy?",
+          "options": [
+            {
+              "title": "📷 Buscar con Foto",
+              "icon": "📷",
+              "response": "Para el usuario envía una foto buscando algo igual o similar., proporciona más detalles."
+            },
+            {
+              "title": "📦 Rastrear Pedido",
+              "icon": "📝",
+              "response": "Para el usuario quiere saber dónde está su compra., proporciona más detalles."
+            },
+            {
+              "title": "📏 📏 Guía de Tallas",
+              "icon": "📏",
+              "response": "Para asegurarnos de que te quede perfecto, ¿me podrías proporcionar tus medidas aproximadas de pecho, cintura o tu peso y altura? Así nuestra IA calculará tu talla ideal."
+            },
+            {
+              "title": "🔄 Devoluciones",
+              "icon": "🔄",
+              "response": "30 días con ticket y etiquetas"
+            },
+            {
+              "title": "🏷️ Promociones",
+              "icon": "🏷️",
+              "response": "20% en 2da prenda, envío gratis +$1,500"
+            }
+          ],
+          "fallback_text": "No entendí tu solicitud. Selecciona una opción del menú."
+        },
+        "created_at": "2026-03-13 00:00:00",
+        "whatsapp_token": "",
+        "verify_token": "demo_token_retail"
+      }
+    }
+  ]
+}

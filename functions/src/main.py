@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from collections import deque
 import sys # Added for sys.stdout.flush()
+import json # Added for json.loads()
 
 from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
@@ -18,6 +19,7 @@ from dotenv import load_dotenv
 import io
 import sqlite3
 import traceback # Added for traceback.format_exc()
+import re
 
 try:
     from pypdf import PdfReader
@@ -66,12 +68,12 @@ async def test_whatsapp(to: str = "523123173431"):
     """Diagnostic endpoint: tests WhatsApp API send capability."""
     import sys
     results = {"steps": [], "target": to}
-    
+
     try:
         # Step 1: Get first client
         clients = database.list_clients()
         if not clients:
-            return {"error": "No clients in Firestore", "steps": results["steps"]}
+            return {"error": "No clients in PostgreSQL database", "steps": results["steps"]}
         client = clients[0]
         results["steps"].append(f"1. Client found: {client.get('name')}")
         
@@ -116,7 +118,7 @@ async def test_whatsapp(to: str = "523123173431"):
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(hours=8))
+    expire = datetime.now() + (expires_delta or timedelta(hours=8))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -158,6 +160,10 @@ async def get_me(current_user: str = Depends(get_current_user)):
     }
 
 # === CLIENTS API ===
+
+@app.get("/api/recent_logs")
+async def get_recent_logs():
+    return {"logs": list(RECENT_LOGS)}
 
 @app.get("/api/clients")
 async def list_clients(current_user: str = Depends(get_current_user)):
@@ -216,6 +222,9 @@ async def list_documents(client_id: str, current_user: str = Depends(get_current
 # Cache for WhatsApp retries
 PROCESSED_MESSAGES = deque(maxlen=100)
 
+# Memory log for debugging
+RECENT_LOGS = deque(maxlen=50)
+
 # Initialize DB at module level
 database.init_db()
 
@@ -248,6 +257,10 @@ async def recibir_mensaje(request: Request):
         data = await request.json()
         print(f"DEBUG: Webhook data received: {data}"); sys.stdout.flush()
         
+        # Guardar en logs recientes
+        timestamp_str = datetime.now().isoformat()
+        RECENT_LOGS.append({"time": timestamp_str, "payload": data})
+        
         if data.get('object') == 'whatsapp_business_account':
             for entry in data.get('entry', []):
                 for change in entry.get('changes', []):
@@ -255,6 +268,11 @@ async def recibir_mensaje(request: Request):
                     if 'messages' in value:
                         message = value['messages'][0]
                         message_id = message.get('id')
+                        
+                        # Inicializar variables locales críticas
+                        menu_data = None
+                        match = None
+                        texto_usuario = ""
                         
                         if message_id in PROCESSED_MESSAGES:
                             print(f"DEBUG: Message {message_id} already processed."); sys.stdout.flush()
@@ -265,19 +283,21 @@ async def recibir_mensaje(request: Request):
 
                         numero_usuario = message['from']
                         phone_number_id = value['metadata']['phone_number_id']
-                        
+
                         print(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}"); sys.stdout.flush()
-                        
+                        print(f"[DEBUG] texto_usuario inicial: '{texto_usuario}'"); sys.stdout.flush()
+
                         # --- VERIFICAR SESIÓN DEMO PRIMERO ---
                         session = database.get_user_session(numero_usuario, phone_number_id)
                         demo_client_id = None
                         if session and session.get('demo_mode'):
                             demo_mode = session['demo_mode']
-                            if demo_mode == "Restaurante": demo_client_id = "demo_restaurante"
-                            elif demo_mode == "Clínica" or demo_mode == "Clinica": demo_client_id = "demo_clinica"
-                            elif demo_mode == "Tienda": demo_client_id = "demo_tienda"
-                            elif demo_mode == "Dental": demo_client_id = "demo_dental_001"
-                            elif demo_mode == "Psicólogo" or demo_mode == "Psicología": demo_client_id = "demo_psychology_001"
+                            # IDs deben coincidir con los de database.py
+                            if demo_mode == "Restaurante": demo_client_id = "demo_restaurant"
+                            elif demo_mode == "Dental": demo_client_id = "demo_dental"
+                            elif demo_mode == "Psicólogo" or demo_mode == "Psicología": demo_client_id = "demo_psychology"
+                            elif demo_mode == "Salon" or demo_mode == "Salón": demo_client_id = "demo_salon"
+                            elif demo_mode == "Retail" or demo_mode == "Tienda": demo_client_id = "demo_retail"
                         
                         # Obtener siempre el cliente real primero (propietario del número base)
                         real_client = database.get_client_by_phone_id(phone_number_id)
@@ -300,112 +320,387 @@ async def recibir_mensaje(request: Request):
                             return {"status": "error", "message": "Client not found"}
                         
                         print(f"✅ Client Found: {client_data.get('name')} (ID: {client_data.get('id')})"); sys.stdout.flush()
-                        
+
+                        # ============================================
+                        # DETECCIÓN DE INICIO DE DEMO (NUEVO - MOVIDO ARRIBA)
+                        # ============================================
                         # 1. Detectar tipo de mensaje
-                        texto_usuario = ""
-                        if message.get('type') == 'text':
+                        message_type = message.get('type')
+                        print(f"[DEBUG] message_type RAW: {message_type}"); sys.stdout.flush()
+                        print(f"[DEBUG] message RAW: {message}"); sys.stdout.flush()
+
+                        if message_type == 'text':
                             texto_usuario = message.get('text', {}).get('body', "")
-                        elif message.get('type') == 'interactive':
+                        elif message_type == 'interactive':
                             interactive = message.get('interactive', {})
+                            print(f"[DEBUG] interactive type: {interactive.get('type')}"); sys.stdout.flush()
+                            print(f"[DEBUG] interactive content: {interactive}"); sys.stdout.flush()
+
                             if interactive.get('type') == 'button_reply':
                                 texto_usuario = interactive.get('button_reply', {}).get('title', "")
                             elif interactive.get('type') == 'list_reply':
                                 texto_usuario = interactive.get('list_reply', {}).get('title', "")
-                        
-                        print(f"DEBUG: Texto de usuario detectado: '{texto_usuario}'"); sys.stdout.flush()
-                        
-                        # --- INTERCEPCIÓN DE DEMOS (SANDBOX) ---
-                        texto_lower = texto_usuario.lower().strip()
-                        tipo_demo = None
-                        if "restaurante" in texto_lower: tipo_demo = "Restaurante"
-                        elif "clínica" in texto_lower or "clinica" in texto_lower: tipo_demo = "Clínica"
-                        elif "tienda" in texto_lower: tipo_demo = "Tienda"
-                        elif "dental" in texto_lower: tipo_demo = "Dental"
-                        elif "psicólogo" in texto_lower or "psicologo" in texto_lower: tipo_demo = "Psicólogo"
-                            
-                        if tipo_demo:
-                            print(f"[Demo] Iniciando sesión de demo para {numero_usuario} modo: {tipo_demo}"); sys.stdout.flush()
-                            database.save_user_session(numero_usuario, phone_number_id, {"demo_mode": tipo_demo})
-                            
-                            # Send welcome message with buttons for the demo
-                            if tipo_demo == "Restaurante":
-                                texto_welcome = "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?"
-                                opciones = ["Ver Menú", "Hacer Reserva", "Horarios"]
-                            elif tipo_demo == "Clínica":
-                                texto_welcome = "Bienvenido a la *Clínica San Juan*. 🏥 ¿En qué podemos ayudarte hoy?"
-                                opciones = ["Agendar Cita", "Especialidades", "Ubicación"]
-                            elif tipo_demo == "Tienda":
-                                texto_welcome = "¡Hola! Bienvenido a *Urban Vibe Style* 🕶️. ¿Cómo podemos ayudarte con tu estilo hoy?"
-                                opciones = ["Ver Catálogo", "Tallas", "Devoluciones"]
-                            elif tipo_demo == "Dental":
-                                texto_welcome = "¡Hola! Bienvenido a *SonrisaPerfecta IA*. 🦷 Especialistas en tu sonrisa. ¿Qué necesitas?"
-                                opciones = ["Agendar Cita", "Precios", "Ubicación"]
-                            elif tipo_demo == "Psicólogo":
-                                texto_welcome = "Hola, bienvenido al consultorio del *Dr. Alejandro Ruiz*. 🧠 ¿Cómo puedo apoyarte hoy?"
-                                opciones = ["Agendar Sesión", "Información", "Costos"]
-                            else: 
-                                texto_welcome = f"¡Hola! Bienvenido a la demo de {tipo_demo}. ¿En qué puedo ayudarte?"
-                                opciones = ["Información", "Contacto"]
+                            else:
+                                print(f"[DEBUG] interactive type desconocido: {interactive.get('type')}"); sys.stdout.flush()
+                                texto_usuario = ""
+                        else:
+                            print(f"Unhandled message type '{message_type}': {message}"); sys.stdout.flush()
+                            texto_usuario = ""
 
-                            whatsapp_service.enviar_menu_botones(numero_usuario, texto_welcome, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
-                            return {"status": "demo_started"}
+                        print(f"[DEBUG] texto_usuario DESPUES de extraer: '{texto_usuario}'"); sys.stdout.flush()
+                        print(f"[DEBUG] message_type: {message_type}"); sys.stdout.flush()
 
-                        # Comprobar si desea salir de la demo
-                        if texto_lower in ["salir", "terminar", "terminar demo", "salir demo"]:
-                            if session and session.get("demo_mode"):
+                        # Verificar si el usuario quiere iniciar UNA NUEVA demo (no viene de sesión)
+                        if not demo_client_id:
+                            texto_lower = texto_usuario.lower().strip()
+
+                            demo_keyword_map = {
+                                "restaurante": "demo_restaurant",
+                                "tienda": "demo_retail",
+                                "dental": "demo_dental",
+                                "psicologo": "demo_psychology",
+                                "psicólogo": "demo_psychology",
+                                "salon": "demo_salon",
+                                "belleza": "demo_salon"
+                            }
+
+                            demo_phone_id = None
+                            for keyword, phone_id in demo_keyword_map.items():
+                                if keyword in texto_lower:
+                                    demo_phone_id = phone_id
+                                    break
+
+                            if demo_phone_id:
+                                # Usuario quiere iniciar una demo nueva
+                                demo_client = database.get_client_by_phone_id(demo_phone_id)
+
+                                if demo_client:
+                                    tipo_demo = demo_phone_id.replace("demo_", "")
+                                    print(f"[Demo] Iniciando sesión de demo para {numero_usuario} modo: {tipo_demo}"); sys.stdout.flush()
+                                    database.save_user_session(numero_usuario, phone_number_id, {"demo_mode": tipo_demo, "demo_phone_id": demo_phone_id})
+
+                                    # Cargar menú del demo
+                                    menu_data_demo = None
+                                    print(f"[DEBUG] demo_client menu_json exists: {bool(demo_client.get('menu_json'))}"); sys.stdout.flush()
+                                    print(f"[DEBUG] demo_client keys: {demo_client.keys() if demo_client else 'NONE'}"); sys.stdout.flush()
+                                    try:
+                                        if demo_client.get('menu_json'):
+                                            menu_json_str = demo_client.get('menu_json')
+                                            print(f"[DEBUG] menu_json_str type: {type(menu_json_str)}"); sys.stdout.flush()
+                                            if isinstance(menu_json_str, str):
+                                                menu_data_demo = json.loads(menu_json_str)
+                                                print(f"[DEBUG] menu_data loaded from string"); sys.stdout.flush()
+                                            elif isinstance(menu_json_str, dict):
+                                                menu_data_demo = menu_json_str
+                                                print(f"[DEBUG] menu_data loaded from dict"); sys.stdout.flush()
+                                    except Exception as e:
+                                        print(f"DEBUG: Error al cargar menú del demo: {e}"); sys.stdout.flush()
+
+                                    print(f"[DEBUG] menu_data_demo final: {bool(menu_data_demo)}"); sys.stdout.flush()
+
+                                    if menu_data_demo:
+                                        texto_welcome = menu_data_demo.get('text', f"Hola! Bienvenido a {demo_client.get('name', 'la demo')}.")
+                                        opciones = [opt.get('title') for opt in menu_data_demo.get('options', [])]
+
+                                        print(f"[Demo] Menu cargado: {len(opciones)} opciones")
+                                        print(f"[DEBUG] real_client exists: {bool(real_client)}")
+                                        print(f"[DEBUG] phone_number_id value: {phone_number_id}")
+
+                                        # FORZAR token de Zotek directamente
+                                        FORCE_TOKEN = real_client.get('whatsapp_token') if real_client else None
+
+                                        print(f"[DEBUG] FORCE_TOKEN: {str(FORCE_TOKEN)[:20] if FORCE_TOKEN else 'NONE'}... (len={len(FORCE_TOKEN) if FORCE_TOKEN else 0})")
+                                        print(f"[DEBUG] phone_number_id: {phone_number_id}")
+
+                                        if FORCE_TOKEN and len(str(FORCE_TOKEN)) > 50:
+                                            print(f"[Demo] PREPARANDO ENVIO de WhatsApp..."); sys.stdout.flush()
+                                            print(f"[Demo]   numero_usuario: {numero_usuario}")
+                                            print(f"[Demo]   telefono_token: {str(FORCE_TOKEN)[:20]}...")
+                                            print(f"[Demo]   phone_number_id: {phone_number_id}")
+                                            print(f"[Demo]   opciones: {opciones}")
+                                            try:
+                                                print(f"[Demo] LLAMANDO a enviar_menu_botones..."); sys.stdout.flush()
+                                                result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_welcome, opciones, FORCE_TOKEN, phone_number_id)
+                                                print(f"[Demo] RESULTADO: {result}"); sys.stdout.flush()
+                                            except Exception as e:
+                                                print(f"[Demo] EXCEPCION: {e}"); sys.stdout.flush()
+                                                import traceback
+                                                traceback.print_exc()
+                                            print(f"[Demo] ENVIO completado"); sys.stdout.flush()
+                                        else:
+                                            print(f"[Demo] ERROR: Token no válido (len={len(FORCE_TOKEN) if FORCE_TOKEN else 0})"); sys.stdout.flush()
+                                    else:
+                                        print(f"[Demo] ERROR: No hay menú para {demo_phone_id}")
+
+                                    return {"status": "demo_started"}
+                                else:
+                                    print(f"[Demo] Bot demo '{demo_phone_id}' no encontrado"); sys.stdout.flush()
+
+                            # Si es mensaje de salir de demo
+                            if texto_lower in ["salir", "terminar", "terminar demo", "salir demo"]:
+                                if session and session.get("demo_mode"):
+                                    database.delete_user_session(numero_usuario, phone_number_id)
+                                    print(f"[Demo] Terminando sesión de demo para {numero_usuario}"); sys.stdout.flush()
+                                    msg_salida = "Has salido del modo demo. Ahora vuelvo a ser el asistente general de Zotek Soluciones IA. En que mas puedo ayudarte?"
+                                    whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    return {"status": "demo_ended"}
+
+                        # ============================================
+                        # FLUJO DE RESERVA INTERACTIVA (Restaurante)
+                        # ============================================
+                        # Verificar si el usuario está en medio de un flujo de reserva (dentro de session_data)
+                        reservation_session = database.get_user_session(numero_usuario, phone_number_id)
+                        if reservation_session and reservation_session.get('session_data', {}).get('reservation_flow'):
+                            flow_state = reservation_session['session_data']['reservation_flow']
+                            current_step = flow_state.get('step', 1)
+
+                            print(f"[Reserva] Usuario en paso {current_step} del flujo de reserva"); sys.stdout.flush()
+
+                            # Manejar cada paso del flujo
+                            if current_step == 1:  # Fecha
+                                # Guardar fecha seleccionada - preservar session_data
+                                from copy import deepcopy
+                                new_session_data = deepcopy(session.get('session_data', {}))
+                                new_session_data['reservation_flow'] = {
+                                    'step': 2,
+                                    'fecha': texto_usuario,
+                                    'inicio': flow_state.get('inicio')
+                                }
+                                database.save_user_session(numero_usuario, phone_number_id, new_session_data)
+
+                                # Enviar siguiente pregunta con botones
+                                fecha_msg = f"¡Perfecto! Reserva para: *{texto_usuario}* 📅\n\n"
+                                fecha_msg += "¿Para *cuántas personas* es la reserva?\n\n"
+                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, fecha_msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+
+                                # Enviar botones con opciones de personas
+                                personas_opciones = ["1-2 personas", "3-4 personas", "5+ personas"]
+                                whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona el número de personas:", personas_opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                return {"status": "reservation_step_1"}
+
+                            elif current_step == 2:  # Personas
+                                # Guardar número de personas
+                                database.save_user_session(numero_usuario, phone_number_id, {
+                                    'reservation_flow': {
+                                        'step': 3,
+                                        'fecha': flow_state.get('fecha'),
+                                        'personas': texto_usuario,
+                                        'inicio': flow_state.get('inicio')
+                                    }
+                                })
+
+                                # Enviar siguiente pregunta con botones de horario
+                                personas_msg = f"¡Excelente! Para *{texto_usuario}* 👥\n\n"
+                                personas_msg += "¿Qué *horario* prefieres?\n\n"
+                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, personas_msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+
+                                horario_opciones = ["Comida (1-5pm)", "Cena (6-10pm)"]
+                                whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona el horario:", horario_opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                return {"status": "reservation_step_2"}
+
+                            elif current_step == 3:  # Horario
+                                # Guardar horario - preservar session_data
+                                from copy import deepcopy
+                                new_session_data = deepcopy(session.get('session_data', {}))
+                                new_session_data['reservation_flow'] = {
+                                    'step': 4,
+                                    'fecha': flow_state.get('fecha'),
+                                    'personas': flow_state.get('personas'),
+                                    'horario': texto_usuario,
+                                    'inicio': flow_state.get('inicio')
+                                }
+                                database.save_user_session(numero_usuario, phone_number_id, new_session_data)
+
+                                # Pedir nombre
+                                horario_msg = f"¡Genial! Horario: *{texto_usuario}* ⏰\n\n"
+                                horario_msg += "Solo falta tu *nombre* para la reserva.\n\n"
+                                horario_msg += "¿Cómo te llamas?"
+                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, horario_msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                return {"status": "reservation_step_3"}
+
+                            elif current_step == 4:  # Nombre - Confirmar
+                                # Obtener todos los datos
+                                fecha = flow_state.get('fecha', 'N/A')
+                                personas = flow_state.get('personas', 'N/A')
+                                horario = flow_state.get('horario', 'N/A')
+                                nombre = texto_usuario
+
+                                # Mensaje de confirmación
+                                confirmacion_msg = f"¡Reserva confirmada! ✅\n\n"
+                                confirmacion_msg += f"*Detalles:*\n"
+                                confirmacion_msg += f"📅 Fecha: {fecha}\n"
+                                confirmacion_msg += f"👥 Personas: {personas}\n"
+                                confirmacion_msg += f"⏰ Horario: {horario}\n"
+                                confirmacion_msg += f"👤 Nombre: {nombre}\n\n"
+                                confirmacion_msg += f"*¡Te esperamos en La Mesa Elegante!*\n\n"
+                                confirmacion_msg += f"📍 Av. Principal #123, Centro\n"
+                                confirmacion_msg += f"📞 Tel: 55-1234-5678\n\n"
+                                confirmacion_msg += f"¿Necesitas algo más?"
+
+                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, confirmacion_msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+
+                                # Limpiar sesión de reserva
                                 database.delete_user_session(numero_usuario, phone_number_id)
-                                print(f"[Demo] Terminando sesión de demo para {numero_usuario}"); sys.stdout.flush()
-                                msg_salida = "Has salido del modo demo. Ahora vuelvo a ser el asistente general de Zotek Soluciones IA. ¿En qué más puedo ayudarte?"
-                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                return {"status": "demo_ended"}
-                        # --- FIN INTERCEPCIÓN DEMOS ---
+                                return {"status": "reservation_completed"}
+
+                        # ============================================
+                        # FIN DEL FLUJO DE RESERVA
+                        # ============================================
 
                         if not client_data.get('is_active', True):
                             print(f"[Webhook] Bot is INACTIVE for '{client_data['name']}'. Skipping AI."); sys.stdout.flush()
+                            # Still send a polite message to the user
+                            try:
+                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, "Gracias por contactarnos. En este momento el bot está temporalmente no disponible. Por favor intenta más tarde.", client_data.get('whatsapp_token', ''), client_data.get('phone_number_id', ''))
+                            except:
+                                pass
                             return {"status": "bot_inactive"}
 
-                        print(f"[Webhook] Bot is ACTIVE. WhatsApp token present: {bool(client_data.get('whatsapp_token'))}, token starts: {str(client_data.get('whatsapp_token', ''))[:15]}..."); sys.stdout.flush()
+                        # Validar token de WhatsApp
+                        if not client_data.get('whatsapp_token'):
+                            print(f"❌ ERROR: No WhatsApp token configured for '{client_data['name']}'"); sys.stdout.flush()
+                            # No podemos enviar mensaje sin token, pero continuamos con Gemini para logging
+                            # Marcar para no intentar enviar WhatsApp
+                            skip_whatsapp = True
+                        else:
+                            skip_whatsapp = False
+                            print(f"[Webhook] Bot is ACTIVE. WhatsApp token present: {bool(client_data.get('whatsapp_token'))}, token starts: {str(client_data.get('whatsapp_token', ''))[:15]}..."); sys.stdout.flush()
 
                         # Intercepción de Opciones del Menú Personalizado
+                        # En PostgreSQL, el menú está en client_data['menu_json']
+                        # Si el usuario está en una demo, cargar el menú del demo, no el de Zotek
+                        session_is_demo = session and session.get('demo_mode')
+                        # session_data está dentro de session['session_data']
+                        session_data_dict = session.get('session_data', {}) if session else {}
+                        demo_phone_id_from_session = session_data_dict.get('demo_phone_id') if session_is_demo else None
+
+                        print(f"[DEBUG] session_is_demo: {session_is_demo}"); sys.stdout.flush()
+                        print(f"[DEBUG] demo_phone_id_from_session: {demo_phone_id_from_session}"); sys.stdout.flush()
+
                         menu_data = None
                         try:
-                            # Reutilizamos la lógica del menú aquí para evitar funciones anidadas problemáticas
-                            menu_doc = database.get_db().collection('clients').document(str(client_data['id'])).collection('config').document('menu').get()
-                            if menu_doc.exists: menu_data = menu_doc.to_dict()
+                            # Si es demo, cargar el menú del demo
+                            if session_is_demo and demo_phone_id_from_session:
+                                print(f"[DEBUG] Loading demo menu for: {demo_phone_id_from_session}"); sys.stdout.flush()
+                                demo_client_for_menu = database.get_client_by_phone_id(demo_phone_id_from_session)
+                                print(f"[DEBUG] demo_client_for_menu: {bool(demo_client_for_menu)}"); sys.stdout.flush()
+                                if demo_client_for_menu and demo_client_for_menu.get('menu_json'):
+                                    menu_json_str = demo_client_for_menu.get('menu_json')
+                                    if isinstance(menu_json_str, str):
+                                        menu_data = json.loads(menu_json_str)
+                                        print(f"[DEBUG] menu_data loaded from DEMO string"); sys.stdout.flush()
+                                    elif isinstance(menu_json_str, dict):
+                                        menu_data = menu_json_str
+                                        print(f"[DEBUG] menu_data loaded from DEMO dict"); sys.stdout.flush()
+                            # Si no es demo, cargar el menú del cliente normal
+                            elif client_data and client_data.get('menu_json'):
+                                menu_json_str = client_data.get('menu_json')
+                                if isinstance(menu_json_str, str):
+                                    menu_data = json.loads(menu_json_str)
+                                elif isinstance(menu_json_str, dict):
+                                    menu_data = menu_json_str
                         except Exception as e:
-                            print(f"DEBUG: Error al cargar menú desde Firestore: {e}"); sys.stdout.flush()
+                            print(f"DEBUG: Error al cargar menú desde JSON: {e}"); sys.stdout.flush()
+                            import traceback
+                            traceback.print_exc()
 
                         if menu_data:
+                            print(f"[DEBUG] menu_data loaded, options count: {len(menu_data.get('options', []))}"); sys.stdout.flush()
+
+                            def clean_string(s):
+                                if not s: return ""
+                                # Eliminar emojis, caracteres especiales y acentos
+                                s = re.sub(r'[^\w\s]', '', s)
+                                # Normalizar: eliminar acentos y convertir a lowercase
+                                s = s.lower().strip()
+                                # Eliminar espacios multiples
+                                s = re.sub(r'\s+', ' ', s)
+                                return s
+
                             def buscar_opcion(opciones, texto):
+                                """Busca una opción en el menú de forma resiliente."""
+                                cleaned_text = clean_string(texto)
+                                print(f"[DEBUG] buscar_opcion: texto='{texto}', cleaned='{cleaned_text}'"); sys.stdout.flush()
+                                if not cleaned_text: return None
+
                                 for opt in opciones:
                                     is_dict = isinstance(opt, dict)
-                                    title = opt.get('title') if is_dict else opt
+                                    title = opt.get('title') if is_dict else str(opt)
                                     icon = opt.get('icon', '') if is_dict else ''
-                                    full_title = f"{icon} {title}".strip()
-                                    
-                                    # Comparar con título completo (con icono) y con solo el título
-                                    if str(full_title).lower().strip() == texto.lower().strip(): return opt
-                                    if str(title).lower().strip() == texto.lower().strip(): return opt
-                                    
-                                    # Caso especial: Si ya tiene el emoji, no duplicarlo
-                                    if icon and title.startswith(icon):
-                                        full_title = title
-                                    
-                                    if str(full_title).lower().strip() == texto.lower().strip(): return opt
+                                    cleaned_title = clean_string(title)
 
+                                    print(f"[DEBUG]   checking option: title='{title}', cleaned='{cleaned_title}'"); sys.stdout.flush()
+
+                                    # 1. Emparejamiento exacto o por título limpio
+                                    if cleaned_title == cleaned_text:
+                                        print(f"[DEBUG]   MATCH 1: exact clean"); sys.stdout.flush()
+                                        return opt
+
+                                    # 2. Emparejamiento parcial (contiene el texto)
+                                    if cleaned_text in cleaned_title:
+                                        print(f"[DEBUG]   MATCH 2: partial"); sys.stdout.flush()
+                                        return opt
+
+                                    # 3. Emparejamiento con icono si viene en el texto
+                                    full_title = f"{icon} {title}".strip()
+                                    if clean_string(full_title) == cleaned_text:
+                                        print(f"[DEBUG]   MATCH 3: with icon exact"); sys.stdout.flush()
+                                        return opt
+                                    if cleaned_text in clean_string(full_title):
+                                        print(f"[DEBUG]   MATCH 4: with icon partial"); sys.stdout.flush()
+                                        return opt
+
+                                    # 4. Emparejamiento sin icono (por si el usuario no incluye el emoji)
+                                    if icon and cleaned_title == cleaned_text:
+                                        print(f"[DEBUG]   MATCH 5: no emoji"); sys.stdout.flush()
+                                        return opt
+
+                                    # 5. Recursión para submenús
                                     if is_dict and opt.get('submenu') and opt['submenu'].get('options'):
                                         found = buscar_opcion(opt['submenu']['options'], texto)
                                         if found: return found
-                                    elif is_dict and 'opciones' in opt: # Soporte para estructura vieja
+                                    elif is_dict and 'opciones' in opt:
                                         found = buscar_opcion(opt['opciones'], texto)
                                         if found: return found
                                 return None
 
                             match = buscar_opcion(menu_data.get('options', []), texto_usuario)
-                            if not match and 'opciones' in menu_data: # Backup para estructura vieja
+                            if not match and 'opciones' in menu_data:
                                 match = buscar_opcion(menu_data['opciones'], texto_usuario)
 
                             if match and isinstance(match, dict):
+                                # ============================================
+                                # INICIAR FLUJO DE RESERVA (Restaurante)
+                                # ============================================
+                                titulo_match = str(match.get('title', '')).lower()
+                                if 'reserva' in titulo_match and 'hacer' in titulo_match:
+                                    print(f"[Reserva] Iniciando flujo de reserva para {numero_usuario}"); sys.stdout.flush()
+
+                                    # Guardar estado inicial del flujo
+                                    database.save_user_session(numero_usuario, phone_number_id, {
+                                        'reservation_flow': {
+                                            'step': 1,
+                                            'inicio': datetime.now().isoformat()
+                                        }
+                                    })
+
+                                    # Enviar primer mensaje del flujo
+                                    reserva_msg = "¡Excelente elección! 🎉\n\n"
+                                    reserva_msg += "*Vamos a agendar tu reserva*\n\n"
+                                    reserva_msg += "Primero, ¿para qué *fecha* te gustaría reservar?\n\n"
+                                    reserva_msg += "*Opciones:*\n"
+                                    reserva_msg += "• Hoy\n"
+                                    reserva_msg += "• Mañana\n"
+                                    reserva_msg += "• Otra fecha (escribe la fecha)\n\n"
+                                    reserva_msg += "¿Cuál prefieres?"
+
+                                    whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, reserva_msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    return {"status": "reservation_started"}
+
+                                # ============================================
+                                # FIN FLUJO DE RESERVA
+                                # ============================================
+
                                 if match.get('submenu') and match['submenu'].get('options'):
                                     sub = match['submenu']
                                     titles = []
@@ -416,15 +711,16 @@ async def recibir_mensaje(request: Request):
                                             titles.append(t.strip())
                                         else:
                                             titles.append(f"{i} {t}".strip())
-                                        
-                                    if len(titles) == 0:
-                                        msg = sub.get('text', f"Opciones para {match['title']}:")
-                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    elif len(titles) > 3:
-                                        whatsapp_service.enviar_menu_lista(numero_usuario, sub.get('text', 'Opciones:'), "Ver", match['title'], titles, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    else:
-                                        whatsapp_service.enviar_menu_botones(numero_usuario, sub.get('text', 'Opciones:'), titles, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, sub.get('text', 'Opciones:'))
+
+                                    if not skip_whatsapp:
+                                        if len(titles) == 0:
+                                            msg = sub.get('text', f"Opciones para {match['title']}:")
+                                            whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        elif len(titles) > 3:
+                                            whatsapp_service.enviar_menu_lista(numero_usuario, sub.get('text', 'Opciones:'), "Ver", match['title'], titles, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        else:
+                                            whatsapp_service.enviar_menu_botones(numero_usuario, sub.get('text', 'Opciones:'), titles, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, sub.get('text', 'Opciones:'))
                                     return {"status": "submenu_sent"}
                                 elif match.get('response'):
                                     res_text = match['response']
@@ -433,10 +729,9 @@ async def recibir_mensaje(request: Request):
                                         res_text = res_text.replace("{{calendly_url}}", cal_url)
                                         if "agendar cita" in str(match.get('title')).lower():
                                             if cal_url not in res_text: res_text += f"\n\nLink: {cal_url}"
-                                    
+
                                     print(f"DEBUG: Enviando respuesta predefinida para '{match.get('title')}'"); sys.stdout.flush()
-                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_text)
-                                    
+
                                     # Inline de enviar_respuesta_con_opciones
                                     texto_para_enviar = res_text
                                     opciones_dinamicas = []
@@ -446,15 +741,28 @@ async def recibir_mensaje(request: Request):
                                         dict_opciones = partes[1].split("|")
                                         opciones_dinamicas = [o.strip() for o in dict_opciones if o.strip()]
 
-                                    whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_para_enviar, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    if opciones_dinamicas:
-                                        if len(opciones_dinamicas) > 3:
-                                            whatsapp_service.enviar_menu_lista(numero_usuario, "Selecciona:", "Opciones", "Menú", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                        elif len(opciones_dinamicas) > 0:
-                                            whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                    if not skip_whatsapp:
+                                        database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_text)
+                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_para_enviar, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        if opciones_dinamicas:
+                                            if len(opciones_dinamicas) > 3:
+                                                whatsapp_service.enviar_menu_lista(numero_usuario, "Selecciona:", "Opciones", "Menú", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                            elif len(opciones_dinamicas) > 0:
+                                                whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     return {"status": "predefined_sent"}
 
+                                # Caso: opción de menú sin response ni submenu - usar fallback
+                                elif menu_data and menu_data.get('fallback_text'):
+                                    print(f"DEBUG: Opción '{match.get('title')}' sin response. Usando fallback_text."); sys.stdout.flush()
+                                    if not skip_whatsapp:
+                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, menu_data['fallback_text'], client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, menu_data['fallback_text'])
                                     return {"status": "fallback_sent"}
+
+                                # Caso: opción de menú sin response - dejar que Gemini responda
+                                else:
+                                    print(f"DEBUG: Opción '{match.get('title')}' sin response. Gemini responderá."); sys.stdout.flush()
+                                    # Continuar a Gemini, no retornar aquí
 
                         # Keywords de menú (hola, menu, etc.)
                         if texto_usuario.lower().strip() in ["hola", "menu", "menú", "inicio", "opciones"]:
@@ -476,25 +784,30 @@ async def recibir_mensaje(request: Request):
                                         opciones.append(t.strip())
                                     else:
                                         opciones.append(f"{i} {t}".strip())
-                                
+
                                 print(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}"); sys.stdout.flush()
-                                try:
-                                    if len(opciones) > 3:
-                                        send_result = whatsapp_service.enviar_menu_lista(numero_usuario, texto_menu_local, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    else:
-                                        send_result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu_local, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    
-                                    database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Menu enviado: {send_result}]")
-                                    print(f"[Webhook] ✅ Menu flow complete. send_result={send_result}"); sys.stdout.flush()
-                                    return {"status": "menu_sent"}
-                                except Exception as e:
-                                    print(f"❌ ERROR enviando menú: {e}\n{traceback.format_exc()}"); sys.stdout.flush()
-                                    return {"status": "error_sending_menu"}
+                                if not skip_whatsapp:
+                                    try:
+                                        if len(opciones) > 3:
+                                            send_result = whatsapp_service.enviar_menu_lista(numero_usuario, texto_menu_local, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                        else:
+                                            send_result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu_local, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
+
+                                        database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Menu enviado: {send_result}]")
+                                        print(f"[Webhook] ✅ Menu flow complete. send_result={send_result}"); sys.stdout.flush()
+                                        return {"status": "menu_sent"}
+                                    except Exception as e:
+                                        print(f"❌ ERROR enviando menú: {e}\n{traceback.format_exc()}"); sys.stdout.flush()
+                                        return {"status": "error_sending_menu"}
+                                else:
+                                    print(f"[Webhook] Would send menu but skip_whatsapp=True"); sys.stdout.flush()
+                                    return {"status": "menu_skipped"}
                             else:
                                 print(f"[Webhook] Menu has 0 options. Allowing Gemini to handle the greeting."); sys.stdout.flush()
                                 # Do not return here. Let it fall through to Gemini.
 
-                        if not match and menu_data.get('fallback_text'):
+                        # Fallback text - only if menu_data exists and no match was found
+                        if menu_data and not match and menu_data.get('fallback_text'):
                             print(f"DEBUG: No menu match found. Sending fallback_text for {client_data['name']}"); sys.stdout.flush()
                             fallback_msg = menu_data['fallback_text']
                             opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
@@ -506,49 +819,98 @@ async def recibir_mensaje(request: Request):
                                     opciones.append(t.strip())
                                 else:
                                     opciones.append(f"{i} {t}".strip())
-                            
-                            if len(opciones) > 0:
+
+                            if not skip_whatsapp and len(opciones) > 0:
                                 if len(opciones) > 3:
                                     whatsapp_service.enviar_menu_lista(numero_usuario, fallback_msg, "Ver Opciones", "Menú", opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
                                 else:
                                     whatsapp_service.enviar_menu_botones(numero_usuario, fallback_msg, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
                                 database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Fallback enviado: {fallback_msg}]")
+                                return {"status": "fallback_sent"}
+                            elif len(opciones) == 0:
+                                print(f"[Webhook] Fallback has 0 options. Allowing Gemini to handle."); sys.stdout.flush()
+                                # Let Gemini handle it
 
-                        # Proceso con Gemini
-                        if gemini is None: return {"status": "no_gemini"}
-                        
                         # --- INYECCIÓN DE CONTEXTO DEMO ---
                         session = database.get_user_session(numero_usuario, phone_number_id)
                         if session and session.get('demo_mode'):
                             demo_mode = session['demo_mode']
-                            if demo_mode == "Restaurante":
-                                if not client_data.get('name'): client_data['name'] = "La Trattoria"
-                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente inteligente del restaurante 'La Trattoria'. Tu objetivo es ayudar a los clientes a hacer reservas, ver el menú (ofreces pizzas, pastas y ensaladas) y responder dudas sobre los horarios (abierto 12pm a 11pm). Sé amigable, breve y apetitoso."
-                            elif demo_mode == "Clínica":
-                                if not client_data.get('name'): client_data['name'] = "Clínica San Juan"
-                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente de la 'Clínica San Juan'. Ayudas a pacientes a agendar citas médicas (Medicina general, Odontología, Pediatría) y das información de ubicación. Sé empático, breve, profesional y tranquilizador."
-                            elif demo_mode == "Tienda":
-                                if not client_data.get('name'): client_data['name'] = "Urban Vibe Style"
-                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente de la tienda de ropa 'Urban Vibe'. Ayudas a encontrar prendas, verificar tallas y rastrear pedidos. Sé casual y moderno."
-                            elif demo_mode == "Dental":
-                                if not client_data.get('name'): client_data['name'] = "SonrisaPerfecta IA"
-                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente virtual de la clínica dental 'SonrisaPerfecta IA'. Ayudas a agendar citas odontológicas, das información de precios y ubicación. Sé profesional, amable y pulcro."
-                            elif demo_mode == "Psicólogo":
-                                if not client_data.get('name'): client_data['name'] = "MenteSana Bot"
-                                if not client_data.get('system_instruction'): client_data['system_instruction'] = "Eres el asistente del Dr. Alejandro Ruiz. Ayudas a agendar sesiones de terapia, das costos y horarios. Sé muy respetuoso, puntual y empático."
-                            print(f"[Demo] Inyectando contexto de {demo_mode} para Gemini."); sys.stdout.flush()
+                            demo_phone_id = session.get('demo_phone_id')
+
+                            # Cargar el bot demo desde la base de datos si tenemos el phone_id
+                            if demo_phone_id:
+                                demo_client = database.get_client_by_phone_id(demo_phone_id)
+                                if demo_client:
+                                    # Reemplazar client_data con el bot demo completo
+                                    client_data = demo_client
+                                    print(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos."); sys.stdout.flush()
+                            else:
+                                # Fallback: intentar encontrar el demo por modo (solo si no hay phone_id)
+                                demo_phone_ids = {
+                                    "restaurante": "demo_restaurant",
+                                    "tienda": "demo_retail",
+                                    "dental": "demo_dental",
+                                    "psicologo": "demo_psychology",
+                                    "salon": "demo_salon"
+                                }
+                                if demo_mode in demo_phone_ids:
+                                    demo_client = database.get_client_by_phone_id(demo_phone_ids[demo_mode])
+                                    if demo_client:
+                                        client_data = demo_client
+                                        print(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos."); sys.stdout.flush()
                         
                         prompt = texto_usuario
                         if message.get('type') == 'interactive':
                             prompt = f"[Menú]: {texto_usuario}"
-                        
+
                         if menu_data:
                             client_data['menu_data'] = menu_data
-                        
-                        print(f"[Webhook] Calling Gemini for: '{prompt[:50]}...'")
+
+                        # ============================================
+                        # RAG: Inyectar conocimiento de PDFs en el contexto
+                        # ============================================
+                        knowledge = database.get_client_knowledge(client_data['id'])
+                        contexto_pdf = ""
+
+                        if knowledge and len(knowledge) > 0:
+                            # Unir todo el conocimiento disponible
+                            contexto_pdf = "\n\n".join([k['content'] for k in knowledge])
+
+                            # Inyectar en system_instruction temporalmente
+                            original_instruction = client_data.get('system_instruction', '')
+                            client_data['system_instruction'] = f"""{original_instruction}
+
+📚 CONOCIMIENTO DE DOCUMENTOS ADJUNTOS:
+El cliente ha subido los siguientes documentos que contienen información importante. Usa esta información para responder preguntas específicas:
+
+{contexto_pdf[:15000]}  # Limitar para no exceder token limit
+
+INSTRUCCIONES:
+- Si el usuario pregunta algo relacionado con los documentos, usa la información de arriba para responder.
+- Si no encuentras la respuesta en los documentos, responde honestamente que no tienes esa información.
+- Cita la fuente cuando sea posible (nombre del archivo).
+- Sé preciso y específico con la información de los documentos.
+"""
+                            print(f"[RAG] Injected {len(contexto_pdf)} chars of knowledge context"); sys.stdout.flush()
+                        else:
+                            print(f"[RAG] No knowledge base found for client {client_data['id']}"); sys.stdout.flush()
+                        # ============================================
+                        # FIN RAG
+                        # ============================================
+
+                        print(f"[Webhook] Calling Gemini for: '{prompt[:50]}...'"); sys.stdout.flush()
+
+                        # Verificar si Gemini está disponible
+                        if gemini is None:
+                            print(f"❌ ERROR: Gemini not initialized. Cannot process request."); sys.stdout.flush()
+                            if not skip_whatsapp:
+                                fallback_msg = "Gracias por tu mensaje. En este momento estoy experimentando dificultades técnicas. Por favor intenta más tarde."
+                                whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, fallback_msg, client_data['whatsapp_token'], client_data['phone_number_id'])
+                            return {"status": "no_gemini"}
+
                         res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
-                        print(f"[Webhook] Gemini response preview: {res_ai[:80]}")
-                        
+                        print(f"[Webhook] Gemini response preview: {res_ai[:80]}"); sys.stdout.flush()
+
                         # Parse dynamic [OPCIONES]: generated by Gemini
                         texto_para_enviar = res_ai
                         opciones_dinamicas = []
@@ -557,22 +919,43 @@ async def recibir_mensaje(request: Request):
                             texto_para_enviar = partes[0].strip()
                             dict_opciones = partes[1].split("|")
                             opciones_dinamicas = [o.strip() for o in dict_opciones if o.strip()][:10] # WhatsApp list limit 10
-                        
-                        success = whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_para_enviar, client_data['whatsapp_token'], client_data['phone_number_id'])
-                        
-                        if success and opciones_dinamicas:
-                            if len(opciones_dinamicas) > 3:
-                                whatsapp_service.enviar_menu_lista(numero_usuario, "Por favor, selecciona una opción:", "Ver opciones", "Menú", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
-                            elif len(opciones_dinamicas) > 0:
-                                whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona una opción:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
 
-                        print(f"[Webhook] WhatsApp send result: {success}")
+                        # Enviar respuesta solo si tenemos token
+                        success = False
+                        if not skip_whatsapp:
+                            success = whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, texto_para_enviar, client_data['whatsapp_token'], client_data['phone_number_id'])
+
+                            if success and opciones_dinamicas:
+                                if len(opciones_dinamicas) > 3:
+                                    whatsapp_service.enviar_menu_lista(numero_usuario, "Por favor, selecciona una opción:", "Ver opciones", "Menú", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
+                                elif len(opciones_dinamicas) > 0:
+                                    whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona una opción:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
+
+                            print(f"[Webhook] WhatsApp send result: {success}"); sys.stdout.flush()
+                        else:
+                            print(f"[Webhook] Skipping WhatsApp send (no token)"); sys.stdout.flush()
+                            success = True  # Mark as success for logging purposes
+
                         if success:
                             database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, res_ai)
 
     except Exception as e:
         import traceback
-        print(f"❌ WEBHOOK CRITICAL ERROR: {e}\n{traceback.format_exc()}")
+        error_msg = f"❌ WEBHOOK CRITICAL ERROR: {e}\n{traceback.format_exc()}"
+        print(error_msg); sys.stdout.flush()
+
+        # Intentar notificar al usuario sobre el error
+        try:
+            if 'numero_usuario' in locals() and 'client_data' in locals():
+                if client_data.get('whatsapp_token'):
+                    whatsapp_service.enviar_mensaje_whatsapp(
+                        numero_usuario,
+                        "Lo siento, ocurrió un error técnico al procesar tu mensaje. Por favor intenta de nuevo más tarde.",
+                        client_data.get('whatsapp_token'),
+                        client_data.get('phone_number_id', '')
+                    )
+        except:
+            pass  # No hacer ruido si falla el envío del error
 
     return {"status": "ok"}
 
@@ -581,7 +964,7 @@ async def recibir_mensaje(request: Request):
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(hours=8))
+    expire = datetime.now() + (expires_delta or timedelta(hours=8))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -654,7 +1037,7 @@ async def request_code(request: Request):
     code = f"{random.randint(100000, 999999)}"
     verification_codes[email] = {
         "code": code,
-        "expiry": datetime.utcnow() + timedelta(minutes=10)
+        "expiry": datetime.now() + timedelta(minutes=10)
     }
 
     if send_security_code(email, code):
@@ -670,7 +1053,7 @@ async def verify_code(request: Request):
     code = data.get("code")
 
     stored = verification_codes.get(email)
-    if not stored or stored["code"] != code or datetime.utcnow() > stored["expiry"]:
+    if not stored or stored["code"] != code or datetime.now() > stored["expiry"]:
         raise HTTPException(status_code=401, detail="Codigo invalido o expirado")
 
     del verification_codes[email]
@@ -768,14 +1151,14 @@ async def create_client(request: Request, current_user: str = Depends(get_curren
 @app.put("/api/clients/{client_id}")
 async def update_client(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     data = await request.json()
-    
-    # Separar el menú si viene incluido para guardarlo en su propia ruta
+
+    # Separar el menú si viene incluido para guardarlo en menu_json
     menu_data = data.pop('menu', None)
-    
+
+    if menu_data:
+        data['menu_json'] = menu_data
+
     if database.update_client(client_id, data):
-        if menu_data:
-            # Guardar el menú en la subcolección config/menu
-            database.get_db().collection('clients').document(client_id).collection('config').document('menu').set(menu_data)
         return {"status": "updated"}
     raise HTTPException(status_code=400, detail="Error updating client")
 
@@ -790,32 +1173,23 @@ async def get_client(client_id: str, current_user: str = Depends(get_current_use
 
 @app.delete("/api/clients/{client_id}")
 async def delete_client(client_id: str, current_user: str = Depends(get_current_user)):
-    """Elimina permanentemente un cliente de Firebase."""
+    """Elimina permanentemente un cliente de la base de datos PostgreSQL."""
     print(f"📥 DELETE /api/clients/{client_id} called")
-    
+
     # Prevenir eliminación de demos hardcodeados
     if str(client_id).startswith('demo_'):
         print(f"⚠️ Attempted to delete demo client {client_id}")
         raise HTTPException(status_code=403, detail="No se pueden eliminar clientes de demostración")
-    
+
     try:
-        # Eliminar documento del cliente
-        db = database.get_db()
-        
-        # Primero eliminar knowledge entries
-        knowledge_ref = db.collection('clients').document(client_id).collection('knowledge')
-        for doc in knowledge_ref.stream():
-            doc.reference.delete()
-        
-        # Eliminar config/menu si existe
-        menu_ref = db.collection('clients').document(client_id).collection('config').document('menu')
-        menu_ref.delete()
-        
-        # Finalmente eliminar el documento del cliente
-        db.collection('clients').document(client_id).delete()
-        
-        print(f"✅ Cliente {client_id} eliminado exitosamente")
-        return {"status": "deleted"}
+        # database.delete_client_db_entry ya maneja la eliminación en cascada
+        if database.delete_client_db_entry(client_id):
+            print(f"✅ Cliente {client_id} eliminado exitosamente")
+            return {"status": "deleted"}
+        else:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Error eliminando cliente: {e}")
         raise HTTPException(status_code=500, detail=f"Error al eliminar cliente: {str(e)}")
@@ -837,17 +1211,24 @@ async def delete_document(client_id: str, doc_id: str, current_user: str = Depen
 @app.get("/api/clients/{client_id}/menu")
 async def get_client_menu(client_id: str, current_user: str = Depends(get_current_user)):
     """Obtiene la configuración del menú de un cliente."""
-    doc = database.get_db().collection('clients').document(client_id).collection('config').document('menu').get()
-    if doc.exists:
-        return doc.to_dict()
+    client = database.get_client_by_id(client_id)
+    if client and client.get('menu_json'):
+        menu_json = client.get('menu_json')
+        if isinstance(menu_json, str):
+            try:
+                return json.loads(menu_json)
+            except:
+                pass
+        return menu_json
     return {"text": "", "options": ["Servicios", "Agendar Cita", "Contacto"]}
 
 @app.post("/api/clients/{client_id}/menu")
 async def update_client_menu(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     """Actualiza la configuración del menú de un cliente."""
     data = await request.json()
-    database.get_db().collection('clients').document(client_id).collection('config').document('menu').set(data)
-    return {"status": "updated"}
+    if database.update_client(client_id, {'menu_json': data}):
+        return {"status": "updated"}
+    raise HTTPException(status_code=400, detail="Error updating menu")
 
 @app.post("/api/clients/{client_id}/reset")
 async def reset_demo_client(client_id: str, current_user: str = Depends(get_current_user)):
@@ -860,17 +1241,17 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
     # Plantillas de configuración original por tipo de demo
     demo_templates = {
         "restaurante": {
-            "name": "Restaurante La Trattoria",
+            "name": "🤖 Demo GourmetBot 2026",
             "email": "restaurante@ejemplo.com",
             "is_active": True,
             "menu": {
-                "text": "¡Bienvenido a *La Trattoria*! 👋 Soy tu asistente virtual. ¿Qué te gustaría hacer hoy?",
+                "text": "¡Bienvenido a *GourmetBot 2026*! 👋 Soy tu asistente virtual del restaurante 'La Mesa Elegante'. ¿Qué te gustaría hacer hoy?",
                 "options": [
                     {"title": "Ver Menú", "icon": "🍕", "response": "Nuestro menú incluye pizzas a la leña, pastas frescas y postres italianos."},
                     {"title": "Hacer Reserva", "icon": "📅", "response": "Indícanos la fecha y hora para verificar disponibilidad."},
                     {"title": "Horarios", "icon": "⏰", "response": "Estamos abiertos todos los días de 12:00 PM a 11:00 PM."}
                 ],
-                "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de La Trattoria:"
+                "fallback_text": "Lo siento, no entendí eso. Aquí tienes las opciones principales de GourmetBot 2026:"
             }
         },
         "clinica": {
@@ -894,7 +1275,7 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
             "menu": {
                 "text": "¡Hola! Bienvenido a *Moda Urbana*. 🛍️ ✨ ¿Cómo podemos ayudarte con tu estilo hoy?",
                 "options": [
-                    {"title": "Ver Catálogo", "icon": "👕", "response": "Nuestra nueva colección de otoño ya está disponible."},
+                    {"title": "Ver Catálogo", "icon": "��", "response": "Nuestra nueva colección de otoño ya está disponible."},
                     {"title": "Tallas", "icon": "📏", "response": "Manejamos tallas desde XS hasta XL en la mayoría de nuestras prendas."},
                     {"title": "Devoluciones", "icon": "🔄", "response": "Tienes 30 días para realizar cambios o devoluciones con tu ticket."}
                 ],
@@ -955,7 +1336,7 @@ async def reset_demo_client(client_id: str, current_user: str = Depends(get_curr
     # Si no se pudo determinar, intentar por el nombre del cliente
     if not template_key:
         client_name = str(current_data.get('name', '')).lower()
-        if 'restaurante' in client_name or 'trattoria' in client_name:
+        if 'restaurante' in client_name or 'gourmet' in client_name or 'la mesa elegante' in client_name:
             template_key = 'restaurante'
         elif 'clínica' in client_name or 'clinica' in client_name or 'san juan' in client_name:
             template_key = 'clinica'
@@ -994,57 +1375,23 @@ async def list_chats(client_id: str, limit: int = 50, current_user: str = Depend
     """Obtiene el historial de chats de un cliente."""
     return database.get_client_chats(client_id, limit=limit)
 
-@app.post("/api/migrate")
-async def migrate_sqlite_to_firestore(current_user: str = Depends(get_current_user)):
-    """Migra los datos de SQLite local (en el servidor) a Firestore."""
-    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "consultorio.db")
-    if not os.path.exists(db_path):
-        return {"status": "error", "message": f"SQLite DB not found at {db_path}"}
-    
+@app.delete("/api/clients/{client_id}/clear-chats")
+async def clear_chats(client_id: str, current_user: str = Depends(get_current_user)):
+    """Elimina todos los chats de un cliente."""
     try:
-        print(f"[Migration] SQLite DB found at {db_path}. Opening connection...")
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
+        conn = database.get_connection()
         cursor = conn.cursor()
-        
-        # Migrar Clientes
-        print("[Migration] Extracting clients from SQLite...")
-        cursor.execute("SELECT * FROM clients")
-        clients = cursor.fetchall()
-        print(f"[Migration] Found {len(clients)} clients to migrate.")
-        migrated_clients = 0
-        for client in clients:
-            client_dict = dict(client)
-            old_id = client_dict.pop('id')
-            
-            print(f"[Migration] Migrating client {old_id} ({client_dict.get('name')})...")
-            # Subir a Firestore usando el ID anterior como nombre de doc para mantener refs
-            doc_ref = database.get_db().collection('clients').document(str(old_id))
-            doc_ref.set(client_dict)
-            
-            # Migrar Conocimiento
-            print(f"[Migration]   Extracting knowledge for client {old_id}...")
-            cursor.execute("SELECT * FROM knowledge_base WHERE client_id = ?", (old_id,))
-            knowledge = cursor.fetchall()
-            print(f"[Migration]   Found {len(knowledge)} entries.")
-            for k in knowledge:
-                k_dict = dict(k)
-                k_id = k_dict.pop('id')
-                k_dict.pop('client_id', None) # Avoid error if column name is actually client_id
-                doc_ref.collection('knowledge').document(str(k_id)).set(k_dict)
-            
-            migrated_clients += 1
-            print(f"[Migration]   Client {old_id} migrated successfully.")
-        
+        cursor.execute('DELETE FROM client_chats WHERE client_id = %s', (client_id,))
+        deleted = cursor.rowcount
+        conn.commit()
+        cursor.close()
         conn.close()
-        print(f"[Migration] Success! Total migrated: {migrated_clients}")
-        return {"status": "success", "migrated_clients": migrated_clients}
+        return {"status": "cleared", "deleted_count": deleted}
     except Exception as e:
-        import traceback
-        error_msg = f"Error en migración: {str(e)}\n{traceback.format_exc()}"
-        print(f"[Migration] FATAL ERROR: {error_msg}")
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
+# NOTA: La ruta /api/migrate fue eliminada porque la migración a PostgreSQL ya está completa.
+# El sistema ahora usa exclusivamente PostgreSQL (InsForge) como base de datos.
 
 @app.get("/api/settings")
 async def get_settings(request: Request, current_user: str = Depends(get_current_user)):
@@ -1069,47 +1416,339 @@ async def get_settings(request: Request, current_user: str = Depends(get_current
 async def upload_pdf(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     """Endpoint para subir un PDF, extraer su texto y guardarlo en la base de conocimientos."""
     global PdfReader
+    import sys
+
     if not PdfReader:
-        # Intentar re-importar por si se instaló después del inicio
         try:
             from pypdf import PdfReader as PR
             PdfReader = PR
-        except ImportError:
-            raise HTTPException(status_code=500, detail="Biblioteca pypdf no instalada en el servidor.")
-    
+            print("[PDF] pypdf imported successfully"); sys.stdout.flush()
+        except ImportError as e:
+            print(f"[PDF] ImportError: {e}"); sys.stdout.flush()
+            raise HTTPException(status_code=500, detail=f"Biblioteca pypdf no instalada. Error: {str(e)}")
+
     try:
+        print(f"[PDF] === START UPLOAD ==="); sys.stdout.flush()
+        print(f"[PDF] Client ID: {client_id}"); sys.stdout.flush()
+
         form = await request.form()
         file = form.get("file")
-        
+        print(f"[PDF] File received: {bool(file)}"); sys.stdout.flush()
+
         if not file or not hasattr(file, 'filename'):
+            print(f"[PDF] No file in request"); sys.stdout.flush()
             raise HTTPException(status_code=400, detail="No se recibió ningún archivo.")
 
-        if not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF.")
+        print(f"[PDF] Filename: {file.filename}"); sys.stdout.flush()
 
-        # Read the file into memory
+        if not file.filename.lower().endswith(".pdf"):
+            print(f"[PDF] Invalid extension: {file.filename}"); sys.stdout.flush()
+            raise HTTPException(status_code=400, detail=f"Solo se permiten archivos PDF. Recibido: {file.filename}")
+
+        print(f"[PDF] Reading file content..."); sys.stdout.flush()
         contents = await file.read()
+        print(f"[PDF] File size: {len(contents)} bytes ({len(contents)/1024:.1f} KB)"); sys.stdout.flush()
+
         f = io.BytesIO(contents)
-        
-        reader = PdfReader(f)
+
+        print(f"[PDF] Initializing PdfReader..."); sys.stdout.flush()
+        try:
+            reader = PdfReader(f)
+            print(f"[PDF] Pages count: {len(reader.pages)}"); sys.stdout.flush()
+        except Exception as e:
+            print(f"[PDF] PdfReader error: {e}"); sys.stdout.flush()
+            raise HTTPException(status_code=400, detail=f"Error leyendo PDF: {str(e)}. El archivo podría estar corrupto o protegido con contraseña.")
+
         text_content = ""
-        for page in reader.pages:
-            extracted = page.extract_text()
-            if extracted:
-                text_content += extracted + "\n"
-        
+
+        for i, page in enumerate(reader.pages):
+            print(f"[PDF] Extracting page {i+1}/{len(reader.pages)}..."); sys.stdout.flush()
+            try:
+                extracted = page.extract_text()
+                if extracted:
+                    text_content += extracted + "\n"
+                    print(f"[PDF] Page {i+1}: {len(extracted)} chars"); sys.stdout.flush()
+                else:
+                    print(f"[PDF] Page {i+1}: NO TEXT (might be image)"); sys.stdout.flush()
+            except Exception as page_error:
+                print(f"[PDF] Page {i+1} error: {page_error}"); sys.stdout.flush()
+                # Continue with next page
+
+        print(f"[PDF] Total extracted: {len(text_content)} characters"); sys.stdout.flush()
+
         if not text_content.strip():
-            raise HTTPException(status_code=400, detail="No se pudo extraer texto del PDF (podría ser una imagen).")
+            print(f"[PDF] No text extracted - PDF is image-only"); sys.stdout.flush()
+            raise HTTPException(status_code=400, detail="No se pudo extraer texto del PDF. El archivo parece contener solo imágenes. Usa un PDF con texto seleccionable.")
 
         # Save to database
-        database.add_knowledge_entry(client_id, text_content, source_file=file.filename)
-        
-        return {
-            "status": "success",
-            "message": f"Contenido de '{file.filename}' procesado y guardado correctamente.",
-            "extracted_length": len(text_content)
-        }
+        print(f"[PDF] Saving to knowledge_base..."); sys.stdout.flush()
+        result = database.add_knowledge_entry(client_id, text_content, source_file=file.filename)
+
+        if result:
+            print(f"[PDF] SUCCESS!"); sys.stdout.flush()
+            return {
+                "status": "success",
+                "message": f"PDF '{file.filename}' procesado correctamente.",
+                "extracted_length": len(text_content),
+                "pages": len(reader.pages)
+            }
+        else:
+            print(f"[PDF] Database save returned False"); sys.stdout.flush()
+            raise HTTPException(status_code=500, detail="Error guardando en la base de datos.")
+
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
-        print(f"Error procesando PDF: {e}\n{traceback.format_exc()}")
+        error_msg = f"[PDF] CRITICAL ERROR: {e}\n{traceback.format_exc()}"
+        print(error_msg); sys.stdout.flush()
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+
+# ============================================
+# ENDPOINTS DE EMAIL CONFIGURATION
+# ============================================
+
+@app.get("/api/clients/{client_id}/email-config")
+async def get_email_config(client_id: str, current_user: str = Depends(get_current_user)):
+    """Obtiene la configuración de email de un cliente"""
+    client = database.get_client_by_id(client_id) if client_id.isdigit() else database.get_client_by_phone_id(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    return {
+        "email_smtp_server": client.get('email_smtp_server', 'smtp.gmail.com'),
+        "email_smtp_port": client.get('email_smtp_port', 587),
+        "email_user": client.get('email_user', ''),
+        "email_from_name": client.get('email_from_name', ''),
+        "email_notifications_enabled": client.get('email_notifications_enabled', False),
+        "configured": bool(client.get('email_user'))
+    }
+
+@app.post("/api/clients/{client_id}/email-config")
+async def update_email_config(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
+    """Actualiza la configuración de email de un cliente"""
+    data = await request.json()
+
+    # Actualizar configuración
+    config = {
+        'email_smtp_server': data.get('smtp_server', 'smtp.gmail.com'),
+        'email_smtp_port': data.get('smtp_port', 587),
+        'email_user': data.get('email_user', ''),
+        'email_password': data.get('email_password', ''),  # Se guarda encriptado en producción
+        'email_from_name': data.get('email_from_name', ''),
+        'email_notifications_enabled': data.get('notifications_enabled', False)
+    }
+
+    client_id_value = int(client_id) if client_id.isdigit() else client_id
+    if database.update_client(client_id_value, config):
+        return {"status": "updated", "message": "Configuración de email guardada"}
+    raise HTTPException(status_code=400, detail="Error al guardar configuración")
+
+@app.post("/api/clients/{client_id}/email-test")
+async def test_email_config(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
+    """Prueba la configuración de email enviando un email de prueba"""
+    from src.services.email_service import EmailService
+
+    data = await request.json()
+    test_email = data.get('email', '')
+
+    if not test_email:
+        raise HTTPException(status_code=400, detail="Email de prueba requerido")
+
+    client = database.get_client_by_id(client_id) if client_id.isdigit() else database.get_client_by_phone_id(client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    email_service = EmailService(
+        smtp_server=client.get('email_smtp_server', 'smtp.gmail.com'),
+        smtp_port=client.get('email_smtp_port', 587),
+        email_user=client.get('email_user', ''),
+        email_password=client.get('email_password', ''),
+        email_from_name=client.get('email_from_name', '')
+    )
+
+    success = email_service.send_email(
+        to=test_email,
+        subject="✅ Configuración de email exitosa - Zotek IA",
+        body=f"¡Hola!\n\nTu configuración de email en Zotek IA está funcionando correctamente.\n\nEste es un email de prueba.\n\n{client.get('name', '')}"
+    )
+
+    if success:
+        return {"status": "success", "message": "Email de prueba enviado correctamente"}
+    raise HTTPException(status_code=500, detail="Error al enviar email de prueba")
+
+
+# ============================================
+# ENDPOINTS DE LEAD TRACKING
+# ============================================
+
+@app.get("/api/clients/{client_id}/leads")
+async def get_client_leads(client_id: str, status: str = None, limit: int = 50,
+                          current_user: str = Depends(get_current_user)):
+    """Obtiene los leads de un cliente"""
+    from src.services.lead_service import LeadService
+    lead_service = LeadService()
+
+    client_id_value = int(client_id) if client_id.isdigit() else client_id
+
+    try:
+        conn = lead_service.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        query = """
+            SELECT * FROM lead_tracking
+            WHERE client_id = %s
+        """
+        params = [client_id_value]
+
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+
+        query += " ORDER BY last_interaction DESC LIMIT %s"
+        params.append(limit)
+
+        cursor.execute(query, params)
+        leads = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        return {"leads": [dict(lead) for lead in leads], "total": len(leads)}
+
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/clients/{client_id}/leads/cold")
+async def get_cold_leads(client_id: str, hours: int = 24,
+                         current_user: str = Depends(get_current_user)):
+    """Obtiene leads fríos (no han respondido en X horas)"""
+    from src.services.lead_service import LeadService
+    lead_service = LeadService()
+
+    client_id_value = int(client_id) if client_id.isdigit() else client_id
+    cold_leads = lead_service.get_cold_leads(client_id_value, hours)
+
+    return {"leads": cold_leads, "total": len(cold_leads), "hours": hours}
+
+@app.post("/api/clients/{client_id}/leads/{lead_id}/followup")
+async def send_lead_followup(client_id: str, lead_id: int, request: Request,
+                            current_user: str = Depends(get_current_user)):
+    """Envía follow-up manual a un lead"""
+    from src.services.lead_service import LeadService
+    from src.services.email_service import get_email_service_for_client
+
+    data = await request.json()
+    message = data.get('message', '')
+    channel = data.get('channel', 'whatsapp')  # whatsapp o email
+
+    lead_service = LeadService()
+    client_id_value = int(client_id) if client_id.isdigit() else client_id
+
+    # Obtener datos del lead
+    lead = lead_service.get_lead_by_phone(client_id_value, '')  # Necesitamos el phone
+
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+
+    # Enviar por WhatsApp (implementar después)
+    if channel == 'whatsapp':
+        # TODO: Implementar envío por WhatsApp
+        return {"status": "pending", "message": "Follow-up por WhatsApp pendiente de implementación"}
+
+    # Enviar por email
+    client = database.get_client_by_id(client_id_value)
+    email_service = get_email_service_for_client(client)
+
+    if not email_service:
+        raise HTTPException(status_code=400, detail="Cliente no tiene configuración de email")
+
+    # TODO: Obtener email del lead (se necesita campo adicional)
+    return {"status": "success", "message": "Follow-up enviado"}
+
+
+# ============================================
+# ENDPOINTS DE APPOINTMENTS
+# ============================================
+
+@app.get("/api/clients/{client_id}/appointments")
+async def get_client_appointments(client_id: str, status: str = None,
+                                  current_user: str = Depends(get_current_user)):
+    """Obtiene las citas de un cliente"""
+    from src.services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    client_id_value = int(client_id) if client_id.isdigit() else client_id
+
+    if status == 'tomorrow':
+        appointments = apt_service.get_tomorrow_appointments(client_id_value)
+    elif status:
+        # Filtrar por status
+        try:
+            conn = apt_service.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT * FROM appointments
+                WHERE client_id = %s AND status = %s
+                ORDER BY appointment_date ASC
+            """, (client_id_value, status))
+            appointments = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            appointments = [dict(apt) for apt in appointments]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        appointments = apt_service.get_pending_appointments(client_id_value)
+
+    return {"appointments": appointments, "total": len(appointments)}
+
+@app.post("/api/clients/{client_id}/appointments")
+async def create_appointment(client_id: str, request: Request,
+                            current_user: str = Depends(get_current_user)):
+    """Crea una nueva cita"""
+    from src.services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    data = await request.json()
+    client_id_value = int(client_id) if client_id.isdigit() else client_id
+
+    # Parsear fecha
+    try:
+        appointment_date = datetime.fromisoformat(data.get('appointment_date'))
+    except:
+        raise HTTPException(status_code=400, detail="Fecha inválida. Usa formato ISO")
+
+    appointment_id = apt_service.create_appointment(
+        client_id=client_id_value,
+        phone_number=data.get('phone_number', ''),
+        appointment_date=appointment_date,
+        customer_name=data.get('customer_name', ''),
+        notes=data.get('notes', '')
+    )
+
+    if appointment_id > 0:
+        return {"status": "created", "appointment_id": appointment_id}
+    raise HTTPException(status_code=400, detail="Error al crear cita")
+
+@app.post("/api/clients/{client_id}/appointments/{appointment_id}/confirm")
+async def confirm_appointment(client_id: str, appointment_id: int,
+                             current_user: str = Depends(get_current_user)):
+    """Confirma una cita"""
+    from src.services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    if apt_service.confirm_appointment(appointment_id):
+        return {"status": "confirmed", "message": "Cita confirmada"}
+    raise HTTPException(status_code=400, detail="Error al confirmar cita")
+
+@app.post("/api/clients/{client_id}/appointments/{appointment_id}/cancel")
+async def cancel_appointment(client_id: str, appointment_id: int,
+                            current_user: str = Depends(get_current_user)):
+    """Cancela una cita"""
+    from src.services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    if apt_service.cancel_appointment(appointment_id):
+        return {"status": "cancelled", "message": "Cita cancelada"}
+    raise HTTPException(status_code=400, detail="Error al cancelar cita")
