@@ -21,9 +21,16 @@ class Config:
     # ============================================
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
-    SECRET_KEY = os.getenv("SECRET_KEY", "ZOTEK_SECRET_DEFAULT_CHANGE_ME")
-    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "zoteksolucionesia@gmail.com")
-    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "Zotek!SecureAdmin9X$2026")
+    SECRET_KEY = os.getenv("SECRET_KEY")
+    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+    if not SECRET_KEY:
+        raise ValueError("SECRET_KEY no definida en variables de entorno")
+    if not ADMIN_EMAIL:
+        raise ValueError("ADMIN_EMAIL no definida en variables de entorno")
+    if not ADMIN_PASSWORD:
+        raise ValueError("ADMIN_PASSWORD no definida en variables de entorno")
     EMAIL_APP_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
     
     # WhatsApp

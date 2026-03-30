@@ -1,6 +1,8 @@
 import os
 import json
-import psycopg2
+import threading
+import logging
+from psycopg2 import pool as pg_pool
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
 from typing import Optional, Dict, Any, List, Tuple
@@ -8,24 +10,81 @@ from typing import Optional, Dict, Any, List, Tuple
 # Cargar variables de entorno desde .env
 load_dotenv()
 
+from .services.encryption_service import encrypt_client_fields, decrypt_client_fields
+
+logger = logging.getLogger(__name__)
+
 # La URL de conexión se debe configurar en el archivo .env o en el panel del hosting
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-def get_connection():
-    """Obtiene una conexión a la base de datos PostgreSQL de InsForge."""
-    if not DATABASE_URL:
-        raise ValueError(" DATABASE_URL no está configurada. Verifica tu archivo .env.")
-    # sslmode=require es comúnmente requerido para bases de datos cloud como Supabase/InsForge
+# ============================================
+# CONNECTION POOL
+# ============================================
+_pool: Optional[pg_pool.ThreadedConnectionPool] = None
+_pool_lock = threading.Lock()
+
+
+class _PooledConnection:
+    """Wraps a psycopg2 connection from the pool. close() returns it to the pool."""
+
+    def __init__(self, conn, pool: pg_pool.ThreadedConnectionPool):
+        self._conn = conn
+        self._pool = pool
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        if self._conn is not None:
+            self._pool.putconn(self._conn)
+            self._conn = None
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+def _get_pool() -> pg_pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                if not DATABASE_URL:
+                    raise ValueError("DATABASE_URL no está configurada. Verifica tu archivo .env.")
+                _pool = pg_pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=10,
+                    dsn=DATABASE_URL,
+                    sslmode='require',
+                )
+                logger.info("PostgreSQL connection pool initialized (min=2, max=10)")
+    return _pool
+
+
+def get_connection() -> _PooledConnection:
+    """Obtiene una conexión del pool de PostgreSQL."""
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-        return conn
+        pool = _get_pool()
+        conn = pool.getconn()
+        return _PooledConnection(conn, pool)
     except Exception as e:
-        print(f" Error conectando a PostgreSQL: {e}")
-        raise e
+        logger.error(f"Error obteniendo conexión del pool: {e}")
+        raise
 
 def init_db():
     """Inicializa la base de datos con el esquema multitenencia relacional."""
-    print("Inicializando base de datos PostgreSQL (InsForge)...")
+    logger.info("Inicializando base de datos PostgreSQL (InsForge)...")
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -132,12 +191,21 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversation_phone ON conversation_history(phone_number)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversation_date ON conversation_history(created_at)')
 
+        # Tabla de códigos 2FA (reemplaza almacenamiento en memoria)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS verification_codes (
+                email TEXT PRIMARY KEY,
+                code TEXT NOT NULL,
+                expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+            )
+        ''')
+
         conn.commit()
         cursor.close()
         conn.close()
-        print(" Base de datos PostgreSQL multitenencia inicializada (Tablas verificadas).")
+        logger.info("Base de datos PostgreSQL multitenencia inicializada (Tablas verificadas).")
     except Exception as e:
-        print(f" Error al inicializar PostgreSQL: {e}")
+        logger.error(f"Error al inicializar PostgreSQL: {e}")
 
 
 def get_client_by_phone_id(phone_number_id):
@@ -149,9 +217,9 @@ def get_client_by_phone_id(phone_number_id):
         client = cursor.fetchone()
         cursor.close()
         conn.close()
-        return dict(client) if client else None
+        return decrypt_client_fields(dict(client)) if client else None
     except Exception as e:
-        print(f" ERROR get_client_by_phone_id: {e}")
+        logger.error(f"ERROR get_client_by_phone_id: {e}")
         return None
 
 def list_clients():
@@ -166,23 +234,57 @@ def list_clients():
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
-        real_clients = [dict(row) for row in rows]
-        # Ensure json string representation for menu_json to maintain compatibility
-        for c in real_clients:
+        real_clients = []
+        for row in rows:
+            c = decrypt_client_fields(dict(row))
             if isinstance(c.get('menu_json'), dict):
                 c['menu_json'] = json.dumps(c['menu_json'])
+            real_clients.append(c)
         return real_clients
     except Exception as e:
-        print(f" ERROR list_clients: {e}")
+        logger.error(f"ERROR list_clients: {e}")
         return []
+
+
+def add_client(data: dict) -> bool:
+    """Inserta un nuevo cliente en la base de datos con campos sensibles cifrados."""
+    try:
+        data = encrypt_client_fields(data)
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        fields = [k for k in data.keys() if k not in ('id', 'created_at')]
+        values = []
+        for key in fields:
+            val = data[key]
+            if key == 'menu_json' and isinstance(val, str):
+                try:
+                    val = json.loads(val)
+                except Exception:
+                    pass
+            if isinstance(val, (dict, list)):
+                val = json.dumps(val)
+            values.append(val)
+
+        placeholders = ['%s'] * len(fields)
+        query = f"INSERT INTO clients ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
+        cursor.execute(query, values)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"ERROR add_client: {e}")
+        return False
 
 
 def update_client(client_id, data):
     """Actualiza los datos de un cliente. Si no existe, lo inserta."""
     try:
+        data = encrypt_client_fields(data)
         conn = get_connection()
         cursor = conn.cursor()
-        
+
         # Verificar si existe
         cursor.execute("SELECT id FROM clients WHERE id = %s", (client_id,))
         exists = cursor.fetchone()
@@ -234,7 +336,7 @@ def update_client(client_id, data):
         conn.close()
         return True
     except Exception as e:
-        print(f" ERROR UPDATE CLIENT (PG): {e}")
+        logger.error(f"ERROR update_client: {e}")
         return False
 
 
@@ -274,13 +376,13 @@ def get_client_by_id(client_id):
         conn.close()
         
         if client:
-            c_dict = dict(client)
+            c_dict = decrypt_client_fields(dict(client))
             if isinstance(c_dict.get('menu_json'), dict):
                 c_dict['menu_json'] = json.dumps(c_dict['menu_json'])
             return c_dict
         return None
     except Exception as e:
-        print(f" ERROR get_client_by_id: {e}")
+        logger.error(f"ERROR get_client_by_id: {e}")
         return None
 
 
@@ -349,7 +451,7 @@ def duplicate_client(client_id):
         return get_client_by_id(new_client_id)
         
     except Exception as e:
-        print(f" ERROR duplicate_client (PG): {e}")
+        logger.error(f"ERROR duplicate_client: {e}")
         return None
 
 
@@ -364,7 +466,7 @@ def delete_client_db_entry(client_id):
         conn.close()
         return deleted
     except Exception as e:
-        print(f" ERROR delete_client (PG): {e}")
+        logger.error(f"ERROR delete_client: {e}")
         return False
 
 
@@ -378,7 +480,7 @@ def list_client_documents(client_id):
         conn.close()
         return [dict(row) for row in rows]
     except Exception as e:
-        print(f" ERROR list_client_documents: {e}")
+        logger.error(f"ERROR list_client_documents: {e}")
         return []
 
 def get_client_knowledge(client_id):
@@ -405,7 +507,7 @@ def track_message(client_id: int, direction: str = "outbound", phone_number: str
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f" ERROR track_message (PG): {e}")
+        logger.error(f"ERROR track_message: {e}")
 
 def get_monthly_message_count(client_id: int) -> int:
     try:
@@ -498,7 +600,7 @@ def add_to_conversation_history(phone_number: str, user_message: str, assistant_
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f" ERROR add_to_conversation_history (PG): {e}")
+        logger.error(f"ERROR add_to_conversation_history: {e}")
 
 def get_conversation_history(phone_number: str, limit: int = 10) -> List[Dict[str, Any]]:
     try:
@@ -530,7 +632,7 @@ def clear_conversation_history(phone_number: str = None, older_than_days: int = 
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f" ERROR clear_conversation_history (PG): {e}")
+        logger.error(f"ERROR clear_conversation_history: {e}")
 
 def update_appointment_reminder_status(
     cita_id: int,
@@ -559,9 +661,9 @@ def update_appointment_reminder_status(
         conn.commit()
         cursor.close()
         conn.close()
-        print(f"✅ DB: Cita {cita_id} actualizada → reminder_status='{status}'")
+        logger.info(f"DB: Cita {cita_id} actualizada → reminder_status='{status}'")
     except Exception as e:
-        print(f"❌ ERROR update_appointment_reminder_status: {e}")
+        logger.error(f"ERROR update_appointment_reminder_status: {e}")
 
 
 def get_appointments_by_client(client_id: int, limit: int = 50) -> List[Dict[str, Any]]:
@@ -580,7 +682,7 @@ def get_appointments_by_client(client_id: int, limit: int = 50) -> List[Dict[str
         conn.close()
         return [dict(r) for r in rows]
     except Exception as e:
-        print(f"❌ ERROR get_appointments_by_client: {e}")
+        logger.error(f"ERROR get_appointments_by_client: {e}")
         return []
 
 
@@ -599,10 +701,52 @@ def save_appointment(client_id: int, paciente_nombre: str, cliente_telefono: str
         conn.commit()
         cursor.close()
         conn.close()
-        print(f"✅ DB: Cita guardada con ID={cita_id} para cliente {client_id}")
+        logger.info(f"DB: Cita guardada con ID={cita_id} para cliente {client_id}")
         return cita_id
     except Exception as e:
-        print(f"❌ ERROR save_appointment: {e}")
+        logger.error(f"ERROR save_appointment: {e}")
+        return None
+
+
+def save_verification_code(email: str, code: str, expires_minutes: int = 10) -> bool:
+    """Guarda un código 2FA en la base de datos con TTL."""
+    from datetime import datetime, timedelta
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        expires_at = datetime.now() + timedelta(minutes=expires_minutes)
+        cursor.execute("""
+            INSERT INTO verification_codes (email, code, expires_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (email) DO UPDATE SET code = EXCLUDED.code, expires_at = EXCLUDED.expires_at
+        """, (email, code, expires_at))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"ERROR save_verification_code: {e}")
+        return False
+
+
+def get_verification_code(email: str) -> Optional[str]:
+    """Obtiene el código 2FA si existe y no ha expirado. Lo elimina tras leerlo."""
+    from datetime import datetime
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM verification_codes
+            WHERE email = %s AND expires_at > %s
+            RETURNING code
+        """, (email, datetime.now()))
+        row = cursor.fetchone()
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error(f"ERROR get_verification_code: {e}")
         return None
 
 

@@ -2,6 +2,7 @@
 # SaaS Improvements: Security, caching, metrics, conversation history
 import os
 import json
+import logging
 import random
 import smtplib
 import hmac
@@ -10,6 +11,7 @@ import time
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -18,6 +20,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from collections import deque, defaultdict
 from dotenv import load_dotenv
 from typing import Dict, Any
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # Local imports
 from . import database
@@ -36,6 +44,7 @@ ALGORITHM = Config.JWT_ALGORITHM
 ADMIN_EMAIL = Config.ADMIN_EMAIL
 EMAIL_PASSWORD = Config.EMAIL_APP_PASSWORD
 WHATSAPP_APP_SECRET = Config.WHATSAPP_APP_SECRET
+VAPI_WEBHOOK_SECRET = os.getenv("VAPI_WEBHOOK_SECRET")
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -108,22 +117,29 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WWW_DIR = os.path.join(BASE_DIR, "www")
 ADMIN_DIR = os.path.join(WWW_DIR, "admin")
 
-print(f"--- SERVER STARTUP DIAGNOSTICS ---")
-print(f"BASE_DIR: {BASE_DIR}")
-print(f"WWW_DIR: {WWW_DIR}")
-print(f"ADMIN_DIR: {ADMIN_DIR}")
-print(f"Rate limiting: {Config.RATE_LIMIT_MESSAGES_PER_MINUTE}/min")
-print(f"Metrics tracking: Enabled")
-print(f"----------------------------------")
+logger.info("--- SERVER STARTUP DIAGNOSTICS ---")
+logger.info(f"BASE_DIR: {BASE_DIR}")
+logger.info(f"WWW_DIR: {WWW_DIR}")
+logger.info(f"ADMIN_DIR: {ADMIN_DIR}")
+logger.info(f"Rate limiting: {Config.RATE_LIMIT_MESSAGES_PER_MINUTE}/min")
+logger.info("----------------------------------")
 
 app = FastAPI()
 
-# Initialize Database Schema
-database.init_db()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://zotek-ia.web.app",
+        "https://zotek-ia.firebaseapp.com",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, __):
-    print(f"404 Error: {request.url.path}")
+    logger.warning(f"404 Not Found: {request.url.path}")
     return JSONResponse(status_code=404, content={"detail": f"Ruta {request.url.path} no encontrada"})
 
 @app.get("/ping")
@@ -175,16 +191,14 @@ def verify_whatsapp_signature(request: Request, expected_signature: str) -> bool
         # Comparar de manera segura contra timing attacks
         return hmac.compare_digest(signature, expected_sig_value)
     except Exception as e:
-        print(f" ERROR verificando firma WhatsApp: {e}")
+        logger.error(f"Error verificando firma WhatsApp: {e}")
         return False
 
 
 # Lazy initialization using app events or on first request to ensure DB is ready
 @app.on_event("startup")
 async def startup_event():
-    if not os.environ.get('K_SERVICE'):
-        database.init_db()
-
+    database.init_db()
     global gemini
     gemini = GeminiEngine(api_key=GEMINI_API_KEY)
 
@@ -207,7 +221,7 @@ async def recibir_mensaje(request: Request):
     if Config.IS_PRODUCTION and WHATSAPP_APP_SECRET:
         signature = request.headers.get("X-Hub-Signature-256")
         if signature and not verify_whatsapp_signature(request, signature):
-            print(" Firma de WhatsApp inválida")
+            logger.warning("Firma de WhatsApp inválida — webhook rechazado")
             raise HTTPException(status_code=401, detail="Invalid signature")
     
     # ============================================
@@ -220,7 +234,7 @@ async def recibir_mensaje(request: Request):
         60
     ):
         metrics['rate_limited_requests'] += 1
-        print(f" Rate limit excedido para IP: {client_ip}")
+        logger.warning(f"Rate limit excedido para IP: {client_ip}")
         return {"status": "rate_limited"}, 429
     
     try:
@@ -253,13 +267,13 @@ async def recibir_mensaje(request: Request):
             # ============================================
             phone_sanitized = database.sanitize_phone(numero_usuario)
             message_preview = database.sanitize_message_preview(texto_usuario)
-            print(f"📩 Mensaje de {phone_sanitized} para {phone_number_id}: {message_preview}")
+            logger.info(f"Mensaje de {phone_sanitized} para {phone_number_id}: {message_preview}")
 
             # 2. Get client data from DB
             client_data = database.get_client_by_phone_id(phone_number_id)
 
             if not client_data:
-                print(f" Negocio no registrado: {phone_number_id}")
+                logger.warning(f"Negocio no registrado: {phone_number_id}")
                 return {"status": "unrecognized_client"}
 
             # ============================================
@@ -288,13 +302,13 @@ async def recibir_mensaje(request: Request):
                         if keyword in texto_lower:
                             DEMO_SESSIONS[numero_usuario] = target_id
                             client_data = database.get_client_by_phone_id(target_id)
-                            print(f" Iniciando sesión DEMO: {target_id} para {phone_sanitized}")
+                            logger.info(f"Iniciando sesión DEMO: {target_id} para {phone_sanitized}")
                             demo_found = True
                             break
                 elif "reiniciar" in texto_lower:
                     if numero_usuario in DEMO_SESSIONS:
                         del DEMO_SESSIONS[numero_usuario]
-                        print(f"🧹 Sesión DEMO limpiada para {phone_sanitized}")
+                        logger.info(f"Sesión DEMO limpiada para {phone_sanitized}")
                         # Volver al client_data original (Zotek)
                         client_data = database.get_client_by_phone_id(phone_number_id)
                         demo_found = True # Para que no intente continuar una sesión demo
@@ -305,7 +319,7 @@ async def recibir_mensaje(request: Request):
                     demo_client = database.get_client_by_phone_id(target_id)
                     if demo_client:
                         client_data = demo_client
-                        print(f"🔄 Continuando sesión DEMO: {target_id} para {phone_sanitized}")
+                        logger.info(f"Continuando sesión DEMO: {target_id} para {phone_sanitized}")
                     else:
                         # Si por algo ya no existe el bot demo, limpiar sesión
                         del DEMO_SESSIONS[numero_usuario]
@@ -316,7 +330,7 @@ async def recibir_mensaje(request: Request):
             client_plan = client_data.get('plan', 'free')
             allowed, limit_msg = database.check_message_limit(client_data['id'], client_plan)
             if not allowed:
-                print(f" Límite excedido para cliente {client_data['id']}: {limit_msg}")
+                logger.warning(f"Límite excedido para cliente {client_data['id']}: {limit_msg}")
                 # Enviar mensaje de límite alcanzado
                 whatsapp_service.enviar_mensaje_whatsapp(
                     numero=numero_usuario,
@@ -344,9 +358,9 @@ async def recibir_mensaje(request: Request):
             
             if not send_success:
                 metrics['whatsapp_errors'] += 1
-                print(f" Error enviando WhatsApp a {phone_sanitized}")
+                logger.error(f"Error enviando WhatsApp a {phone_sanitized}")
             else:
-                print(f" Respuesta enviada con éxito a {phone_sanitized}")
+                logger.info(f"Respuesta enviada con éxito a {phone_sanitized}")
 
             # ============================================
             # TRACKING: Registrar mensaje para métricas
@@ -376,7 +390,7 @@ async def recibir_mensaje(request: Request):
 
     except Exception as e:
         metrics['gemini_errors'] += 1
-        print(f"🔥 Error en Webhook: {e}")
+        logger.error(f"Error en Webhook: {e}")
 
     return {"status": "ok"}
 
@@ -386,35 +400,38 @@ async def recibir_mensaje(request: Request):
 # ============================================
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
-    print(f"🔑 Generating access token for: {data.get('sub')}")
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(hours=8))
     to_encode.update({"exp": expire})
-    token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    print(f"DEBUG: Token generated. Secret Key length: {len(SECRET_KEY)}")
-    return token
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
-    print(f"🕵 Validating token: {token[:10]}...{token[-10:] if len(token) > 20 else ''}")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
-        print(f" Token decoded successfully for: {email}")
         if email is None:
-            print(" Token payload missing 'sub'")
             raise HTTPException(status_code=401, detail="Invalid token")
         return email
-    except JWTError as e:
-        print(f" JWT Error: {e}")
+    except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def verify_client_access(client_id: int, current_user: str):
+    """Verifica que el usuario autenticado tiene acceso al cliente solicitado.
+    Los admins tienen acceso total. Los clientes solo a sus propios datos."""
+    if current_user == ADMIN_EMAIL:
+        return
+    client = database.get_client_by_id(client_id)
+    if not client or client.get("email", "").lower() != current_user.lower():
+        raise HTTPException(status_code=403, detail="Acceso denegado a este cliente")
+
 
 def send_security_code(email: str, code: str):
     if not EMAIL_PASSWORD:
-        print(" ERROR: EMAIL_APP_PASSWORD no configurada en .env")
+        logger.error("EMAIL_APP_PASSWORD no configurada en .env")
         return False
-    
-    print(f"📧 Intentando enviar email a {email}...")
-    print(f"DEBUG: Enviando desde {ADMIN_EMAIL} (Pass length: {len(EMAIL_PASSWORD) if EMAIL_PASSWORD else 0})")
+
+    logger.info(f"Enviando código de verificación a {email}")
     
     try:
         import smtplib
@@ -425,15 +442,13 @@ def send_security_code(email: str, code: str):
 
         # Using SMTP with STARTTLS on 587 (Often more reliable for Gmail)
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.set_debuglevel(1) # Extra verbosity in logs
             server.starttls()
             server.login(ADMIN_EMAIL, EMAIL_PASSWORD)
             server.send_message(msg)
         return True
     except Exception as e:
         import traceback
-        print(f" Error enviando email: {e}")
-        traceback.print_exc()
+        logger.error(f"Error enviando email: {e}")
         return False
 
 
@@ -518,17 +533,6 @@ async def get_usage_metrics(client_id: int = None, current_user: str = Depends(g
 
 # --- Routes ---
 
-@app.get("/debug-paths")
-async def debug_paths():
-    return {
-        "BASE_DIR": BASE_DIR,
-        "WWW_DIR": WWW_DIR,
-        "ADMIN_DIR": ADMIN_DIR,
-        "index_exists": os.path.exists(os.path.join(WWW_DIR, "index.html")),
-        "admin_index_exists": os.path.exists(os.path.join(ADMIN_DIR, "index.html")),
-        "login_exists": os.path.exists(os.path.join(ADMIN_DIR, "login.html"))
-    }
-
 # --- Auth API ---
 
 @app.post("/api/auth/login")
@@ -537,19 +541,16 @@ async def login(request: Request):
     email = data.get("email")
     password = data.get("password")
     
-    print(f"📩 Login attempt: Email={email}")
-    
     if email != ADMIN_EMAIL or password != getattr(Config, 'ADMIN_PASSWORD', None):
-        print(f" Login failed for {email}")
+        logger.warning(f"Login fallido para: {email}")
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
-    
-    print(f" Login successful for {email}")
+
+    logger.info(f"Login exitoso para: {email}")
     access_token = create_access_token(data={"sub": email})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/api/me")
 async def get_me(current_user: str = Depends(get_current_user)):
-    print(f"👤 GET /api/me called for: {current_user}")
     return {
         "email": current_user,
         "role": "admin" if current_user == ADMIN_EMAIL else "client"
@@ -586,31 +587,26 @@ async def duplicate_client(client_id: str, current_user: str = Depends(get_curre
 
 @app.put("/api/clients/{client_id}")
 async def update_client(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
-    print(f"📥 PUT /api/clients/{client_id} called")
     data = await request.json()
-    print(f"📦 Request data keys: {list(data.keys())}")
-    
+
     # Map 'menu' from frontend to 'menu_json' in DB
     if 'menu' in data:
-        print(f"🔄 Converting 'menu' to 'menu_json'...")
         try:
             data['menu_json'] = json.dumps(data.pop('menu'))
-            print(f" menu_json created successfully")
         except Exception as e:
-            print(f" Error serializing menu: {e}")
-            raise HTTPException(status_code=400, detail=f"Error serializing menu: {str(e)}")
-    
+            logger.error(f"Error serializando menú para cliente {client_id}: {e}")
+            raise HTTPException(status_code=400, detail="Error al procesar menú")
+
     # Convertir a int si es un ID numérico
     try:
         client_id_int = int(client_id)
     except (ValueError, TypeError):
-        client_id_int = client_id  # Usar el string original si no es numérico
+        client_id_int = client_id
 
-    print(f" Calling database.update_client with client_id={client_id_int}")
     if database.update_client(client_id_int, data):
         return {"status": "updated"}
     else:
-        print(f" database.update_client returned False")
+        logger.error(f"database.update_client devolvió False para cliente {client_id_int}")
         raise HTTPException(status_code=400, detail="Error updating client")
 
 @app.get("/api/clients/{client_id}/menu")
@@ -660,25 +656,20 @@ async def reset_client(client_id: str, current_user: str = Depends(get_current_u
 @app.delete("/api/clients/{client_id}")
 async def delete_client(client_id: str, current_user: str = Depends(get_current_user)):
     """Elimina permanentemente un cliente de la base de datos."""
-    print(f"📥 DELETE /api/clients/{client_id} called")
-    
     # Convertir a int si es un ID numérico
     try:
         client_id_int = int(client_id)
     except (ValueError, TypeError):
-        client_id_int = client_id  # Usar el string original si no es numérico
-    
-    print(f" Using client_id_int={client_id_int} (type: {type(client_id_int).__name__})")
-    
+        client_id_int = client_id
+
     # Prevenir eliminación de demos hardcodeados
     if client_id_int in [9991, 9992, 9993]:
-        print(f" Attempted to delete demo client {client_id_int}")
         raise HTTPException(status_code=403, detail="No se pueden eliminar clientes de demostración")
-    
+
     if database.delete_client_db_entry(client_id_int):
         return {"status": "deleted"}
     else:
-        print(f" Failed to delete client {client_id_int}")
+        logger.error(f"Fallo al eliminar cliente {client_id_int}")
         raise HTTPException(status_code=400, detail="Error deleting client")
 
 @app.get("/api/clients/{client_id}")
@@ -700,6 +691,7 @@ async def list_documents(client_id: int, current_user: str = Depends(get_current
 @app.get("/api/clients/{client_id}/email-config")
 async def get_email_config(client_id: int, current_user: str = Depends(get_current_user)):
     """Obtiene la configuración de email de un cliente"""
+    verify_client_access(client_id, current_user)
     client = database.get_client_by_id(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
@@ -716,6 +708,7 @@ async def get_email_config(client_id: int, current_user: str = Depends(get_curre
 @app.post("/api/clients/{client_id}/email-config")
 async def update_email_config(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
     """Actualiza la configuración de email de un cliente"""
+    verify_client_access(client_id, current_user)
     data = await request.json()
 
     # Actualizar configuración
@@ -735,6 +728,7 @@ async def update_email_config(client_id: int, request: Request, current_user: st
 @app.post("/api/clients/{client_id}/email-test")
 async def test_email_config(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
     """Prueba la configuración de email enviando un email de prueba"""
+    verify_client_access(client_id, current_user)
     import smtplib
     from email.mime.text import MIMEText
 
@@ -779,7 +773,7 @@ async def test_email_config(client_id: int, request: Request, current_user: str 
         return {"status": "success", "message": "Email de prueba enviado correctamente"}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al enviar email: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al enviar email de prueba")
 
 
 # ============================================
@@ -790,14 +784,12 @@ async def test_email_config(client_id: int, request: Request, current_user: str 
 async def get_client_leads(client_id: int, status: str = None, limit: int = 50,
                           current_user: str = Depends(get_current_user)):
     """Obtiene los leads de un cliente"""
+    verify_client_access(client_id, current_user)
+    conn = database.get_connection()
     try:
-        conn = database.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        query = """
-            SELECT * FROM lead_tracking
-            WHERE client_id = %s
-        """
+        query = "SELECT * FROM lead_tracking WHERE client_id = %s"
         params = [client_id]
 
         if status:
@@ -810,39 +802,39 @@ async def get_client_leads(client_id: int, status: str = None, limit: int = 50,
         cursor.execute(query, params)
         leads = cursor.fetchall()
         cursor.close()
-        conn.close()
-
         return {"leads": [dict(lead) for lead in leads], "total": len(leads)}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al obtener leads")
+    finally:
+        conn.close()
 
 @app.get("/api/clients/{client_id}/leads/cold")
 async def get_cold_leads(client_id: int, hours: int = 24,
                          current_user: str = Depends(get_current_user)):
     """Obtiene leads fríos (no han respondido en X horas)"""
+    verify_client_access(client_id, current_user)
     try:
         conn = database.get_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute("""
-            SELECT lt.*, c.name as client_name, c.phone_number_id as business_phone
-            FROM lead_tracking lt
-            JOIN clients c ON lt.client_id = c.id
-            WHERE lt.client_id = %s
-              AND lt.status IN ('new', 'contacted', 'cold')
-              AND lt.last_interaction < CURRENT_TIMESTAMP - INTERVAL '%s hours'
-            ORDER BY lt.last_interaction ASC
-        """, (client_id, hours))
-
-        leads = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        return {"leads": [dict(lead) for lead in leads], "total": len(leads), "hours": hours}
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT lt.*, c.name as client_name, c.phone_number_id as business_phone
+                FROM lead_tracking lt
+                JOIN clients c ON lt.client_id = c.id
+                WHERE lt.client_id = %s
+                  AND lt.status IN ('new', 'contacted', 'cold')
+                  AND lt.last_interaction < CURRENT_TIMESTAMP - INTERVAL '%s hours'
+                ORDER BY lt.last_interaction ASC
+            """, (client_id, hours))
+            leads = cursor.fetchall()
+            cursor.close()
+            return {"leads": [dict(lead) for lead in leads], "total": len(leads), "hours": hours}
+        finally:
+            conn.close()
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al obtener leads fríos")
 
 
 # ============================================
@@ -853,6 +845,7 @@ async def get_cold_leads(client_id: int, hours: int = 24,
 async def get_client_appointments(client_id: int, status: str = None,
                                   current_user: str = Depends(get_current_user)):
     """Obtiene las citas de un cliente"""
+    verify_client_access(client_id, current_user)
     try:
         conn = database.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -900,12 +893,13 @@ async def get_client_appointments(client_id: int, status: str = None,
         return {"appointments": [dict(apt) for apt in appointments], "total": len(appointments)}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al obtener citas")
 
 @app.post("/api/clients/{client_id}/appointments")
 async def create_appointment(client_id: int, request: Request,
                             current_user: str = Depends(get_current_user)):
     """Crea una nueva cita"""
+    verify_client_access(client_id, current_user)
     data = await request.json()
 
     # Parsear fecha
@@ -915,10 +909,9 @@ async def create_appointment(client_id: int, request: Request,
     except:
         raise HTTPException(status_code=400, detail="Fecha inválida. Usa formato ISO")
 
+    conn = database.get_connection()
     try:
-        conn = database.get_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
             INSERT INTO appointments
             (client_id, phone_number, appointment_date, customer_name, notes)
@@ -926,64 +919,52 @@ async def create_appointment(client_id: int, request: Request,
             RETURNING id
         """, (client_id, data.get('phone_number', ''), appointment_date,
               data.get('customer_name', ''), data.get('notes', '')))
-
         appointment_id = cursor.fetchone()[0]
         conn.commit()
         cursor.close()
-        conn.close()
-
         return {"status": "created", "appointment_id": appointment_id}
-
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Error creando la cita")
+    finally:
+        conn.close()
 
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/confirm")
 async def confirm_appointment(client_id: int, appointment_id: int,
                              current_user: str = Depends(get_current_user)):
     """Confirma una cita"""
+    conn = database.get_connection()
     try:
-        conn = database.get_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
-            UPDATE appointments
-            SET status = 'confirmed',
-                updated_at = CURRENT_TIMESTAMP
+            UPDATE appointments SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (appointment_id,))
-
         conn.commit()
         cursor.close()
-        conn.close()
-
         return {"status": "confirmed", "message": "Cita confirmada"}
-
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Error confirmando la cita")
+    finally:
+        conn.close()
 
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/cancel")
 async def cancel_appointment(client_id: int, appointment_id: int,
                             current_user: str = Depends(get_current_user)):
     """Cancela una cita"""
+    conn = database.get_connection()
     try:
-        conn = database.get_connection()
         cursor = conn.cursor()
-
         cursor.execute("""
-            UPDATE appointments
-            SET status = 'cancelled',
-                updated_at = CURRENT_TIMESTAMP
+            UPDATE appointments SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
             WHERE id = %s
         """, (appointment_id,))
-
         conn.commit()
         cursor.close()
-        conn.close()
-
         return {"status": "cancelled", "message": "Cita cancelada"}
-
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Error cancelando la cita")
+    finally:
+        conn.close()
 
 
 
@@ -1036,7 +1017,7 @@ async def run_reminder_job(current_user: str = Depends(get_current_user)):
         motivo = cita.get("motivo")
 
         if not numero:
-            print(f"⚠️  Cita {cita_id}: sin número de teléfono, omitiendo.")
+            logger.warning(f"Cita {cita_id}: sin número de teléfono, omitiendo.")
             resultados["errores"] += 1
             resultados["detalle"].append({"cita_id": cita_id, "error": "sin_telefono"})
             continue
@@ -1065,7 +1046,7 @@ async def run_reminder_job(current_user: str = Depends(get_current_user)):
             resultados["errores"] += 1
             resultados["detalle"].append({"cita_id": cita_id, "error": error_msg})
 
-    print(f"📞 VAPI CRON: {resultados['llamadas_iniciadas']} llamadas / {resultados['errores']} errores")
+    logger.info(f"VAPI CRON: {resultados['llamadas_iniciadas']} llamadas / {resultados['errores']} errores")
     return resultados
 
 
@@ -1077,36 +1058,39 @@ async def vapi_webhook(request: Request):
     
     VAPI envía: call_id, status ('ended', 'failed'), summary, transcript, etc.
     """
+    if VAPI_WEBHOOK_SECRET:
+        auth = request.headers.get("x-vapi-secret", "")
+        if not hmac.compare_digest(auth, VAPI_WEBHOOK_SECRET):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
     try:
         data = await request.json()
         call_id = data.get("id") or data.get("call", {}).get("id")
         status = data.get("status", "")
         end_reason = data.get("endedReason", "")
 
-        print(f"📞 VAPI Webhook: call_id={call_id}, status={status}, end_reason={end_reason}")
+        logger.info(f"VAPI Webhook: call_id={call_id}, status={status}, end_reason={end_reason}")
 
         if call_id:
-            # Buscar la cita con este call_id y actualizar su estado
             final_status = "llamado" if status in ("ended",) else "fallido"
+            conn = database.get_connection()
             try:
-                import psycopg2
-                conn = database.get_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
-                    UPDATE citas SET reminder_status = %s
-                    WHERE vapi_call_id = %s
+                    UPDATE citas SET reminder_status = %s WHERE vapi_call_id = %s
                 """, (final_status, call_id))
                 conn.commit()
                 cursor.close()
-                conn.close()
-                print(f"✅ VAPI Webhook: cita actualizada a '{final_status}' para call_id={call_id}")
+                logger.info(f"VAPI Webhook: cita actualizada a '{final_status}' para call_id={call_id}")
             except Exception as db_err:
-                print(f"❌ VAPI Webhook DB error: {db_err}")
+                logger.error(f"VAPI Webhook DB error: {db_err}")
+            finally:
+                conn.close()
 
         return {"status": "received"}
     except Exception as e:
-        print(f"🔥 VAPI Webhook Error: {e}")
-        return {"status": "error", "detail": str(e)}
+        logger.error(f"VAPI Webhook Error: {e}")
+        return {"status": "error"}
 
 
 @app.get("/api/clients/{client_id}/appointments")
@@ -1171,9 +1155,9 @@ async def test_vapi_call(request: Request, current_user: str = Depends(get_curre
 
 # Static Files Mounts (After all specific routes)
 if os.path.exists(WWW_DIR):
-    print(f" Mounting static files from {WWW_DIR}")
+    logger.info(f"Mounting static files from {WWW_DIR}")
     app.mount("/", StaticFiles(directory=WWW_DIR, html=True), name="root")
 else:
-    print(f"ℹ Skipping static files mount (Directory not found: {WWW_DIR})")
+    logger.warning(f"Skipping static files mount (Directory not found: {WWW_DIR})")
 
 # Production entry point handled by Firebase or Uvicorn from shell

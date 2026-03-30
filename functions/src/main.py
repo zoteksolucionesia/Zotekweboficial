@@ -1,15 +1,24 @@
 import os
-# Triggering redeploy for dynamic prompt fix
+import hmac
+import hashlib
+import logging
 import random
 import threading
 import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from collections import deque
-import sys # Added for sys.stdout.flush()
-import json # Added for json.loads()
+import sys
+import json
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -35,21 +44,38 @@ from .services.gemini_service import GeminiEngine
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
-SECRET_KEY = os.getenv("SECRET_KEY", "ZOTEK_SECRET_DEFAULT_CHANGE_ME")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "zoteksolucionesia@gmail.com")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
+
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY no definida en variables de entorno")
+if not ADMIN_EMAIL:
+    raise ValueError("ADMIN_EMAIL no definida en variables de entorno")
 ADMIN_EMAILS = [
     ADMIN_EMAIL,
     "morentinomar@gmail.com"
 ]
 EMAIL_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
+WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")
+
+
+def verify_whatsapp_signature(body: bytes, signature_header: str) -> bool:
+    """Verifica que el webhook proviene realmente de WhatsApp usando HMAC-SHA256."""
+    if not WHATSAPP_APP_SECRET:
+        return False
+    expected = hmac.new(
+        WHATSAPP_APP_SECRET.encode(), body, hashlib.sha256
+    ).hexdigest()
+    received = signature_header.replace("sha256=", "")
+    return hmac.compare_digest(expected, received)
+
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/verify-code")
 
-# In-memory storage for 2FA codes (In production use Redis)
-verification_codes = {}  # {email: {"code": str, "expiry": datetime}}
+# Códigos 2FA almacenados en PostgreSQL (ver database.save_verification_code / get_verification_code)
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -58,6 +84,17 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Es mejor no depender de archivos estáticos en FastAPI si usamos Firebase Hosting.
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://zotek-ia.web.app",
+        "https://zotek-ia.firebaseapp.com",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 # --- PROCESAMIENTO DE AGENTES ---
 def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_number_id, whatsapp_token):
@@ -257,13 +294,16 @@ async def login(request: Request):
     email = data.get("email")
     password = data.get("password")
     
-    # Simple hardcoded check for admin
-    if email == ADMIN_EMAIL and password == os.getenv("ADMIN_PASSWORD", "Zotek!SecureAdmin9X$2026"):
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    if not admin_password:
+        raise HTTPException(status_code=500, detail="Configuración del servidor incompleta")
+
+    if email == ADMIN_EMAIL and password == admin_password:
         access_token = create_access_token(data={"sub": email})
         return {"access_token": access_token, "token_type": "bearer"}
-    
+
     # Check other admins
-    if email in ADMIN_EMAILS and password == os.getenv("ADMIN_PASSWORD"):
+    if email in ADMIN_EMAILS and password == admin_password:
         access_token = create_access_token(data={"sub": email})
         return {"access_token": access_token, "token_type": "bearer"}
         
@@ -279,7 +319,7 @@ async def get_me(current_user: str = Depends(get_current_user)):
 # === CLIENTS API ===
 
 @app.get("/api/recent_logs")
-async def get_recent_logs():
+async def get_recent_logs(current_user: str = Depends(get_current_user)):
     return {"logs": list(RECENT_LOGS)}
 
 @app.get("/api/clients")
@@ -347,12 +387,12 @@ database.init_db()
 
 # Initialize Gemini at module level
 gemini = None
-print(f"GEMINI_API_KEY present: {bool(GEMINI_API_KEY)}, starts: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'NONE'}"); sys.stdout.flush()
+logger.info(f"GEMINI_API_KEY present: {bool(GEMINI_API_KEY)}")
 try:
     gemini = GeminiEngine(api_key=GEMINI_API_KEY)
-    print("GeminiEngine initialized OK"); sys.stdout.flush()
+    logger.info("GeminiEngine initialized OK")
 except Exception as e:
-    print(f"GeminiEngine INIT FAILED: {e}"); sys.stdout.flush()
+    logger.error(f"GeminiEngine INIT FAILED: {e}")
     gemini = None
 
 # === WEBHOOK ===
@@ -370,6 +410,11 @@ async def verify_webhook(request: Request):
 
 @app.post("/webhook")
 async def recibir_mensaje(request: Request):
+    body = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    if not verify_whatsapp_signature(body, signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
     try:
         data = await request.json()
         print(f"DEBUG: Webhook data received: {data}"); sys.stdout.flush()
@@ -526,26 +571,15 @@ async def recibir_mensaje(request: Request):
                                         # FORZAR token de Zotek directamente
                                         FORCE_TOKEN = real_client.get('whatsapp_token') if real_client else None
 
-                                        print(f"[DEBUG] FORCE_TOKEN: {str(FORCE_TOKEN)[:20] if FORCE_TOKEN else 'NONE'}... (len={len(FORCE_TOKEN) if FORCE_TOKEN else 0})")
-                                        print(f"[DEBUG] phone_number_id: {phone_number_id}")
-
                                         if FORCE_TOKEN and len(str(FORCE_TOKEN)) > 50:
-                                            print(f"[Demo] PREPARANDO ENVIO de WhatsApp..."); sys.stdout.flush()
-                                            print(f"[Demo]   numero_usuario: {numero_usuario}")
-                                            print(f"[Demo]   telefono_token: {str(FORCE_TOKEN)[:20]}...")
-                                            print(f"[Demo]   phone_number_id: {phone_number_id}")
-                                            print(f"[Demo]   opciones: {opciones}")
+                                            logger.info(f"[Demo] Enviando menú de bienvenida a {numero_usuario}")
                                             try:
-                                                print(f"[Demo] LLAMANDO a enviar_menu_botones..."); sys.stdout.flush()
                                                 result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_welcome, opciones, FORCE_TOKEN, phone_number_id)
-                                                print(f"[Demo] RESULTADO: {result}"); sys.stdout.flush()
+                                                logger.info(f"[Demo] Menú enviado: {result}")
                                             except Exception as e:
-                                                print(f"[Demo] EXCEPCION: {e}"); sys.stdout.flush()
-                                                import traceback
-                                                traceback.print_exc()
-                                            print(f"[Demo] ENVIO completado"); sys.stdout.flush()
+                                                logger.error(f"[Demo] Error enviando menú: {e}")
                                         else:
-                                            print(f"[Demo] ERROR: Token no válido (len={len(FORCE_TOKEN) if FORCE_TOKEN else 0})"); sys.stdout.flush()
+                                            logger.error("[Demo] Token de WhatsApp no válido o ausente")
                                     else:
                                         print(f"[Demo] ERROR: No hay menú para {demo_phone_id}")
 
@@ -675,13 +709,13 @@ async def recibir_mensaje(request: Request):
 
                         # Validar token de WhatsApp
                         if not client_data.get('whatsapp_token'):
-                            print(f"❌ ERROR: No WhatsApp token configured for '{client_data['name']}'"); sys.stdout.flush()
+                            logger.error(f"No WhatsApp token configurado para '{client_data['name']}'")
                             # No podemos enviar mensaje sin token, pero continuamos con Gemini para logging
                             # Marcar para no intentar enviar WhatsApp
                             skip_whatsapp = True
                         else:
                             skip_whatsapp = False
-                            print(f"[Webhook] Bot is ACTIVE. WhatsApp token present: {bool(client_data.get('whatsapp_token'))}, token starts: {str(client_data.get('whatsapp_token', ''))[:15]}..."); sys.stdout.flush()
+                            logger.info(f"[Webhook] Bot activo para '{client_data.get('name')}'.")
 
                         # Intercepción de Opciones del Menú Personalizado
                         # En PostgreSQL, el menú está en client_data['menu_json']
@@ -1171,10 +1205,7 @@ async def request_code(request: Request):
             return JSONResponse(status_code=403, content={"detail": f"Acceso restringido: Email {email} no registrado"})
 
     code = f"{random.randint(100000, 999999)}"
-    verification_codes[email] = {
-        "code": code,
-        "expiry": datetime.now() + timedelta(minutes=10)
-    }
+    database.save_verification_code(email, code, expires_minutes=10)
 
     if send_security_code(email, code):
         return {"status": "code_sent"}
@@ -1188,11 +1219,9 @@ async def verify_code(request: Request):
     email = data.get("email")
     code = data.get("code")
 
-    stored = verification_codes.get(email)
-    if not stored or stored["code"] != code or datetime.now() > stored["expiry"]:
+    stored_code = database.get_verification_code(email)
+    if not stored_code or stored_code != code:
         raise HTTPException(status_code=401, detail="Codigo invalido o expirado")
-
-    del verification_codes[email]
 
     # SaaS Phase 3: Determinar rol y client_id
     normalized_email = email.lower().strip()
@@ -1514,17 +1543,18 @@ async def list_chats(client_id: str, limit: int = 50, current_user: str = Depend
 @app.delete("/api/clients/{client_id}/clear-chats")
 async def clear_chats(client_id: str, current_user: str = Depends(get_current_user)):
     """Elimina todos los chats de un cliente."""
+    conn = database.get_connection()
     try:
-        conn = database.get_connection()
         cursor = conn.cursor()
         cursor.execute('DELETE FROM client_chats WHERE client_id = %s', (client_id,))
         deleted = cursor.rowcount
         conn.commit()
         cursor.close()
-        conn.close()
         return {"status": "cleared", "deleted_count": deleted}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al limpiar chats")
+    finally:
+        conn.close()
 
 # NOTA: La ruta /api/migrate fue eliminada porque la migración a PostgreSQL ya está completa.
 # El sistema ahora usa exclusivamente PostgreSQL (InsForge) como base de datos.
@@ -1583,6 +1613,11 @@ async def upload_pdf(client_id: str, request: Request, current_user: str = Depen
 
         print(f"[PDF] Reading file content..."); sys.stdout.flush()
         contents = await file.read()
+
+        # Validar MIME type real por magic bytes (no solo extensión)
+        PDF_MAGIC = b"%PDF"
+        if not contents.startswith(PDF_MAGIC):
+            raise HTTPException(status_code=400, detail="El archivo no es un PDF válido (magic bytes incorrectos)")
         print(f"[PDF] File size: {len(contents)} bytes ({len(contents)/1024:.1f} KB)"); sys.stdout.flush()
 
         f = io.BytesIO(contents)
