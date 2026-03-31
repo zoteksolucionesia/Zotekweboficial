@@ -25,3 +25,16 @@ Thumbs.db
 # Secrets
 service-account-key*.json
 migration_data.json
+
+# Large files / binaries
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# AI assistant memory
+.claude/
+.qwen/
+
+# Node
+node_modules/

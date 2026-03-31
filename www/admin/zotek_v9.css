@@ -1072,10 +1072,9 @@ body:not(.light-mode) input.menu-field-input {
 .bot-editor-layout {
     display: flex;
     gap: 20px;
-    height: 100%;
-    min-height: 400px;
-    max-height: 60vh;
-    /* Para que no se desborde la pantalla */
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* Sidebar Tree */
@@ -1219,7 +1218,7 @@ body:not(.light-mode) input.menu-field-input {
 @media (max-width: 900px) {
     .bot-editor-layout {
         flex-direction: column;
-        max-height: none;
+        overflow-y: auto;
     }
 
     .bot-tree-sidebar {
@@ -1335,6 +1334,8 @@ body:not(.light-mode) select {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* --- EMOJI PICKER OVERLAY --- */
