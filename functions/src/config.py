@@ -35,6 +35,7 @@ class Config:
     
     # WhatsApp
     WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")  # Para verificar firma de webhooks
+    CRON_SECRET = os.getenv("CRON_SECRET")  # Para proteger endpoints de cron-job.org
 
     # ============================================
     # VAPI - Llamadas de voz automatizadas

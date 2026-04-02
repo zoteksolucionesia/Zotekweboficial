@@ -1093,6 +1093,83 @@ async def cancel_appointment(client_id: int, appointment_id: int,
 # VAPI - SERVICIO DE LLAMADAS DE RECORDATORIO
 # ============================================
 
+@app.post("/api/cron/reminders")
+async def cron_reminders(request: Request):
+    """
+    Endpoint para cron-job.org. Protegido por CRON_SECRET en header X-Cron-Secret.
+    Envía recordatorios de citas del día siguiente por WhatsApp a todos los pacientes.
+    """
+    secret = request.headers.get("X-Cron-Secret", "")
+    if not Config.CRON_SECRET or secret != Config.CRON_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    _ensure_initialized()
+
+    from datetime import datetime, timedelta
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_end = tomorrow + " 23:59"
+
+    try:
+        from psycopg2.extras import RealDictCursor as RDC
+        conn = database.get_connection()
+        cursor = conn.cursor(cursor_factory=RDC)
+        cursor.execute("""
+            SELECT c.id AS cita_id, c.paciente_nombre, c.cliente_telefono,
+                   c.fecha_hora, c.motivo, c.client_id,
+                   cl.name AS client_name, cl.phone_number_id
+            FROM citas c
+            JOIN clients cl ON cl.id = c.client_id
+            WHERE c.fecha_hora::text >= %s AND c.fecha_hora::text <= %s
+              AND (c.reminder_status IS NULL OR c.reminder_status = 'pending')
+        """, (tomorrow, tomorrow_end))
+        citas = [dict(r) for r in cursor.fetchall()]
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"cron_reminders DB error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    enviados = 0
+    errores = 0
+    for cita in citas:
+        try:
+            client_data = database.get_client_by_id(cita["client_id"])
+            token_wa = client_data["whatsapp_token"]
+            fecha_legible = str(cita["fecha_hora"])[:16]
+            texto = (
+                f"👋 Hola {cita['paciente_nombre']}, te recordamos tu cita con "
+                f"*{cita['client_name']}* mañana {fecha_legible}."
+            )
+            if cita.get("motivo"):
+                texto += f"\n📋 Motivo: {cita['motivo']}"
+            texto += "\n\nSi necesitas cancelar o cambiar, responde este mensaje."
+
+            ok = whatsapp_service.enviar_mensaje_whatsapp(
+                numero=cita["cliente_telefono"],
+                texto=texto,
+                whatsapp_token=token_wa,
+                phone_number_id=cita["phone_number_id"],
+            )
+            if ok:
+                enviados += 1
+                conn2 = database.get_connection()
+                cur2 = conn2.cursor()
+                cur2.execute(
+                    "UPDATE citas SET reminder_status = 'sent' WHERE id = %s",
+                    (cita["cita_id"],)
+                )
+                conn2.commit()
+                cur2.close()
+                conn2.close()
+            else:
+                errores += 1
+        except Exception as e:
+            logger.error(f"cron_reminders cita {cita['cita_id']}: {e}")
+            errores += 1
+
+    logger.info(f"cron_reminders: {enviados} enviados, {errores} errores")
+    return {"status": "ok", "enviados": enviados, "errores": errores, "total": len(citas)}
+
 @app.post("/api/reminders/run")
 async def run_reminder_job(current_user: str = Depends(get_current_user)):
     """
