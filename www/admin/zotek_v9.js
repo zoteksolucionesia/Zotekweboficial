@@ -129,6 +129,12 @@ function showSection(sectionId) {
         }
     }
 
+    if (sectionId === 'clients') {
+        fetchClients();
+    }
+    if (sectionId === 'email-leads') {
+        loadAppointments();
+    }
     if (sectionId === 'docs' || sectionId === 'chats') {
         if (allClients.length === 0) {
             fetchClients().then(() => populateClientSelector());
@@ -209,6 +215,7 @@ function populateClientSelector() {
     console.log("Populating client selectors...");
     const chatSelector = document.getElementById('chat-client-selector');
     const docSelector = document.getElementById('doc-client-selector');
+    const appointmentsSelector = document.getElementById('appointments-client-selector');
     if (!chatSelector || !docSelector) {
         console.warn("Selectors not found in DOM");
         return;
@@ -227,11 +234,16 @@ function populateClientSelector() {
 
     chatSelector.innerHTML = options;
     docSelector.innerHTML = options;
+    if (appointmentsSelector) appointmentsSelector.innerHTML = options;
 
     // Si somos cliente, seleccionar automáticamente
     if (currentUser && currentUser.role === 'client') {
         chatSelector.value = currentUser.client_id;
         docSelector.value = currentUser.client_id;
+        if (appointmentsSelector) {
+            appointmentsSelector.value = currentUser.client_id;
+            loadAppointments();
+        }
     }
 }
 
@@ -492,6 +504,10 @@ async function editClient(id) {
         document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
 
+        // Horario de atención
+        document.getElementById('appointmentDuration').value = client.appointment_duration || 60;
+        await loadClientSchedule(id);
+
         // Clean UI state before loading menu
         currentEditingPath = null;
 
@@ -538,6 +554,10 @@ async function viewClient(id) {
         document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
         document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
+
+        // Horario de atención
+        document.getElementById('appointmentDuration').value = client.appointment_duration || 60;
+        await loadClientSchedule(id);
 
         // Cargar menú
         await loadClientMenu(id);
@@ -613,6 +633,7 @@ async function saveClient(event) {
         vapi_target: document.getElementById('vapiTarget').value,
         vapi_professional_phone: document.getElementById('vapiProfessionalPhone').value,
         google_calendar_id: document.getElementById('googleCalendarId').value,
+        appointment_duration: parseInt(document.getElementById('appointmentDuration').value) || 60,
         menu: {
             ...currentMenu
         }
@@ -1727,6 +1748,233 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.classList.add('light-mode');
     }
 });
+
+// ============================================================
+// EDITOR DE HORARIOS POR FRANJAS
+// ============================================================
+const DAYS = [
+    { num: 1, label: 'Lunes' }, { num: 2, label: 'Martes' }, { num: 3, label: 'Miércoles' },
+    { num: 4, label: 'Jueves' }, { num: 5, label: 'Viernes' }, { num: 6, label: 'Sábado' },
+    { num: 7, label: 'Domingo' }
+];
+
+// Estado interno: { 1: [{start:"09:00",end:"14:00"},{start:"17:00",end:"20:00"}], 2: [...], ... }
+let scheduleState = {};
+
+function initScheduleEditor(savedSchedules = []) {
+    // Construir estado desde BD
+    scheduleState = {};
+    savedSchedules.forEach(s => {
+        if (!scheduleState[s.day_of_week]) scheduleState[s.day_of_week] = [];
+        scheduleState[s.day_of_week].push({ start: s.start_time, end: s.end_time });
+    });
+    renderScheduleEditor();
+}
+
+function renderScheduleEditor() {
+    const container = document.getElementById('scheduleEditor');
+    if (!container) return;
+    const inputStyle = 'padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:#fff;font-size:0.85rem;';
+
+    container.innerHTML = DAYS.map(day => {
+        const franjas = scheduleState[day.num] || [];
+        const isActive = franjas.length > 0;
+
+        const franjasHtml = franjas.map((f, fi) => `
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;" data-day="${day.num}" data-fi="${fi}">
+                <input type="time" value="${f.start}" style="${inputStyle}width:100px;" onchange="updateFranja(${day.num},${fi},'start',this.value)">
+                <span style="color:var(--text-muted)">→</span>
+                <input type="time" value="${f.end}" style="${inputStyle}width:100px;" onchange="updateFranja(${day.num},${fi},'end',this.value)">
+                <button type="button" onclick="removeFranja(${day.num},${fi})" style="background:rgba(255,80,80,0.2);border:none;color:#ff5050;border-radius:4px;padding:4px 8px;cursor:pointer;">✕</button>
+                <button type="button" onclick="copyDaySchedule(${day.num})" title="Copiar a otros días"
+                    style="background:rgba(99,102,241,0.2);border:none;color:#a5b4fc;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;">
+                    📋 Copiar
+                </button>
+            </div>
+        `).join('');
+
+        return `
+        <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:10px 14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+                    <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleDay(${day.num},this.checked)"
+                        style="width:16px;height:16px;accent-color:var(--primary);">
+                    ${day.label}
+                </label>
+                ${isActive ? `<button type="button" onclick="addFranja(${day.num})"
+                    style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:var(--primary);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
+                    + Franja
+                </button>` : ''}
+            </div>
+            ${isActive ? franjasHtml : '<span style="color:var(--text-muted);font-size:0.8rem;margin-left:24px;">Día no laborable</span>'}
+        </div>`;
+    }).join('');
+}
+
+function toggleDay(dayNum, active) {
+    if (active) {
+        scheduleState[dayNum] = [{ start: '09:00', end: '18:00' }];
+    } else {
+        delete scheduleState[dayNum];
+    }
+    renderScheduleEditor();
+}
+
+function addFranja(dayNum) {
+    if (!scheduleState[dayNum]) scheduleState[dayNum] = [];
+    const last = scheduleState[dayNum].slice(-1)[0];
+    const newStart = last ? last.end : '09:00';
+    scheduleState[dayNum].push({ start: newStart, end: '20:00' });
+    renderScheduleEditor();
+}
+
+function removeFranja(dayNum, fi) {
+    scheduleState[dayNum].splice(fi, 1);
+    if (scheduleState[dayNum].length === 0) delete scheduleState[dayNum];
+    renderScheduleEditor();
+}
+
+function updateFranja(dayNum, fi, field, value) {
+    if (scheduleState[dayNum] && scheduleState[dayNum][fi]) {
+        scheduleState[dayNum][fi][field] = value;
+    }
+}
+
+function copyDaySchedule(fromDay) {
+    const franjas = scheduleState[fromDay];
+    if (!franjas || franjas.length === 0) return;
+
+    const dayNames = { 1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado',7:'Domingo' };
+    const options = DAYS.filter(d => d.num !== fromDay)
+        .map(d => `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
+            <input type="checkbox" value="${d.num}" style="accent-color:var(--primary);width:16px;height:16px;">
+            ${d.label}
+        </label>`).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'copyScheduleModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+        <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;width:300px;">
+            <h4 style="margin:0 0 12px;color:var(--primary);">📋 Copiar horario de ${dayNames[fromDay]}</h4>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:12px;">Selecciona los días a los que copiar:</p>
+            <div id="copyDayOpts">${options}</div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button onclick="document.getElementById('copyScheduleModal').remove()" class="btn btn-secondary" style="flex:1;">Cancelar</button>
+                <button onclick="applyCopySchedule(${fromDay})" class="btn btn-primary" style="flex:1;">Copiar</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+function applyCopySchedule(fromDay) {
+    const franjas = JSON.parse(JSON.stringify(scheduleState[fromDay]));
+    const checked = document.querySelectorAll('#copyDayOpts input:checked');
+    checked.forEach(cb => {
+        scheduleState[parseInt(cb.value)] = JSON.parse(JSON.stringify(franjas));
+    });
+    document.querySelector('div[style*="position:fixed"]')?.remove();
+    renderScheduleEditor();
+    showToast(`Horario copiado a ${checked.length} día(s)`, 'success');
+}
+
+async function loadClientSchedule(clientId) {
+    try {
+        const res = await fetch(`/api/clients/${clientId}/schedules`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        initScheduleEditor(Array.isArray(data) ? data : []);
+    } catch (e) {
+        initScheduleEditor([]);
+    }
+}
+
+async function saveClientSchedule() {
+    const clientId = document.getElementById('clientId')?.value;
+    if (!clientId) return showToast('Guarda el cliente primero', 'warning');
+
+    const schedules = [];
+    Object.entries(scheduleState).forEach(([day, franjas]) => {
+        franjas.forEach(f => {
+            schedules.push({ day_of_week: parseInt(day), start_time: f.start, end_time: f.end });
+        });
+    });
+
+    const res = await fetch(`/api/clients/${clientId}/schedules`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedules })
+    });
+    if (res.ok) {
+        showToast('Horarios guardados ✅', 'success');
+    } else {
+        showToast('Error guardando horarios', 'error');
+    }
+}
+
+async function loadAppointments() {
+    const container = document.getElementById('appointments-list');
+    if (!container) return;
+
+    container.innerHTML = '<p class="chat-placeholder">Cargando citas...</p>';
+
+    let citas;
+    try {
+        const res = await fetch('/api/appointments', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const text = await res.text();
+        if (!res.ok) {
+            container.innerHTML = `<p class="chat-placeholder" style="color:red;">Error ${res.status}: ${text.slice(0, 200)}</p>`;
+            return;
+        }
+        citas = JSON.parse(text);
+    } catch (e) {
+        container.innerHTML = `<p class="chat-placeholder" style="color:red;">Error de red: ${e.message}</p>`;
+        return;
+    }
+
+    if (!Array.isArray(citas) || citas.length === 0) {
+        container.innerHTML = '<p class="chat-placeholder">No hay citas agendadas aún.</p>';
+        return;
+    }
+
+    const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const rows = citas.map(c => {
+        let fechaHora = '—';
+        if (c.fecha_hora) {
+            const raw = String(c.fecha_hora).replace('T', ' ').slice(0, 16);
+            const [datePart, timePart] = raw.split(' ');
+            if (datePart && timePart) {
+                const [y, m, d] = datePart.split('-');
+                fechaHora = `${parseInt(d)} ${meses[parseInt(m) - 1]} ${y}  ${timePart}`;
+            }
+        }
+        return `
+            <tr>
+                <td style="padding: 10px 8px;">${c.cliente_nombre || '—'}</td>
+                <td style="padding: 10px 8px;">${c.paciente_nombre || '—'}</td>
+                <td style="padding: 10px 8px;">${c.cliente_telefono || '—'}</td>
+                <td style="padding: 10px 8px;">${fechaHora}</td>
+                <td style="padding: 10px 8px; color: var(--text-muted);">${c.motivo || '—'}</td>
+            </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <table style="width:100%; border-collapse: collapse; font-size: 0.9rem;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted);">
+                    <th style="padding: 8px; text-align: left;">Bot</th>
+                    <th style="padding: 8px; text-align: left;">Paciente</th>
+                    <th style="padding: 8px; text-align: left;">Teléfono</th>
+                    <th style="padding: 8px; text-align: left;">Fecha y hora</th>
+                    <th style="padding: 8px; text-align: left;">Motivo</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
 
 // Theme Toggle Function
 window.toggleTheme = function () {

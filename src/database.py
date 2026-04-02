@@ -72,6 +72,19 @@ def _get_pool() -> pg_pool.ThreadedConnectionPool:
     return _pool
 
 
+import re
+
+def sanitize_phone(phone: str) -> str:
+    """Elimina caracteres no numéricos de un número de teléfono."""
+    return re.sub(r'[^\d+]', '', phone or '')
+
+def sanitize_message_preview(text: str, max_len: int = 100) -> str:
+    """Sanitiza y trunca un mensaje para preview en logs."""
+    if not text:
+        return ''
+    cleaned = text.replace('\n', ' ').strip()
+    return cleaned[:max_len]
+
 def get_connection() -> _PooledConnection:
     """Obtiene una conexión del pool de PostgreSQL."""
     try:
@@ -495,6 +508,38 @@ def get_client_knowledge(client_id):
     except Exception as e:
         return ""
 
+def add_knowledge_entry(client_id, content, source_file=None):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO knowledge_base (client_id, content, source_file) VALUES (%s, %s, %s)",
+            (client_id, content, source_file)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"ERROR add_knowledge_entry: {e}")
+        return False
+
+def delete_knowledge_entry(client_id, doc_id):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM knowledge_base WHERE client_id = %s AND id = %s",
+            (client_id, doc_id)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"ERROR delete_knowledge_entry: {e}")
+        return False
+
 def track_message(client_id: int, direction: str = "outbound", phone_number: str = None):
     try:
         conn = get_connection()
@@ -602,13 +647,33 @@ def add_to_conversation_history(phone_number: str, user_message: str, assistant_
     except Exception as e:
         logger.error(f"ERROR add_to_conversation_history: {e}")
 
-def get_conversation_history(phone_number: str, limit: int = 10) -> List[Dict[str, Any]]:
+def get_conversation_history(phone_number: str, limit: int = 10, timeout_minutes: int = 30) -> List[Dict[str, Any]]:
+    """Retorna historial reciente. Si el último mensaje tiene más de timeout_minutes, retorna vacío (nueva sesión)."""
+    from datetime import datetime, timedelta, timezone
     try:
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        # Verificar si la última interacción fue hace más de timeout_minutes
         cursor.execute("""
-            SELECT content, is_user, created_at 
-            FROM conversation_history 
+            SELECT created_at FROM conversation_history
+            WHERE phone_number = %s
+            ORDER BY created_at DESC LIMIT 1
+        """, (phone_number,))
+        last = cursor.fetchone()
+        if last:
+            last_time = last['created_at']
+            if last_time.tzinfo is None:
+                last_time = last_time.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - last_time > timedelta(minutes=timeout_minutes):
+                # Sesión expirada — limpiar historial y empezar fresco
+                cursor.execute("DELETE FROM conversation_history WHERE phone_number = %s", (phone_number,))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                return []
+        cursor.execute("""
+            SELECT content, is_user, created_at
+            FROM conversation_history
             WHERE phone_number = %s
             ORDER BY created_at DESC
             LIMIT %s
@@ -618,6 +683,7 @@ def get_conversation_history(phone_number: str, limit: int = 10) -> List[Dict[st
         conn.close()
         return [dict(row) for row in reversed(rows)]
     except Exception as e:
+        logger.error(f"ERROR get_conversation_history: {e}")
         return []
 
 def clear_conversation_history(phone_number: str = None, older_than_days: int = 30):
@@ -666,6 +732,28 @@ def update_appointment_reminder_status(
         logger.error(f"ERROR update_appointment_reminder_status: {e}")
 
 
+def get_all_appointments(limit: int = 200) -> List[Dict[str, Any]]:
+    """Obtiene todas las citas de todos los clientes, con nombre del cliente."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT c.paciente_nombre, c.cliente_telefono, c.fecha_hora, c.motivo,
+                   c.created_at, cl.name AS cliente_nombre
+            FROM citas c
+            JOIN clients cl ON cl.id = c.client_id
+            ORDER BY c.fecha_hora DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"ERROR get_all_appointments: {e}")
+        return []
+
+
 def get_appointments_by_client(client_id: int, limit: int = 50) -> List[Dict[str, Any]]:
     """Obtiene las citas de un cliente, para mostrar en el dashboard admin."""
     try:
@@ -706,6 +794,205 @@ def save_appointment(client_id: int, paciente_nombre: str, cliente_telefono: str
     except Exception as e:
         logger.error(f"ERROR save_appointment: {e}")
         return None
+
+
+def get_available_slots(client_id: int, horario_inicio: str = "09:00", horario_fin: str = "18:00",
+                        duracion_min: int = 60, working_days: str = "1,2,3,4,5,6",
+                        dias_adelante: int = 5) -> list:
+    """
+    Genera slots disponibles excluyendo horarios ya ocupados.
+    working_days: días laborales como string CSV (1=Lun ... 7=Dom), ej. '1,2,3,4,5'
+    dias_adelante: cuántos días hábiles hacia adelante buscar
+    Retorna lista de strings como ['Lun 6 Abr 10:00', ...]
+    """
+    from datetime import datetime, timedelta
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        now = datetime.now()
+
+        dias_laborales = {int(x.strip()) for x in working_days.split(",") if x.strip().isdigit()}
+        # weekday(): 0=Lun ... 6=Dom → convertir a 1-7
+        dias_habiles = []
+        d = now + timedelta(days=1)
+        while len(dias_habiles) < dias_adelante:
+            if (d.weekday() + 1) in dias_laborales:
+                dias_habiles.append(d)
+            d += timedelta(days=1)
+
+        if not dias_habiles:
+            return []
+
+        fecha_inicio = dias_habiles[0].strftime("%Y-%m-%d")
+        fecha_fin    = dias_habiles[-1].strftime("%Y-%m-%d 23:59")
+        cursor.execute(
+            "SELECT fecha_hora FROM citas WHERE client_id = %s AND fecha_hora::text >= %s AND fecha_hora::text <= %s",
+            (client_id, fecha_inicio, fecha_fin)
+        )
+        ocupados = {str(r[0])[:16] for r in cursor.fetchall()}
+        cursor.close()
+        conn.close()
+
+        h_ini = int(horario_inicio.split(":")[0])
+        m_ini = int(horario_inicio.split(":")[1]) if ":" in horario_inicio else 0
+        h_fin = int(horario_fin.split(":")[0])
+        meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+        dias_semana = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+
+        slots = []
+        for dia in dias_habiles:
+            minutos = h_ini * 60 + m_ini
+            fin_minutos = h_fin * 60
+            while minutos < fin_minutos:
+                h, m = divmod(minutos, 60)
+                slot_dt = dia.replace(hour=h, minute=m, second=0, microsecond=0)
+                slot_key = slot_dt.strftime("%Y-%m-%d %H:%M")
+                if slot_key not in ocupados:
+                    etiqueta = f"{dias_semana[dia.weekday()]} {dia.day} {meses[dia.month-1]} {h:02d}:{m:02d}"
+                    slots.append(etiqueta)
+                minutos += duracion_min
+        return slots
+    except Exception as e:
+        logger.error(f"ERROR get_available_slots: {e}")
+        return []
+
+
+def get_client_schedules(client_id: int) -> list:
+    """Retorna las franjas horarias del cliente agrupadas por día."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT day_of_week, start_time, end_time
+            FROM client_schedules
+            WHERE client_id = %s
+            ORDER BY day_of_week, start_time
+        """, (client_id,))
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.error(f"ERROR get_client_schedules: {e}")
+        return []
+
+
+def save_client_schedules(client_id: int, schedules: list) -> bool:
+    """
+    Reemplaza todas las franjas del cliente.
+    schedules: [{"day_of_week": 1, "start_time": "09:00", "end_time": "14:00"}, ...]
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM client_schedules WHERE client_id = %s", (client_id,))
+        for s in schedules:
+            cur.execute("""
+                INSERT INTO client_schedules (client_id, day_of_week, start_time, end_time)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (client_id, day_of_week, start_time) DO UPDATE
+                SET end_time = EXCLUDED.end_time
+            """, (client_id, s["day_of_week"], s["start_time"], s["end_time"]))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"ERROR save_client_schedules: {e}")
+        return False
+
+
+def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante: int = 5) -> list:
+    """
+    Genera slots disponibles usando client_schedules (soporta franjas partidas).
+    Excluye slots ya ocupados en la tabla citas.
+    Retorna [{"label": "Lun 6 Abr 09:00", "datetime": "2026-04-06 09:00", "ocupado": False}, ...]
+    """
+    from datetime import datetime, timedelta
+    try:
+        schedules = get_client_schedules(client_id)
+        if not schedules:
+            return []
+
+        conn = get_connection()
+        cur = conn.cursor()
+        now = datetime.now()
+
+        # Días a revisar
+        dias = []
+        d = now + timedelta(days=1)
+        while len(dias) < dias_adelante:
+            dow = d.weekday() + 1  # 1=Lun ... 7=Dom
+            if any(s["day_of_week"] == dow for s in schedules):
+                dias.append(d)
+            d += timedelta(days=1)
+
+        if not dias:
+            cur.close()
+            conn.close()
+            return []
+
+        fecha_inicio = dias[0].strftime("%Y-%m-%d")
+        fecha_fin    = dias[-1].strftime("%Y-%m-%d 23:59")
+        cur.execute(
+            "SELECT fecha_hora FROM citas WHERE client_id = %s AND fecha_hora::text >= %s AND fecha_hora::text <= %s",
+            (client_id, fecha_inicio, fecha_fin)
+        )
+        ocupados = {str(r[0])[:16] for r in cur.fetchall()}
+        cur.close()
+        conn.close()
+
+        meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+        dias_semana = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+
+        slots = []
+        for dia in dias:
+            dow = dia.weekday() + 1
+            franjas = [s for s in schedules if s["day_of_week"] == dow]
+            for franja in franjas:
+                h_ini = int(franja["start_time"].split(":")[0])
+                m_ini = int(franja["start_time"].split(":")[1])
+                h_fin = int(franja["end_time"].split(":")[0])
+                m_fin = int(franja["end_time"].split(":")[1])
+                minutos = h_ini * 60 + m_ini
+                fin_minutos = h_fin * 60 + m_fin
+                while minutos < fin_minutos:
+                    h, m = divmod(minutos, 60)
+                    slot_dt = dia.replace(hour=h, minute=m, second=0, microsecond=0)
+                    slot_key = slot_dt.strftime("%Y-%m-%d %H:%M")
+                    label = f"{dias_semana[dia.weekday()]} {dia.day} {meses[dia.month-1]} {h:02d}:{m:02d}"
+                    slots.append({
+                        "label": label,
+                        "datetime": slot_key,
+                        "ocupado": slot_key in ocupados
+                    })
+                    minutos += duracion_min
+        return slots
+    except Exception as e:
+        logger.error(f"ERROR get_available_slots_v2: {e}")
+        return []
+
+
+def save_lead(client_id: int, nombre: str, telefono: str, interes: str) -> bool:
+    """Registra o actualiza un lead en lead_tracking."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO lead_tracking (client_id, phone_number, status, last_message_response)
+            VALUES (%s, %s, 'nuevo', %s)
+            ON CONFLICT (client_id, phone_number) DO UPDATE
+            SET status = 'interesado',
+                last_message_response = EXCLUDED.last_message_response,
+                updated_at = CURRENT_TIMESTAMP
+        """, (client_id, telefono, f"{nombre} — {interes}"))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"ERROR save_lead: {e}")
+        return False
 
 
 def save_verification_code(email: str, code: str, expires_minutes: int = 10) -> bool:

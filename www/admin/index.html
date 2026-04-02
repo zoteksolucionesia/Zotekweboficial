@@ -326,19 +326,12 @@
                 <!-- Appointments Card -->
                 <div class="settings-card" style="grid-column: span 2;">
                     <div class="settings-card-header">
-                        <h3>📅 Citas de Mañana</h3>
-                        <small style="color: var(--text-muted);">Recordatorios automáticos</small>
+                        <h3>📅 Citas Agendadas</h3>
+                        <button class="btn btn-primary" onclick="loadAppointments()" style="font-size:0.85rem; padding: 6px 14px;">🔄 Actualizar</button>
                     </div>
                     <div class="settings-card-body">
-                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                            <select id="appointments-client-selector" class="btn" onchange="loadAppointments()">
-                                <option value="">Selecciona un cliente...</option>
-                            </select>
-                            <button class="btn btn-primary" onclick="loadAppointments()">🔄 Actualizar</button>
-                        </div>
-
                         <div id="appointments-list">
-                            <p class="chat-placeholder">Selecciona un cliente para ver citas</p>
+                            <p class="chat-placeholder">Cargando citas...</p>
                         </div>
                     </div>
                 </div>
@@ -581,6 +574,21 @@
                                 <label>Google Calendar ID (o Correo)</label>
                                 <input type="email" id="googleCalendarId" placeholder="usuario@gmail.com">
                             </div>
+
+                            <h4 style="color: var(--primary); margin: 15px 0 10px 0; font-size: 1rem;">📅 Horario de Atención</h4>
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label>Duración de cita (minutos)</label>
+                                <input type="number" id="appointmentDuration" value="60" min="15" max="480" step="15"
+                                    style="width:120px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#fff;">
+                            </div>
+
+                            <!-- Editor de franjas por día -->
+                            <div id="scheduleEditor" style="display:flex;flex-direction:column;gap:8px;">
+                                <!-- generado por JS -->
+                            </div>
+                            <button type="button" onclick="saveClientSchedule()" class="btn btn-primary" style="margin-top:12px;width:100%;">
+                                💾 Guardar Horarios
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -655,7 +663,7 @@
         </div>
     </div>
 
-    <script src="/admin/zotek_v9.js?v=2.20"></script>
+    <script src="/admin/zotek_v9.js?v=2.21"></script>
     <script src="/admin/email-leads.js?v=1.0"></script>
     <script src="/admin/automations.js?v=1.0"></script>
 </body>

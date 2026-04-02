@@ -69,6 +69,50 @@ class GeminiEngine:
                         "parameters": {"type": "OBJECT", "properties": {}}
                     },
                     {
+                        "name": "mostrar_horarios",
+                        "description": (
+                            "Muestra al usuario botones con horarios disponibles para agendar una cita. "
+                            "Úsala cuando el usuario quiera agendar pero no haya especificado fecha/hora. "
+                            "Genera opciones para los próximos 3 días hábiles basadas en el horario del consultorio."
+                        ),
+                        "parameters": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "horario_inicio": {
+                                    "type": "STRING",
+                                    "description": "Hora de inicio del consultorio, ej. '09:00'. Default '09:00'."
+                                },
+                                "horario_fin": {
+                                    "type": "STRING",
+                                    "description": "Hora de cierre del consultorio, ej. '18:00'. Default '18:00'."
+                                },
+                                "duracion_cita": {
+                                    "type": "INTEGER",
+                                    "description": "Duración de cada cita en minutos. Default 60."
+                                }
+                            },
+                            "required": []
+                        }
+                    },
+                    {
+                        "name": "llamar_ahora",
+                        "description": (
+                            "Inicia una llamada de voz inmediata al usuario vía Twilio cuando él lo solicita "
+                            "o cuando quiere hablar con alguien en ese momento. "
+                            "Úsala SOLO cuando el usuario pida explícitamente una llamada."
+                        ),
+                        "parameters": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "motivo": {
+                                    "type": "STRING",
+                                    "description": "Breve motivo de la llamada para personalizar el saludo."
+                                }
+                            },
+                            "required": []
+                        }
+                    },
+                    {
                         "name": "registrar_cita",
                         "description": (
                             "Registra una nueva cita o reserva del paciente/cliente en el sistema. "
@@ -111,20 +155,33 @@ class GeminiEngine:
             f"Eres el agente inteligente de {nombre_bot}. Ayuda al usuario usando tus herramientas."
 
         # 2. System Instruction (Cerebro del Agente)
+        from datetime import datetime
+        fecha_hoy = datetime.now().strftime("%Y-%m-%d")
+        dia_semana = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"][datetime.now().weekday()]
         prompt_sistema = f"""
         {instrucciones_base}
+
+        --- FECHA ACTUAL ---
+        Hoy es {dia_semana} {fecha_hoy}. Usa SIEMPRE el año correcto ({datetime.now().year}) al registrar citas.
 
         --- CONOCIMIENTO DISPONIBLE ---
         {conocimiento if conocimiento else "No hay archivos PDF cargados."}
 
-        --- TUS REGLAS DE AGENTE ---
-        1. Eres un AGENTE, no solo un chatbot. Tienes permiso para usar herramientas.
-        2. Si el usuario pide probar una demo, USA 'activar_demo'.
-        3. Si quieres salir de la demo, USA 'finalizar_demo'.
-        4. Si quieres presentar opciones claras para que el usuario NO tenga que escribir, USA 'enviar_menu_interactivo'.
-        5. Sé proactivo. Si detectas interés comercial, USA 'capturar_lead'.
-        6. Si un paciente quiere agendar, confirmar o registrar una CITA, usa 'registrar_cita' con sus datos. Pídele su nombre, teléfono y fecha/hora antes de llamarla.
-        7. Si usas una herramienta, el sistema la ejecutará por ti.
+        --- REGLAS CRÍTICAS DE HERRAMIENTAS ---
+        NUNCA describas lo que vas a hacer. EJECUTA la herramienta directamente.
+
+        FLUJO DE CITAS (seguir estrictamente en orden):
+        1. Usuario quiere agendar → llama 'mostrar_horarios' AHORA, sin texto previo.
+        2. Usuario selecciona un horario → PIDE su nombre completo y teléfono. NO llames registrar_cita aún.
+        3. Usuario da nombre y teléfono → AHORA sí llama 'registrar_cita' con todos los datos (nombre, teléfono, fecha_hora seleccionada).
+        4. NUNCA llames mostrar_horarios después de que el usuario ya eligió un horario. Recuerda qué horario eligió.
+
+        OTRAS HERRAMIENTAS:
+        5. Usuario quiere hablar por teléfono → llama 'llamar_ahora' AHORA.
+        6. Usuario quiere ver opciones / planes → llama 'enviar_menu_interactivo' AHORA.
+        7. Usuario quiere ver demo de un negocio → llama 'activar_demo' AHORA.
+        8. Detectas interés comercial (nombre, negocio, interés) → llama 'capturar_lead' AHORA.
+        9. Las herramientas son ejecutadas por el sistema automáticamente. Tu trabajo es LLAMARLAS, no describirlas.
         """
 
         try:
@@ -132,22 +189,28 @@ class GeminiEngine:
             config = {
                 "system_instruction": prompt_sistema,
                 "temperature": 0.4,
-                "tools": self.tools
+                "tools": self.tools,
+                "tool_config": {"function_calling_config": {"mode": "AUTO"}},
             }
-            
-            # TODO: Incorporar historial real desde database.get_conversation_history
-            contents = [mensaje_usuario]
-            
+
+            # Cargar historial real de conversación
+            historial = database.get_conversation_history(numero_telefono, limit=10)
+            contents = []
+            for msg in historial:
+                role = "user" if msg["is_user"] else "model"
+                contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+            contents.append({"role": "user", "parts": [{"text": mensaje_usuario}]})
+
             response = self.client.models.generate_content(
                 model=self.model_id,
                 config=config,
                 contents=contents
             )
-            
+
             # Procesar respuesta
             res_text = response.text or ""
             tool_calls = []
-            
+
             # Extraer llamadas a funciones
             if response.candidates and response.candidates[0].content.parts:
                 for part in response.candidates[0].content.parts:
@@ -156,11 +219,25 @@ class GeminiEngine:
                             "name": part.function_call.name,
                             "args": part.function_call.args
                         })
-            
-            # Fallback de texto si Gemini solo envía Tool Calls
+
+            # Si Gemini solo envía Tool Calls sin texto, no generar texto placeholder
             if not res_text and tool_calls:
-                res_text = "[Procesando acción...]"
-                
+                res_text = ""
+
+            # Fallback al menú si Gemini no generó respuesta útil
+            if not res_text.strip():
+                menu_json = client_data.get("menu_json")
+                if menu_json:
+                    try:
+                        menu = json.loads(menu_json) if isinstance(menu_json, str) else menu_json
+                        opciones = " | ".join([o.get("title", "") for o in menu.get("options", [])])
+                        res_text = menu.get("fallback_text", "No entendí tu mensaje.") + (f"\n\n{opciones}" if opciones else "")
+                    except Exception:
+                        res_text = "No entendí tu mensaje. ¿En qué puedo ayudarte?"
+
+            # Guardar intercambio en historial
+            database.add_to_conversation_history(numero_telefono, mensaje_usuario, res_text)
+
             return {
                 "text": res_text,
                 "tool_calls": tool_calls

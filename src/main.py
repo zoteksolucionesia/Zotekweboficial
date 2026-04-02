@@ -16,7 +16,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from collections import deque, defaultdict
 from dotenv import load_dotenv
 from typing import Dict, Any
@@ -32,6 +32,8 @@ from . import database
 from .config import Config
 from .services import whatsapp_service
 from .services.gemini_service import GeminiEngine
+from .services.vapi_service import vapi as vapi_service
+from .services import twilio_service
 
 # Load configuration (already loaded in config.py, but keeping for backward compatibility)
 load_dotenv()
@@ -161,34 +163,21 @@ PROCESSED_MESSAGES = deque(maxlen=100)
 # ============================================
 # SEGURIDAD: Validación de firma de WhatsApp
 # ============================================
-def verify_whatsapp_signature(request: Request, expected_signature: str) -> bool:
+def verify_whatsapp_signature(body: bytes, expected_signature: str) -> bool:
     """
     Verifica que el webhook viene realmente de WhatsApp.
-    
-    Args:
-        request: Request de FastAPI
-        expected_signature: Firma esperada del header X-Hub-Signature-256
-    
-    Returns:
-        True si la firma es válida, False si no
     """
     if not WHATSAPP_APP_SECRET:
-        return True  # Skip validation if secret not configured
-    
+        return True
+
     try:
-        # Obtener body raw (necesario para verificar firma)
-        body = request.scope.get('body', b'')
-        
-        # Calcular firma HMAC-SHA256
         signature = hmac.new(
             WHATSAPP_APP_SECRET.encode(),
             body,
             hashlib.sha256
         ).hexdigest()
-        
+
         expected_sig_value = expected_signature.replace('sha256=', '')
-        
-        # Comparar de manera segura contra timing attacks
         return hmac.compare_digest(signature, expected_sig_value)
     except Exception as e:
         logger.error(f"Error verificando firma WhatsApp: {e}")
@@ -207,7 +196,7 @@ async def verify_webhook(request: Request):
     token = request.query_params.get(Config.WEBHOOK_VERIFY_TOKEN_PARAM)
     if token == VERIFY_TOKEN:
         challenge = request.query_params.get(Config.WEBHOOK_CHALLENGE_PARAM)
-        return int(challenge) if challenge else "Ok"
+        return PlainTextResponse(challenge) if challenge else PlainTextResponse("Ok")
     return "Error auth", 403
 
 @app.post("/webhook")
@@ -215,30 +204,33 @@ async def recibir_mensaje(request: Request):
     start_time = time.time()
     metrics['webhook_requests'] += 1
     
+    # Leer body una sola vez
+    raw_body = await request.body()
+
     # ============================================
     # SEGURIDAD: Validar firma en producción
     # ============================================
     if Config.IS_PRODUCTION and WHATSAPP_APP_SECRET:
         signature = request.headers.get("X-Hub-Signature-256")
-        if signature and not verify_whatsapp_signature(request, signature):
+        if signature and not verify_whatsapp_signature(raw_body, signature):
             logger.warning("Firma de WhatsApp inválida — webhook rechazado")
             raise HTTPException(status_code=401, detail="Invalid signature")
-    
+
     # ============================================
     # RATE LIMITING: Prevenir abuso
     # ============================================
     client_ip = request.client.host if request.client else "unknown"
     if not rate_limiter.is_allowed(
-        f"webhook:{client_ip}", 
-        Config.RATE_LIMIT_MESSAGES_PER_MINUTE, 
+        f"webhook:{client_ip}",
+        Config.RATE_LIMIT_MESSAGES_PER_MINUTE,
         60
     ):
         metrics['rate_limited_requests'] += 1
         logger.warning(f"Rate limit excedido para IP: {client_ip}")
         return {"status": "rate_limited"}, 429
-    
+
     try:
-        data = await request.json()
+        data = json.loads(raw_body)
 
         entry = data.get('entry', [{}])[0]
         changes = entry.get('changes', [{}])[0]
@@ -254,8 +246,19 @@ async def recibir_mensaje(request: Request):
             PROCESSED_MESSAGES.append(message_id)
 
             numero_usuario = message['from']
-            texto_usuario = message.get('text', {}).get('body', "")
-            texto_menu = ""  # Default to empty string to avoid NameError
+            msg_type = message.get('type', 'text')
+            if msg_type == 'interactive':
+                interactive = message.get('interactive', {})
+                if 'button_reply' in interactive:
+                    texto_usuario = interactive['button_reply'].get('title', '')
+                elif 'list_reply' in interactive:
+                    texto_usuario = interactive['list_reply'].get('title', '')
+                else:
+                    texto_usuario = ''
+            else:
+                texto_usuario = message.get('text', {}).get('body', '')
+            texto_lower = texto_usuario.lower()
+            texto_menu = ""
             phone_number_id = value['metadata']['phone_number_id']
 
             # Mexico normalization
@@ -340,21 +343,116 @@ async def recibir_mensaje(request: Request):
                 )
                 return {"status": "limit_exceeded"}
 
-            # 3. Process with Gemini (con caché e historial)
-            respuesta_ai = gemini.generar_respuesta(
-                texto_usuario, 
-                client_data, 
+            # 3. Procesar con Gemini (agente con herramientas e historial)
+            resultado_ai = gemini.generar_respuesta_agente(
+                texto_usuario,
+                client_data,
                 numero_usuario,
-                usar_historial=True  # Usar historial de conversación
             )
+            respuesta_ai = resultado_ai.get("text", "")
+            tool_calls   = resultado_ai.get("tool_calls", [])
 
-            # 4. Send via WhatsApp
-            send_success = whatsapp_service.enviar_mensaje_whatsapp(
-                numero=numero_usuario,
-                texto=respuesta_ai,
-                whatsapp_token=client_data['whatsapp_token'],
-                phone_number_id=client_data['phone_number_id']
-            )
+            # 4. Ejecutar herramientas que Gemini solicitó
+            logger.info(f"[TOOLS] tool_calls={[t.get('name') for t in tool_calls]} | texto='{respuesta_ai[:60]}'")
+            for tool in tool_calls:
+                nombre = tool.get("name")
+                args   = tool.get("args", {})
+                logger.info(f"[TOOL] Ejecutando: {nombre} | args={dict(args)}")
+
+                if nombre == "enviar_menu_interactivo":
+                    whatsapp_service.enviar_menu_interactivo(
+                        numero=numero_usuario,
+                        texto=args.get("mensaje", "Elige una opción:"),
+                        opciones=list(args.get("opciones", [])),
+                        whatsapp_token=client_data['whatsapp_token'],
+                        phone_number_id=client_data['phone_number_id'],
+                    )
+
+                elif nombre == "registrar_cita":
+                    cita_id = database.save_appointment(
+                        client_id=client_data['id'],
+                        paciente_nombre=args.get("paciente_nombre", ""),
+                        cliente_telefono=args.get("cliente_telefono", numero_usuario),
+                        fecha_hora=args.get("fecha_hora", ""),
+                        motivo=args.get("motivo", ""),
+                    )
+                    if cita_id:
+                        confirmacion = (
+                            f"✅ ¡Cita registrada!\n"
+                            f"👤 {args.get('paciente_nombre', '')}\n"
+                            f"📅 {args.get('fecha_hora', '')}\n"
+                            f"📍 {args.get('motivo', 'Consulta')}\n\n"
+                            f"Te enviaremos un recordatorio. ¡Hasta pronto!"
+                        )
+                        whatsapp_service.enviar_mensaje_whatsapp(
+                            numero=numero_usuario,
+                            texto=confirmacion,
+                            whatsapp_token=client_data['whatsapp_token'],
+                            phone_number_id=client_data['phone_number_id'],
+                        )
+                        respuesta_ai = ""  # La confirmación ya fue enviada
+
+                elif nombre == "mostrar_horarios":
+                    duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
+                    todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
+                    libres = [s for s in todos_slots if not s["ocupado"]]
+                    logger.info(f"[TOOL] mostrar_horarios total={len(todos_slots)} libres={len(libres)}")
+                    if libres:
+                        # Enviar todos los slots en una sola lista interactiva (máx 10)
+                        opciones = [s["label"] for s in libres[:10]]
+                        ok = whatsapp_service.enviar_lista(
+                            numero=numero_usuario,
+                            texto="📅 Horarios disponibles — ¿cuál te viene mejor?",
+                            opciones=opciones,
+                            titulo_boton="Ver horarios",
+                            whatsapp_token=client_data['whatsapp_token'],
+                            phone_number_id=client_data['phone_number_id'],
+                        )
+                        logger.info(f"[TOOL] enviar_lista horarios ok={ok}")
+                    else:
+                        whatsapp_service.enviar_mensaje_whatsapp(
+                            numero=numero_usuario,
+                            texto="Por el momento no hay horarios disponibles. Por favor contáctanos para agendar.",
+                            whatsapp_token=client_data['whatsapp_token'],
+                            phone_number_id=client_data['phone_number_id'],
+                        )
+                    respuesta_ai = ""
+
+                elif nombre == "llamar_ahora":
+                    motivo = args.get("motivo", "consulta")
+                    nombre_bot = client_data.get("name", "nuestro equipo")
+                    aviso = f"📞 Estamos iniciando una llamada a tu número. ¡Un momento!"
+                    whatsapp_service.enviar_mensaje_whatsapp(
+                        numero=numero_usuario,
+                        texto=aviso,
+                        whatsapp_token=client_data['whatsapp_token'],
+                        phone_number_id=client_data['phone_number_id'],
+                    )
+                    numero_e164 = numero_usuario if numero_usuario.startswith("+") else f"+{numero_usuario}"
+                    twilio_service.llamar_inmediatamente(
+                        numero_destino=numero_e164,
+                        mensaje_voz=f"Hola, te llama {nombre_bot} por tu solicitud de {motivo}. Un momento por favor.",
+                    )
+                    respuesta_ai = ""  # El aviso ya fue enviado
+
+                elif nombre == "capturar_lead":
+                    database.save_lead(
+                        client_id=client_data['id'],
+                        nombre=args.get("nombre", ""),
+                        telefono=numero_usuario,
+                        interes=args.get("interes", ""),
+                    )
+
+            # 5. Enviar respuesta de texto si hay
+            if respuesta_ai and respuesta_ai.strip():
+                send_success = whatsapp_service.enviar_mensaje_whatsapp(
+                    numero=numero_usuario,
+                    texto=respuesta_ai,
+                    whatsapp_token=client_data['whatsapp_token'],
+                    phone_number_id=client_data['phone_number_id'],
+                )
+            else:
+                send_success = True
             
             if not send_success:
                 metrics['whatsapp_errors'] += 1
@@ -683,6 +781,73 @@ async def get_client(client_id: int, current_user: str = Depends(get_current_use
 async def list_documents(client_id: int, current_user: str = Depends(get_current_user)):
     return database.list_client_documents(client_id)
 
+@app.get("/api/clients/{client_id}/schedules")
+async def get_schedules(client_id: int, current_user: str = Depends(get_current_user)):
+    return database.get_client_schedules(client_id)
+
+@app.post("/api/clients/{client_id}/schedules")
+async def save_schedules(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+    data = await request.json()
+    schedules = data.get("schedules", [])
+    if database.save_client_schedules(client_id, schedules):
+        return {"status": "ok"}
+    raise HTTPException(status_code=500, detail="Error guardando horarios.")
+
+@app.get("/api/clients/{client_id}/available-slots")
+async def get_available_slots(client_id: int, current_user: str = Depends(get_current_user)):
+    client = database.get_client_by_id(client_id)
+    duracion = int(client.get("appointment_duration") or 60) if client else 60
+    slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
+    return {"slots": slots}
+
+@app.post("/api/clients/{client_id}/upload-pdf")
+async def upload_pdf(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+    import io
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Biblioteca pypdf no instalada. Ejecuta: pip install pypdf")
+
+    form = await request.form()
+    file = form.get("file")
+
+    if not file or not hasattr(file, "filename"):
+        raise HTTPException(status_code=400, detail="No se recibió ningún archivo.")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail=f"Solo se permiten archivos PDF. Recibido: {file.filename}")
+
+    contents = await file.read()
+    if not contents.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="El archivo no es un PDF válido.")
+
+    try:
+        reader = PdfReader(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error leyendo PDF: {str(e)}")
+
+    text_content = ""
+    for page in reader.pages:
+        try:
+            extracted = page.extract_text()
+            if extracted:
+                text_content += extracted + "\n"
+        except Exception:
+            continue
+
+    if not text_content.strip():
+        raise HTTPException(status_code=400, detail="No se pudo extraer texto del PDF. El archivo parece contener solo imágenes.")
+
+    result = database.add_knowledge_entry(client_id, text_content, source_file=file.filename)
+    if result:
+        return {"status": "success", "message": f"PDF '{file.filename}' procesado.", "extracted_length": len(text_content), "pages": len(reader.pages)}
+    raise HTTPException(status_code=500, detail="Error guardando en la base de datos.")
+
+@app.delete("/api/clients/{client_id}/documents/{doc_id}")
+async def delete_document(client_id: int, doc_id: int, current_user: str = Depends(get_current_user)):
+    if database.delete_knowledge_entry(client_id, doc_id):
+        return {"status": "success"}
+    raise HTTPException(status_code=500, detail="Error eliminando documento.")
+
 
 # ============================================
 # ENDPOINTS DE EMAIL CONFIGURATION
@@ -841,59 +1006,15 @@ async def get_cold_leads(client_id: int, hours: int = 24,
 # ENDPOINTS DE APPOINTMENTS
 # ============================================
 
+@app.get("/api/appointments")
+async def get_all_appointments(current_user: str = Depends(get_current_user)):
+    """Retorna todas las citas de todos los clientes (para el dashboard admin)."""
+    return database.get_all_appointments()
+
 @app.get("/api/clients/{client_id}/appointments")
-async def get_client_appointments(client_id: int, status: str = None,
-                                  current_user: str = Depends(get_current_user)):
-    """Obtiene las citas de un cliente"""
-    verify_client_access(client_id, current_user)
-    try:
-        conn = database.get_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        if status == 'tomorrow':
-            # Citas de mañana
-            from datetime import datetime, timedelta
-            tomorrow = datetime.now().date() + timedelta(days=1)
-            tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
-            tomorrow_end = datetime.combine(tomorrow, datetime.max.time())
-
-            cursor.execute("""
-                SELECT a.*, c.name as client_name
-                FROM appointments a
-                JOIN clients c ON a.client_id = c.id
-                WHERE a.client_id = %s
-                  AND a.appointment_date >= %s
-                  AND a.appointment_date < %s
-                  AND a.status IN ('pending', 'confirmed')
-                ORDER BY a.appointment_date ASC
-            """, (client_id, tomorrow_start, tomorrow_end))
-        elif status:
-            cursor.execute("""
-                SELECT a.*, c.name as client_name
-                FROM appointments a
-                JOIN clients c ON a.client_id = c.id
-                WHERE a.client_id = %s AND a.status = %s
-                ORDER BY a.appointment_date ASC
-            """, (client_id, status))
-        else:
-            cursor.execute("""
-                SELECT a.*, c.name as client_name
-                FROM appointments a
-                JOIN clients c ON a.client_id = c.id
-                WHERE a.client_id = %s
-                  AND a.status = 'pending'
-                  AND a.appointment_date >= CURRENT_TIMESTAMP
-                ORDER BY a.appointment_date ASC
-            """, (client_id,))
-
-        appointments = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        return {"appointments": [dict(apt) for apt in appointments], "total": len(appointments)}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al obtener citas")
+async def get_client_appointments(client_id: int, current_user: str = Depends(get_current_user)):
+    """Retorna las citas agendadas de un cliente desde la tabla citas (para el dashboard admin)."""
+    return database.get_appointments_by_client(client_id)
 
 @app.post("/api/clients/{client_id}/appointments")
 async def create_appointment(client_id: int, request: Request,
@@ -1091,12 +1212,6 @@ async def vapi_webhook(request: Request):
     except Exception as e:
         logger.error(f"VAPI Webhook Error: {e}")
         return {"status": "error"}
-
-
-@app.get("/api/clients/{client_id}/appointments")
-async def list_appointments(client_id: int, current_user: str = Depends(get_current_user)):
-    """Retorna la lista de citas de un cliente (para el dashboard admin)."""
-    return database.get_appointments_by_client(client_id)
 
 
 @app.post("/api/clients/{client_id}/appointments")

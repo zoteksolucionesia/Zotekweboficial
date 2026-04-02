@@ -20,8 +20,7 @@ async function loadClientsForSelectors() {
 
         const selectors = [
             'email-client-selector',
-            'leads-client-selector',
-            'appointments-client-selector'
+            'leads-client-selector'
         ];
 
         selectors.forEach(selectorId => {
@@ -254,67 +253,8 @@ async function markLeadConverted(leadId) {
 }
 
 // ============================================
-// APPOINTMENTS
+// APPOINTMENTS — implementado en zotek_v9.js
 // ============================================
-
-async function loadAppointments() {
-    const clientId = document.getElementById('appointments-client-selector').value;
-    const container = document.getElementById('appointments-list');
-
-    if (!clientId) {
-        container.innerHTML = '<p class="chat-placeholder">Selecciona un cliente para ver citas</p>';
-        return;
-    }
-
-    try {
-        const res = await fetch(`/api/clients/${clientId}/appointments?status=tomorrow`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await res.json();
-
-        if (!data.appointments || data.appointments.length === 0) {
-            container.innerHTML = '<p class="chat-placeholder">No hay citas programadas para mañana</p>';
-            return;
-        }
-
-        let html = `<p style="margin-bottom: 15px; color: var(--text-muted);">${data.total} citas para mañana</p>`;
-        html += '<div style="display: grid; gap: 10px;">';
-
-        data.appointments.forEach(apt => {
-            const aptDate = apt.appointment_date ? new Date(apt.appointment_date).toLocaleString() : 'Fecha inválida';
-            const statusBadge = getStatusBadge(apt.status);
-
-            html += `
-                <div class="chat-card" style="padding: 15px; border-left: 3px solid var(--primary);">
-                    <div class="chat-card-header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                        <span style="font-weight: 600;">👤 ${escapeHtml(apt.customer_name || 'Sin nombre')}</span>
-                        ${statusBadge}
-                    </div>
-                    <div style="font-size: 0.9rem; color: var(--text-muted);">
-                        <p>📅 ${aptDate}</p>
-                        <p>📱 ${escapeHtml(apt.phone_number)}</p>
-                        ${apt.notes ? `<p>📝 ${escapeHtml(apt.notes)}</p>` : ''}
-                        ${apt.reminder_sent ? '<p style="color: var(--success);">✅ Recordatorio enviado</p>' : '<p style="color: var(--warning);">⚠️ Recordatorio pendiente</p>'}
-                    </div>
-                    <div style="margin-top: 10px; display: flex; gap: 10px;">
-                        <button class="btn btn-sm btn-success" onclick="confirmAppointment(${apt.id})">
-                            ✅ Confirmar
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="cancelAppointment(${apt.id})">
-                            ❌ Cancelar
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-
-        html += '</div>';
-        container.innerHTML = html;
-    } catch (e) {
-        console.error(e);
-        container.innerHTML = '<p class="chat-placeholder" style="color: var(--danger);">Error al cargar citas</p>';
-    }
-}
 
 async function confirmAppointment(appointmentId) {
     try {
