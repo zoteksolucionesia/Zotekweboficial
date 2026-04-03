@@ -1090,6 +1090,106 @@ async def cancel_appointment(client_id: int, appointment_id: int,
 
 
 # ============================================
+# WIDGET WEB EMBEBIBLE
+# ============================================
+
+@app.get("/api/widget/info")
+async def widget_info(bot: int):
+    """Devuelve nombre e info pública del bot para el widget."""
+    _ensure_initialized()
+    client = database.get_client_by_id(bot)
+    if not client:
+        raise HTTPException(status_code=404, detail="Bot no encontrado")
+    return {"name": client.get("name", "Asistente"), "id": bot}
+
+
+@app.post("/api/widget/chat")
+async def widget_chat(request: Request):
+    """
+    Endpoint público para el widget web embebible.
+    No requiere JWT — protegido por client_id válido.
+    Devuelve JSON con text, type (text|slots|options|confirmed) e items.
+    """
+    _ensure_initialized()
+
+    data = await request.json()
+    client_id  = data.get("client_id")
+    message    = data.get("message", "").strip()
+    session_id = data.get("session_id", "")
+
+    if not client_id or not message or not session_id:
+        raise HTTPException(status_code=400, detail="client_id, message y session_id son requeridos")
+
+    client_data = database.get_client_by_id(int(client_id))
+    if not client_data:
+        raise HTTPException(status_code=404, detail="Bot no encontrado")
+
+    resultado = gemini.generar_respuesta_agente(
+        mensaje_usuario=message,
+        client_data=client_data,
+        numero_telefono=f"widget_{session_id}",
+    )
+
+    respuesta_text = resultado.get("text", "")
+    tool_calls     = resultado.get("tool_calls", [])
+
+    response_payload = {
+        "text":  respuesta_text,
+        "type":  "text",
+        "items": [],
+    }
+
+    for tool in tool_calls:
+        nombre = tool.get("name")
+        args   = tool.get("args", {})
+
+        if nombre == "mostrar_horarios":
+            duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
+            todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
+            libres = [s for s in todos_slots if not s["ocupado"]]
+            if libres:
+                response_payload["type"]  = "slots"
+                response_payload["text"]  = "📅 ¿Cuál horario te viene mejor?"
+                response_payload["items"] = [
+                    {"label": s["label"], "value": s["datetime"]} for s in libres[:10]
+                ]
+            else:
+                response_payload["text"] = "Por el momento no hay horarios disponibles. Por favor contáctanos."
+
+        elif nombre == "enviar_menu_interactivo":
+            response_payload["type"]  = "options"
+            response_payload["text"]  = args.get("mensaje", "Elige una opción:")
+            response_payload["items"] = [{"label": o, "value": o} for o in list(args.get("opciones", []))]
+
+        elif nombre == "registrar_cita":
+            cita_id = database.save_appointment(
+                client_id=client_data['id'],
+                paciente_nombre=args.get("paciente_nombre", ""),
+                cliente_telefono=args.get("cliente_telefono", ""),
+                fecha_hora=args.get("fecha_hora", ""),
+                motivo=args.get("motivo", ""),
+            )
+            if cita_id:
+                response_payload["type"] = "confirmed"
+                response_payload["text"] = (
+                    f"✅ ¡Cita registrada!\n"
+                    f"👤 {args.get('paciente_nombre', '')}\n"
+                    f"📅 {args.get('fecha_hora', '')}\n"
+                    f"Recibirás un recordatorio. ¡Hasta pronto!"
+                )
+
+        elif nombre == "capturar_lead":
+            database.save_lead(
+                client_id=client_data['id'],
+                nombre=args.get("nombre", ""),
+                telefono=f"widget_{session_id}",
+                interes=args.get("interes", ""),
+            )
+
+    return response_payload
+
+
+# ============================================
 # VAPI - SERVICIO DE LLAMADAS DE RECORDATORIO
 # ============================================
 
