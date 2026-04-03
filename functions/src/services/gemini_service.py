@@ -172,8 +172,8 @@ class GeminiEngine:
 
         FLUJO DE CITAS (seguir estrictamente en orden):
         1. Usuario quiere agendar → llama 'mostrar_horarios' AHORA, sin texto previo.
-        2. Usuario selecciona un horario → PIDE su nombre completo y teléfono. NO llames registrar_cita aún.
-        3. Usuario da nombre y teléfono → AHORA sí llama 'registrar_cita' con todos los datos (nombre, teléfono, fecha_hora seleccionada).
+        2. Usuario selecciona un horario → PIDE su nombre completo, teléfono y correo electrónico. NO llames registrar_cita aún.
+        3. Usuario da nombre, teléfono y correo → AHORA sí llama 'registrar_cita' con todos los datos (nombre, teléfono, email, fecha_hora seleccionada).
         4. NUNCA llames mostrar_horarios después de que el usuario ya eligió un horario. Recuerda qué horario eligió.
 
         OTRAS HERRAMIENTAS:
@@ -236,7 +236,23 @@ class GeminiEngine:
                         res_text = "No entendí tu mensaje. ¿En qué puedo ayudarte?"
 
             # Guardar intercambio en historial
-            database.add_to_conversation_history(numero_telefono, mensaje_usuario, res_text)
+            # Si Gemini solo envió tool calls (res_text vacío), guardar resumen para mantener contexto
+            history_text = res_text
+            if not history_text and tool_calls:
+                summaries = []
+                for tc in tool_calls:
+                    n = tc.get("name", "")
+                    if n == "mostrar_horarios":
+                        summaries.append("Mostré los horarios disponibles al usuario para que elija.")
+                    elif n == "registrar_cita":
+                        a = tc.get("args", {})
+                        summaries.append(f"Registré la cita de {a.get('paciente_nombre','el paciente')} para {a.get('fecha_hora','la fecha seleccionada')}.")
+                    elif n == "enviar_menu_interactivo":
+                        summaries.append("Mostré un menú de opciones al usuario.")
+                    else:
+                        summaries.append(f"Ejecuté la herramienta {n}.")
+                history_text = " ".join(summaries)
+            database.add_to_conversation_history(numero_telefono, mensaje_usuario, history_text)
 
             return {
                 "text": res_text,

@@ -34,6 +34,7 @@ from .services import whatsapp_service
 from .services.gemini_service import GeminiEngine
 from .services.vapi_service import vapi as vapi_service
 from .services import twilio_service
+from .services.email_service import EmailService
 
 # Load configuration (already loaded in config.py, but keeping for backward compatibility)
 load_dotenv()
@@ -133,6 +134,7 @@ app.add_middleware(
     allow_origins=[
         "https://zotek-ia.web.app",
         "https://zotek-ia.firebaseapp.com",
+        "https://lilibauza.web.app",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -187,13 +189,21 @@ def verify_whatsapp_signature(body: bytes, expected_signature: str) -> bool:
 
 # Inicialización lazy — se ejecuta en el primer request
 gemini = None
+email_service = None
 _initialized = False
 
 def _ensure_initialized():
-    global gemini, _initialized
+    global gemini, email_service, _initialized
     if not _initialized:
         database.init_db()
         gemini = GeminiEngine(api_key=GEMINI_API_KEY)
+        email_service = EmailService(
+            smtp_server=Config.SMTP_SERVER,
+            smtp_port=Config.SMTP_PORT,
+            email_user=Config.ADMIN_EMAIL,
+            email_password=Config.EMAIL_APP_PASSWORD or "",
+            email_from_name="Zotek IA",
+        )
         _initialized = True
 
 @app.on_event("startup")
@@ -1195,12 +1205,14 @@ async def widget_chat(request: Request):
             response_payload["items"] = [{"label": o, "value": o} for o in list(args.get("opciones", []))]
 
         elif nombre == "registrar_cita":
+            paciente_email = args.get("paciente_email", "")
             cita_id = database.save_appointment(
                 client_id=client_data['id'],
                 paciente_nombre=args.get("paciente_nombre", ""),
                 cliente_telefono=args.get("cliente_telefono", ""),
                 fecha_hora=args.get("fecha_hora", ""),
                 motivo=args.get("motivo", ""),
+                paciente_email=paciente_email,
             )
             if cita_id:
                 response_payload["type"] = "confirmed"
@@ -1210,6 +1222,33 @@ async def widget_chat(request: Request):
                     f"📅 {args.get('fecha_hora', '')}\n"
                     f"Recibirás un recordatorio. ¡Hasta pronto!"
                 )
+                # Enviar confirmación por correo al paciente si proporcionó email
+                if paciente_email:
+                    try:
+                        fecha_parts = args.get("fecha_hora", "").split(" ")
+                        # Usar cuenta de email del cliente si tiene password configurado, si no la de Zotek
+                        client_email_user = client_data.get("email_user", "")
+                        client_email_pass = client_data.get("email_password", "")
+                        sender = EmailService(
+                            smtp_server=client_data.get("email_smtp_server", "smtp.gmail.com"),
+                            smtp_port=int(client_data.get("email_smtp_port", 587)),
+                            email_user=client_email_user,
+                            email_password=client_email_pass,
+                            email_from_name=client_data.get("email_from_name", client_data.get("name", "")),
+                        ) if (client_email_user and client_email_pass) else email_service
+                        sender.send_template(
+                            to=paciente_email,
+                            template="appointment_confirmed",
+                            variables={
+                                "nombre": args.get("paciente_nombre", ""),
+                                "fecha": fecha_parts[0] if fecha_parts else args.get("fecha_hora", ""),
+                                "hora": fecha_parts[1] if len(fecha_parts) > 1 else "",
+                                "ubicacion": client_data.get("address", "Villa de Álvarez, Colima"),
+                                "nombre_negocio": client_data.get("name", ""),
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"No se pudo enviar email de confirmación: {e}")
 
         elif nombre == "capturar_lead":
             database.save_lead(

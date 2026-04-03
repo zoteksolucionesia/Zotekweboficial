@@ -85,6 +85,10 @@ def get_appointment_tool():
                     "type": "string",
                     "description": "Fecha y hora de la cita en formato YYYY-MM-DD HH:MM, ej. 2026-03-25 15:00."
                 },
+                "paciente_email": {
+                    "type": "string",
+                    "description": "Correo electrónico del paciente para enviarle la confirmación de su cita (opcional)."
+                },
                 "motivo": {
                     "type": "string",
                     "description": "Motivo o descripción breve de la cita (opcional)."

@@ -224,7 +224,7 @@
   // ── Saludo inicial ───────────────────────────────────────────────────────
   function greet() {
     greeted = true;
-    sendMessage('Hola');
+    sendMessage('Quiero agendar una cita');
   }
 
   // ── Eventos de input ─────────────────────────────────────────────────────

@@ -775,16 +775,18 @@ def get_appointments_by_client(client_id: int, limit: int = 50) -> List[Dict[str
 
 
 def save_appointment(client_id: int, paciente_nombre: str, cliente_telefono: str,
-                     fecha_hora: str, motivo: str = None) -> Optional[int]:
+                     fecha_hora: str, motivo: str = None, paciente_email: str = None) -> Optional[int]:
     """Guarda una nueva cita en la base de datos."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
+        cursor.execute("ALTER TABLE citas ADD COLUMN IF NOT EXISTS paciente_email TEXT")
+        conn.commit()
         cursor.execute("""
-            INSERT INTO citas (client_id, paciente_nombre, cliente_telefono, fecha_hora, motivo)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO citas (client_id, paciente_nombre, cliente_telefono, fecha_hora, motivo, paciente_email)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (client_id, paciente_nombre, cliente_telefono, fecha_hora, motivo))
+        """, (client_id, paciente_nombre, cliente_telefono, fecha_hora, motivo, paciente_email))
         cita_id = cursor.fetchone()[0]
         conn.commit()
         cursor.close()
