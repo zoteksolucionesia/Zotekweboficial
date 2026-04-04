@@ -271,33 +271,46 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumo_timestamp ON consumo_eventos(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumo_proveedor ON consumo_eventos(proveedor)')
 
-        # Tabla de horarios por fecha específica
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS client_schedules (
-                id SERIAL PRIMARY KEY,
-                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
-                schedule_date DATE NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
-                UNIQUE(client_id, schedule_date, start_time)
-            )
-        ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_schedules_client_date ON client_schedules(client_id, schedule_date)')
+        # Tabla de horarios — migración de day_of_week a schedule_date
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='client_schedules' AND column_name='day_of_week'")
+        has_old_schema = cursor.fetchone()
 
-        # Migración: si existe columna day_of_week, migrar datos a schedule_date
-        try:
-            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='client_schedules' AND column_name='day_of_week'")
-            if cursor.fetchone():
-                # Migrar registros existentes: day_of_week → fecha más cercana
+        if has_old_schema:
+            # Tabla vieja existe con day_of_week → agregar schedule_date y migrar
+            try:
+                cursor.execute("ALTER TABLE client_schedules ADD COLUMN IF NOT EXISTS schedule_date DATE")
                 cursor.execute("""
                     UPDATE client_schedules
                     SET schedule_date = CURRENT_DATE + ((day_of_week - 1 - EXTRACT(DOW FROM CURRENT_DATE)::int + 7) % 7)::int
                     WHERE schedule_date IS NULL AND day_of_week IS NOT NULL
                 """)
-                cursor.execute("ALTER TABLE client_schedules DROP COLUMN IF EXISTS day_of_week")
+                cursor.execute("ALTER TABLE client_schedules DROP COLUMN day_of_week")
+                # Actualizar constraint
+                cursor.execute("ALTER TABLE client_schedules DROP CONSTRAINT IF EXISTS client_schedules_client_id_day_of_week_start_time_key")
+                cursor.execute("ALTER TABLE client_schedules ALTER COLUMN schedule_date SET NOT NULL")
+                cursor.execute("""
+                    DO $$ BEGIN
+                        ALTER TABLE client_schedules ADD CONSTRAINT client_schedules_client_date_start_key
+                            UNIQUE(client_id, schedule_date, start_time);
+                    EXCEPTION WHEN duplicate_table THEN NULL;
+                    END $$
+                """)
                 logger.info("Migración client_schedules: day_of_week → schedule_date completada")
-        except Exception as e:
-            logger.info(f"client_schedules migration check: {e}")
+            except Exception as e:
+                logger.info(f"client_schedules migration: {e}")
+        else:
+            # Tabla nueva o ya migrada
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS client_schedules (
+                    id SERIAL PRIMARY KEY,
+                    client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                    schedule_date DATE NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT NOT NULL,
+                    UNIQUE(client_id, schedule_date, start_time)
+                )
+            ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_schedules_client_date ON client_schedules(client_id, schedule_date)')
 
         # Tabla de tarifas por cliente
         cursor.execute('''
