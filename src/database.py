@@ -972,11 +972,17 @@ def save_client_schedules(client_id: int, schedules: list) -> bool:
         return False
 
 
-def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante: int = 5) -> list:
+def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante: int = 5, test_time: str = None) -> list:
     """
     Genera slots disponibles usando client_schedules (soporta franjas partidas).
     Excluye slots ya ocupados en la tabla citas.
     Retorna [{"label": "Lun 6 Abr 09:00", "datetime": "2026-04-06 09:00", "ocupado": False}, ...]
+
+    Args:
+        client_id: ID del cliente
+        duracion_min: Duración de la cita en minutos (default 60)
+        dias_adelante: Cuántos días mirar adelante (default 5)
+        test_time: (TESTING ONLY) Tiempo en formato "2026-04-04 14:30" para simular
     """
     from datetime import datetime, timedelta
     try:
@@ -986,7 +992,14 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
 
         conn = get_connection()
         cur = conn.cursor()
-        now = datetime.now()
+
+        # Support test mode
+        if test_time:
+            now = datetime.strptime(test_time, "%Y-%m-%d %H:%M")
+            logger.info(f"[TEST MODE] Using test_time: {now.strftime('%Y-%m-%d %H:%M:%S %A')}")
+        else:
+            now = datetime.now()
+
         logger.info(f"get_available_slots_v2: now={now.strftime('%Y-%m-%d %H:%M:%S %A')}")
 
         # Días a revisar (empezando desde hoy para incluir slots disponibles hoy)

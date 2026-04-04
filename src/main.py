@@ -394,9 +394,10 @@ async def recibir_mensaje(request: Request):
 
                 elif nombre == "mostrar_horarios":
                     duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
-                    todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
+                    test_time = args.get("_test_time")  # For testing: pass "2026-04-04 14:30"
+                    todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion, test_time=test_time)
                     libres = [s for s in todos_slots if not s["ocupado"]]
-                    logger.info(f"[TOOL] mostrar_horarios total={len(todos_slots)} libres={len(libres)}")
+                    logger.info(f"[TOOL] mostrar_horarios total={len(todos_slots)} libres={len(libres)} test_time={test_time}")
                     if libres:
                         # Enviar todos los slots en una sola lista interactiva (máx 10)
                         opciones = [s["label"] for s in libres[:10]]
@@ -1189,7 +1190,8 @@ async def widget_chat(request: Request):
 
         if nombre == "mostrar_horarios":
             duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
-            todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
+            test_time = args.get("_test_time")  # For testing: pass "2026-04-04 14:30"
+            todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion, test_time=test_time)
             libres = [s for s in todos_slots if not s["ocupado"]]
             if libres:
                 response_payload["type"]  = "slots"

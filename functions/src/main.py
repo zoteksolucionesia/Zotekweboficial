@@ -424,9 +424,10 @@ async def recibir_mensaje(request: Request):
 
                 elif nombre == "mostrar_horarios":
                     duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
-                    sys.stderr.write(f"[TOOL] mostrar_horarios client_id={client_data['id']} duracion={duracion}\n")
+                    test_time = args.get("_test_time")  # For testing: pass "2026-04-04 14:30"
+                    sys.stderr.write(f"[TOOL] mostrar_horarios client_id={client_data['id']} duracion={duracion} test_time={test_time}\n")
                     sys.stderr.flush()
-                    todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
+                    todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion, test_time=test_time)
                     libres = [s for s in todos_slots if not s["ocupado"]]
                     sys.stderr.write(f"[TOOL] mostrar_horarios total={len(todos_slots)} libres={len(libres)}\n")
                     sys.stderr.flush()
