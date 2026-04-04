@@ -987,6 +987,7 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
         conn = get_connection()
         cur = conn.cursor()
         now = datetime.now()
+        logger.info(f"get_available_slots_v2: now={now.strftime('%Y-%m-%d %H:%M:%S %A')}")
 
         # Días a revisar (empezando desde hoy para incluir slots disponibles hoy)
         dias = []
@@ -1002,6 +1003,7 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
             conn.close()
             return []
 
+        logger.info(f"get_available_slots_v2: dias={[d.strftime('%Y-%m-%d %A') for d in dias]}")
         fecha_inicio = dias[0].strftime("%Y-%m-%d")
         fecha_fin    = dias[-1].strftime("%Y-%m-%d 23:59")
         cur.execute(
