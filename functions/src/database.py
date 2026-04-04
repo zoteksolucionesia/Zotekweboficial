@@ -2,10 +2,14 @@ import os
 import json
 import threading
 import logging
+from datetime import timezone, timedelta as td
 from psycopg2 import pool as pg_pool
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
 from typing import Optional, Dict, Any, List, Tuple
+
+# Timezone de México (UTC-6)
+MX_TZ = timezone(td(hours=-6))
 
 # Cargar variables de entorno desde .env
 load_dotenv()
@@ -1000,15 +1004,14 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
             now = datetime.strptime(test_time, "%Y-%m-%d %H:%M")
             logger.info(f"[TEST MODE] Using test_time: {now.strftime('%Y-%m-%d %H:%M:%S %A')}")
         else:
-            now = datetime.now()
+            now = datetime.now(MX_TZ).replace(tzinfo=None)  # Hora México sin tzinfo para comparar
 
         logger.info(f"get_available_slots_v2: now={now.strftime('%Y-%m-%d %H:%M:%S %A')}")
 
-        # Días a revisar: solo dentro de los próximos 7 días calendario
-        # No inventar horarios para semanas futuras
+        # Días a revisar: solo dentro de los próximos 14 días calendario
         dias = []
         d = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        limite = d + timedelta(days=7)  # máximo 7 días calendario
+        limite = d + timedelta(days=14)  # máximo 2 semanas
         while d < limite:
             dow = d.weekday() + 1  # 1=Lun ... 7=Dom
             if any(s["day_of_week"] == dow for s in schedules):
