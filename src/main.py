@@ -871,9 +871,10 @@ async def save_schedules(client_id: int, request: Request, current_user: str = D
     data = await request.json()
     schedules = data.get("schedules", [])
     week_start = data.get("week_start")
-    if database.save_client_schedules(client_id, schedules, week_start=week_start):
+    result = database.save_client_schedules(client_id, schedules, week_start=week_start)
+    if result:
         return {"status": "ok"}
-    raise HTTPException(status_code=500, detail="Error guardando horarios.")
+    raise HTTPException(status_code=500, detail="Error guardando horarios. Revisa los logs del servidor.")
 
 @app.get("/api/clients/{client_id}/available-slots")
 async def get_available_slots(client_id: int, current_user: str = Depends(get_current_user)):

@@ -1022,17 +1022,23 @@ def save_client_schedules(client_id: int, schedules: list, week_start: str = Non
     try:
         conn = get_connection()
         cur = conn.cursor()
+
+        # Verificar que la tabla tiene la columna schedule_date
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='client_schedules'")
+        columns = [r[0] for r in cur.fetchall()]
+        logger.info(f"save_client_schedules: columns={columns}, schedules={schedules[:2]}, week_start={week_start}")
+
         if week_start:
             cur.execute("""
                 DELETE FROM client_schedules
-                WHERE client_id = %s AND schedule_date >= %s AND schedule_date < (%s::date + 7)
+                WHERE client_id = %s AND schedule_date >= %s::date AND schedule_date < (%s::date + 7)
             """, (client_id, week_start, week_start))
         else:
             cur.execute("DELETE FROM client_schedules WHERE client_id = %s", (client_id,))
         for s in schedules:
             cur.execute("""
                 INSERT INTO client_schedules (client_id, schedule_date, start_time, end_time)
-                VALUES (%s, %s, %s, %s)
+                VALUES (%s, %s::date, %s, %s)
                 ON CONFLICT (client_id, schedule_date, start_time) DO UPDATE
                 SET end_time = EXCLUDED.end_time
             """, (client_id, s["schedule_date"], s["start_time"], s["end_time"]))

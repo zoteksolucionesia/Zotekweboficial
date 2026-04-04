@@ -1827,7 +1827,7 @@ function renderScheduleEditor() {
     const duracion = document.getElementById('appointmentDuration')?.value || 50;
 
     let html = `<div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.82rem;color:#a5b4fc;">
-        Las citas se generan en bloques de <strong>${duracion} min</strong> dentro de cada franja horaria.
+        Las citas se generan en bloques de acuerdo a la duración de cita configurada (<strong>${duracion} min</strong>).
     </div>`;
 
     html += weekDates.map(day => {
