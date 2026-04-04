@@ -423,10 +423,8 @@ async def recibir_mensaje(request: Request):
                         respuesta_ai = ""  # La confirmación ya fue enviada
 
                 elif nombre == "mostrar_horarios":
-                    duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
-                    test_time = args.get("_test_time")  # For testing: pass "2026-04-04 14:30"
-                    sys.stderr.write(f"[TOOL] mostrar_horarios client_id={client_data['id']} duracion={duracion} test_time={test_time}\n")
-                    sys.stderr.flush()
+                    duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 50))
+                    test_time = args.get("_test_time")
                     todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion, test_time=test_time)
                     libres = [s for s in todos_slots if not s["ocupado"]]
                     sys.stderr.write(f"[TOOL] mostrar_horarios total={len(todos_slots)} libres={len(libres)}\n")
@@ -864,21 +862,23 @@ async def list_documents(client_id: int, current_user: str = Depends(get_current
     return database.list_client_documents(client_id)
 
 @app.get("/api/clients/{client_id}/schedules")
-async def get_schedules(client_id: int, current_user: str = Depends(get_current_user)):
-    return database.get_client_schedules(client_id)
+async def get_schedules(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+    week_start = request.query_params.get("week_start")
+    return database.get_client_schedules(client_id, week_start=week_start)
 
 @app.post("/api/clients/{client_id}/schedules")
 async def save_schedules(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
     data = await request.json()
     schedules = data.get("schedules", [])
-    if database.save_client_schedules(client_id, schedules):
+    week_start = data.get("week_start")
+    if database.save_client_schedules(client_id, schedules, week_start=week_start):
         return {"status": "ok"}
     raise HTTPException(status_code=500, detail="Error guardando horarios.")
 
 @app.get("/api/clients/{client_id}/available-slots")
 async def get_available_slots(client_id: int, current_user: str = Depends(get_current_user)):
     client = database.get_client_by_id(client_id)
-    duracion = int(client.get("appointment_duration") or 60) if client else 60
+    duracion = int(client.get("appointment_duration") or 50) if client else 50
     slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
     return {"slots": slots}
 
@@ -889,7 +889,7 @@ async def debug_slots(client_id: int):
     utc_now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     mx_now = datetime.now(database.MX_TZ).strftime("%Y-%m-%d %H:%M:%S")
     client = database.get_client_by_id(client_id)
-    duracion = int(client.get("appointment_duration") or 60) if client else 60
+    duracion = int(client.get("appointment_duration") or 50) if client else 50
     schedules = database.get_client_schedules(client_id)
     slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
     return {
@@ -1251,7 +1251,7 @@ async def widget_chat(request: Request):
         args   = tool.get("args", {})
 
         if nombre == "mostrar_horarios":
-            duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
+            duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 50))
             todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
             libres = [s for s in todos_slots if not s["ocupado"]]
             if libres:

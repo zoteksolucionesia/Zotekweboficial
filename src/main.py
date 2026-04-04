@@ -34,6 +34,7 @@ from .services import whatsapp_service
 from .services.gemini_service import GeminiEngine
 from .services.vapi_service import vapi as vapi_service
 from .services import twilio_service
+from .services.email_service import EmailService
 
 # Load configuration (already loaded in config.py, but keeping for backward compatibility)
 load_dotenv()
@@ -133,6 +134,7 @@ app.add_middleware(
     allow_origins=[
         "https://zotek-ia.web.app",
         "https://zotek-ia.firebaseapp.com",
+        "https://lilibauza.web.app",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -158,6 +160,7 @@ async def admin_dashboard():
 
 # Cache for WhatsApp retries
 PROCESSED_MESSAGES = deque(maxlen=100)
+DEMO_SESSIONS = {}  # {phone_number: target_phone_number_id}
 
 
 # ============================================
@@ -184,12 +187,28 @@ def verify_whatsapp_signature(body: bytes, expected_signature: str) -> bool:
         return False
 
 
-# Lazy initialization using app events or on first request to ensure DB is ready
+# Inicialización lazy — se ejecuta en el primer request
+gemini = None
+email_service = None
+_initialized = False
+
+def _ensure_initialized():
+    global gemini, email_service, _initialized
+    if not _initialized:
+        database.init_db()
+        gemini = GeminiEngine(api_key=GEMINI_API_KEY)
+        email_service = EmailService(
+            smtp_server=Config.SMTP_SERVER,
+            smtp_port=Config.SMTP_PORT,
+            email_user=Config.ADMIN_EMAIL,
+            email_password=Config.EMAIL_APP_PASSWORD or "",
+            email_from_name="Zotek IA",
+        )
+        _initialized = True
+
 @app.on_event("startup")
 async def startup_event():
-    database.init_db()
-    global gemini
-    gemini = GeminiEngine(api_key=GEMINI_API_KEY)
+    _ensure_initialized()
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
@@ -199,22 +218,32 @@ async def verify_webhook(request: Request):
         return PlainTextResponse(challenge) if challenge else PlainTextResponse("Ok")
     return "Error auth", 403
 
+@app.get("/version")
+async def version():
+    return {"version": "v2-no-signature-check", "timestamp": "2026-04-02"}
+
 @app.post("/webhook")
 async def recibir_mensaje(request: Request):
     start_time = time.time()
     metrics['webhook_requests'] += 1
     
+    _ensure_initialized()
     # Leer body una sola vez
     raw_body = await request.body()
+    import sys, traceback as _tb
+    sys.stderr.write(f"[WEBHOOK-V3] POST recibido, body length: {len(raw_body)}\n")
+    sys.stderr.write(f"[WEBHOOK-V3] Body: {raw_body[:500]}\n")
+    sys.stderr.flush()
 
     # ============================================
     # SEGURIDAD: Validar firma en producción
+    # TODO: Re-habilitar cuando se resuelva el problema del body en el bridge ASGI de Firebase
     # ============================================
-    if Config.IS_PRODUCTION and WHATSAPP_APP_SECRET:
-        signature = request.headers.get("X-Hub-Signature-256")
-        if signature and not verify_whatsapp_signature(raw_body, signature):
-            logger.warning("Firma de WhatsApp inválida — webhook rechazado")
-            raise HTTPException(status_code=401, detail="Invalid signature")
+    # if Config.IS_PRODUCTION and WHATSAPP_APP_SECRET:
+    #     signature = request.headers.get("X-Hub-Signature-256")
+    #     if signature and not verify_whatsapp_signature(raw_body, signature):
+    #         logger.warning("Firma de WhatsApp inválida — webhook rechazado")
+    #         raise HTTPException(status_code=401, detail="Invalid signature")
 
     # ============================================
     # RATE LIMITING: Prevenir abuso
@@ -353,7 +382,8 @@ async def recibir_mensaje(request: Request):
             tool_calls   = resultado_ai.get("tool_calls", [])
 
             # 4. Ejecutar herramientas que Gemini solicitó
-            logger.info(f"[TOOLS] tool_calls={[t.get('name') for t in tool_calls]} | texto='{respuesta_ai[:60]}'")
+            sys.stderr.write(f"[TOOLS] tool_calls={[t.get('name') for t in tool_calls]} | texto='{respuesta_ai[:60]}'\n")
+            sys.stderr.flush()
             for tool in tool_calls:
                 nombre = tool.get("name")
                 args   = tool.get("args", {})
@@ -393,11 +423,12 @@ async def recibir_mensaje(request: Request):
                         respuesta_ai = ""  # La confirmación ya fue enviada
 
                 elif nombre == "mostrar_horarios":
-                    duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
-                    test_time = args.get("_test_time")  # For testing: pass "2026-04-04 14:30"
+                    duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 50))
+                    test_time = args.get("_test_time")
                     todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion, test_time=test_time)
                     libres = [s for s in todos_slots if not s["ocupado"]]
-                    logger.info(f"[TOOL] mostrar_horarios total={len(todos_slots)} libres={len(libres)} test_time={test_time}")
+                    sys.stderr.write(f"[TOOL] mostrar_horarios total={len(todos_slots)} libres={len(libres)}\n")
+                    sys.stderr.flush()
                     if libres:
                         # Enviar todos los slots en una sola lista interactiva (máx 10)
                         opciones = [s["label"] for s in libres[:10]]
@@ -488,7 +519,11 @@ async def recibir_mensaje(request: Request):
             )
 
     except Exception as e:
+        import traceback
         metrics['gemini_errors'] += 1
+        error_detail = traceback.format_exc()
+        sys.stderr.write(f"[WEBHOOK-V3] ERROR: {e}\n{error_detail}\n")
+        sys.stderr.flush()
         logger.error(f"Error en Webhook: {e}")
 
     return {"status": "ok"}
@@ -827,23 +862,44 @@ async def list_documents(client_id: int, current_user: str = Depends(get_current
     return database.list_client_documents(client_id)
 
 @app.get("/api/clients/{client_id}/schedules")
-async def get_schedules(client_id: int, current_user: str = Depends(get_current_user)):
-    return database.get_client_schedules(client_id)
+async def get_schedules(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
+    week_start = request.query_params.get("week_start")
+    return database.get_client_schedules(client_id, week_start=week_start)
 
 @app.post("/api/clients/{client_id}/schedules")
 async def save_schedules(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
     data = await request.json()
     schedules = data.get("schedules", [])
-    if database.save_client_schedules(client_id, schedules):
+    week_start = data.get("week_start")
+    if database.save_client_schedules(client_id, schedules, week_start=week_start):
         return {"status": "ok"}
     raise HTTPException(status_code=500, detail="Error guardando horarios.")
 
 @app.get("/api/clients/{client_id}/available-slots")
 async def get_available_slots(client_id: int, current_user: str = Depends(get_current_user)):
     client = database.get_client_by_id(client_id)
-    duracion = int(client.get("appointment_duration") or 60) if client else 60
+    duracion = int(client.get("appointment_duration") or 50) if client else 50
     slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
     return {"slots": slots}
+
+@app.get("/api/debug/slots/{client_id}")
+async def debug_slots(client_id: int):
+    """Endpoint temporal de debug — muestra hora del servidor y slots generados."""
+    from datetime import datetime
+    utc_now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    mx_now = datetime.now(database.MX_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    client = database.get_client_by_id(client_id)
+    duracion = int(client.get("appointment_duration") or 50) if client else 50
+    schedules = database.get_client_schedules(client_id)
+    slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
+    return {
+        "server_utc": utc_now,
+        "server_mexico": mx_now,
+        "client_schedules_db": schedules,
+        "appointment_duration": duracion,
+        "generated_slots": slots[:15],
+        "total_slots": len(slots),
+    }
 
 @app.post("/api/clients/{client_id}/upload-pdf")
 async def upload_pdf(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
@@ -1135,6 +1191,10 @@ async def cancel_appointment(client_id: int, appointment_id: int,
 
 
 # ============================================
+# VAPI - SERVICIO DE LLAMADAS DE RECORDATORIO
+# ============================================
+
+# ============================================
 # WIDGET WEB EMBEBIBLE
 # ============================================
 
@@ -1153,14 +1213,14 @@ async def widget_chat(request: Request):
     """
     Endpoint público para el widget web embebible.
     No requiere JWT — protegido por client_id válido.
-    Devuelve JSON con text, type (text|slots|options|confirmed) e items.
+    Devuelve JSON con text, buttons (slots) y tipo de respuesta.
     """
     _ensure_initialized()
 
     data = await request.json()
-    client_id  = data.get("client_id")
-    message    = data.get("message", "").strip()
-    session_id = data.get("session_id", "")
+    client_id = data.get("client_id")
+    message   = data.get("message", "").strip()
+    session_id = data.get("session_id", "")  # UUID generado por el browser
 
     if not client_id or not message or not session_id:
         raise HTTPException(status_code=400, detail="client_id, message y session_id son requeridos")
@@ -1169,6 +1229,7 @@ async def widget_chat(request: Request):
     if not client_data:
         raise HTTPException(status_code=404, detail="Bot no encontrado")
 
+    # Usar session_id como identificador de conversación (en lugar de teléfono)
     resultado = gemini.generar_respuesta_agente(
         mensaje_usuario=message,
         client_data=client_data,
@@ -1178,10 +1239,11 @@ async def widget_chat(request: Request):
     respuesta_text = resultado.get("text", "")
     tool_calls     = resultado.get("tool_calls", [])
 
+    # Respuesta base que el widget interpretará
     response_payload = {
-        "text":  respuesta_text,
-        "type":  "text",
-        "items": [],
+        "text": respuesta_text,
+        "type": "text",   # text | slots | options | confirmed
+        "items": [],       # botones/opciones para el widget
     }
 
     for tool in tool_calls:
@@ -1189,9 +1251,8 @@ async def widget_chat(request: Request):
         args   = tool.get("args", {})
 
         if nombre == "mostrar_horarios":
-            duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 60))
-            test_time = args.get("_test_time")  # For testing: pass "2026-04-04 14:30"
-            todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion, test_time=test_time)
+            duracion = int(client_data.get("appointment_duration") or args.get("duracion_cita", 50))
+            todos_slots = database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
             libres = [s for s in todos_slots if not s["ocupado"]]
             if libres:
                 response_payload["type"]  = "slots"
@@ -1208,12 +1269,14 @@ async def widget_chat(request: Request):
             response_payload["items"] = [{"label": o, "value": o} for o in list(args.get("opciones", []))]
 
         elif nombre == "registrar_cita":
+            paciente_email = args.get("paciente_email", "")
             cita_id = database.save_appointment(
                 client_id=client_data['id'],
                 paciente_nombre=args.get("paciente_nombre", ""),
                 cliente_telefono=args.get("cliente_telefono", ""),
                 fecha_hora=args.get("fecha_hora", ""),
                 motivo=args.get("motivo", ""),
+                paciente_email=paciente_email,
             )
             if cita_id:
                 response_payload["type"] = "confirmed"
@@ -1223,6 +1286,33 @@ async def widget_chat(request: Request):
                     f"📅 {args.get('fecha_hora', '')}\n"
                     f"Recibirás un recordatorio. ¡Hasta pronto!"
                 )
+                # Enviar confirmación por correo al paciente si proporcionó email
+                if paciente_email:
+                    try:
+                        fecha_parts = args.get("fecha_hora", "").split(" ")
+                        # Usar cuenta de email del cliente si tiene password configurado, si no la de Zotek
+                        client_email_user = client_data.get("email_user", "")
+                        client_email_pass = client_data.get("email_password", "")
+                        sender = EmailService(
+                            smtp_server=client_data.get("email_smtp_server", "smtp.gmail.com"),
+                            smtp_port=int(client_data.get("email_smtp_port", 587)),
+                            email_user=client_email_user,
+                            email_password=client_email_pass,
+                            email_from_name=client_data.get("email_from_name", client_data.get("name", "")),
+                        ) if (client_email_user and client_email_pass) else email_service
+                        sender.send_template(
+                            to=paciente_email,
+                            template="appointment_confirmed",
+                            variables={
+                                "nombre": args.get("paciente_nombre", ""),
+                                "fecha": fecha_parts[0] if fecha_parts else args.get("fecha_hora", ""),
+                                "hora": fecha_parts[1] if len(fecha_parts) > 1 else "",
+                                "ubicacion": client_data.get("address", "Villa de Álvarez, Colima"),
+                                "nombre_negocio": client_data.get("name", ""),
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"No se pudo enviar email de confirmación: {e}")
 
         elif nombre == "capturar_lead":
             database.save_lead(
@@ -1234,10 +1324,6 @@ async def widget_chat(request: Request):
 
     return response_payload
 
-
-# ============================================
-# VAPI - SERVICIO DE LLAMADAS DE RECORDATORIO
-# ============================================
 
 @app.post("/api/cron/reminders")
 async def cron_reminders(request: Request):
@@ -1413,7 +1499,6 @@ async def vapi_webhook(request: Request):
         data = await request.json()
         call_id = data.get("id") or data.get("call", {}).get("id")
         status = data.get("status", "")
-        end_reason = data.get("endedReason", "")
         cost = data.get("cost", 0) or data.get("call", {}).get("cost", 0)
         duration = data.get("duration") or data.get("call", {}).get("duration")
 

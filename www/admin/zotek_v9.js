@@ -1752,42 +1752,96 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ============================================================
 // EDITOR DE HORARIOS POR FRANJAS
 // ============================================================
-const DAYS = [
-    { num: 1, label: 'Lunes' }, { num: 2, label: 'Martes' }, { num: 3, label: 'Miércoles' },
-    { num: 4, label: 'Jueves' }, { num: 5, label: 'Viernes' }, { num: 6, label: 'Sábado' },
-    { num: 7, label: 'Domingo' }
-];
-
-// Estado interno: { 1: [{start:"09:00",end:"14:00"},{start:"17:00",end:"20:00"}], 2: [...], ... }
+// ========== SCHEDULE EDITOR (Date-based) ==========
+// scheduleState: { "2026-04-04": [{start:"09:00",end:"14:00"}, ...], "2026-04-07": [...] }
 let scheduleState = {};
+let currentWeekStart = null; // Monday of the selected week (YYYY-MM-DD)
+
+function getMonday(d) {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    date.setDate(diff);
+    return date.toISOString().split('T')[0];
+}
+
+function getWeekDates(mondayStr) {
+    const days = [];
+    const dayLabels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(mondayStr + 'T12:00:00');
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().split('T')[0];
+        days.push({
+            date: dateStr,
+            label: `${dayLabels[i]} ${d.getDate()} ${monthNames[d.getMonth()]}`
+        });
+    }
+    return days;
+}
 
 function initScheduleEditor(savedSchedules = []) {
-    // Construir estado desde BD
     scheduleState = {};
     savedSchedules.forEach(s => {
-        if (!scheduleState[s.day_of_week]) scheduleState[s.day_of_week] = [];
-        scheduleState[s.day_of_week].push({ start: s.start_time, end: s.end_time });
+        const key = s.schedule_date;
+        if (!scheduleState[key]) scheduleState[key] = [];
+        scheduleState[key].push({ start: s.start_time, end: s.end_time });
     });
-    console.log('📅 Schedules loaded:', savedSchedules.length > 0 ? savedSchedules : '(empty)', '→ scheduleState:', scheduleState);
     renderScheduleEditor();
+}
+
+function renderWeekSelector() {
+    const container = document.getElementById('weekSelector');
+    if (!container) return;
+    const weekDates = getWeekDates(currentWeekStart);
+    const firstDay = weekDates[0];
+    const lastDay = weekDates[6];
+    container.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <button type="button" onclick="changeWeek(-1)" class="btn btn-secondary" style="padding:4px 12px;">← Anterior</button>
+            <span style="font-weight:600;color:var(--primary);">${firstDay.label} — ${lastDay.label}</span>
+            <button type="button" onclick="changeWeek(1)" class="btn btn-secondary" style="padding:4px 12px;">Siguiente →</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <button type="button" onclick="copyWeekSchedule()" class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem;">📋 Copiar semana</button>
+        </div>
+    `;
+}
+
+function changeWeek(offset) {
+    const d = new Date(currentWeekStart + 'T12:00:00');
+    d.setDate(d.getDate() + (offset * 7));
+    currentWeekStart = d.toISOString().split('T')[0];
+    const clientId = document.getElementById('clientId')?.value;
+    if (clientId) loadClientSchedule(clientId);
 }
 
 function renderScheduleEditor() {
     const container = document.getElementById('scheduleEditor');
     if (!container) return;
-    const inputStyle = 'padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:#fff;font-size:0.85rem;';
+    renderWeekSelector();
 
-    container.innerHTML = DAYS.map(day => {
-        const franjas = scheduleState[day.num] || [];
+    const weekDates = getWeekDates(currentWeekStart);
+    const inputStyle = 'padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:#fff;font-size:0.85rem;';
+    const duracion = document.getElementById('appointmentDuration')?.value || 50;
+
+    let html = `<div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.82rem;color:#a5b4fc;">
+        Las citas se generan en bloques de <strong>${duracion} min</strong> dentro de cada franja horaria.
+    </div>`;
+
+    html += weekDates.map(day => {
+        const franjas = scheduleState[day.date] || [];
         const isActive = franjas.length > 0;
+        const dateKey = JSON.stringify(day.date);
 
         const franjasHtml = franjas.map((f, fi) => `
-            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;" data-day="${day.num}" data-fi="${fi}">
-                <input type="time" value="${f.start}" style="${inputStyle}width:100px;" onchange="updateFranja(${day.num},${fi},'start',this.value)">
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+                <input type="time" value="${f.start}" style="${inputStyle}width:100px;" onchange="updateFranja(${dateKey},${fi},'start',this.value)">
                 <span style="color:var(--text-muted)">→</span>
-                <input type="time" value="${f.end}" style="${inputStyle}width:100px;" onchange="updateFranja(${day.num},${fi},'end',this.value)">
-                <button type="button" onclick="removeFranja(${day.num},${fi})" style="background:rgba(255,80,80,0.2);border:none;color:#ff5050;border-radius:4px;padding:4px 8px;cursor:pointer;">✕</button>
-                <button type="button" onclick="copyDaySchedule(${day.num})" title="Copiar a otros días"
+                <input type="time" value="${f.end}" style="${inputStyle}width:100px;" onchange="updateFranja(${dateKey},${fi},'end',this.value)">
+                <button type="button" onclick="removeFranja(${dateKey},${fi})" style="background:rgba(255,80,80,0.2);border:none;color:#ff5050;border-radius:4px;padding:4px 8px;cursor:pointer;">✕</button>
+                <button type="button" onclick="copyDaySchedule(${dateKey})" title="Copiar a otros días"
                     style="background:rgba(99,102,241,0.2);border:none;color:#a5b4fc;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;">
                     📋 Copiar
                 </button>
@@ -1798,11 +1852,11 @@ function renderScheduleEditor() {
         <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:10px 14px;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
-                    <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleDay(${day.num},this.checked)"
+                    <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleDay('${day.date}',this.checked)"
                         style="width:16px;height:16px;accent-color:var(--primary);">
                     ${day.label}
                 </label>
-                ${isActive ? `<button type="button" onclick="addFranja(${day.num})"
+                ${isActive ? `<button type="button" onclick="addFranja('${day.date}')"
                     style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:var(--primary);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
                     + Franja
                 </button>` : ''}
@@ -1810,92 +1864,147 @@ function renderScheduleEditor() {
             ${isActive ? franjasHtml : '<span style="color:var(--text-muted);font-size:0.8rem;margin-left:24px;">Día no laborable</span>'}
         </div>`;
     }).join('');
+
+    container.innerHTML = html;
 }
 
-function toggleDay(dayNum, active) {
-    const dayNames = { 1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado',7:'Domingo' };
+function toggleDay(dateKey, active) {
     if (active) {
-        scheduleState[dayNum] = [{ start: '09:00', end: '18:00' }];
-        console.log(`✅ Enabled ${dayNames[dayNum]}`, scheduleState);
+        scheduleState[dateKey] = [{ start: '09:00', end: '18:00' }];
     } else {
-        delete scheduleState[dayNum];
-        console.log(`❌ Disabled ${dayNames[dayNum]}`, scheduleState);
+        delete scheduleState[dateKey];
     }
     renderScheduleEditor();
 }
 
-function addFranja(dayNum) {
-    if (!scheduleState[dayNum]) scheduleState[dayNum] = [];
-    const last = scheduleState[dayNum].slice(-1)[0];
+function addFranja(dateKey) {
+    if (!scheduleState[dateKey]) scheduleState[dateKey] = [];
+    const last = scheduleState[dateKey].slice(-1)[0];
     const newStart = last ? last.end : '09:00';
-    scheduleState[dayNum].push({ start: newStart, end: '20:00' });
-    console.log(`➕ Added franja to day ${dayNum}: ${newStart} → 20:00`, scheduleState);
+    scheduleState[dateKey].push({ start: newStart, end: '20:00' });
     renderScheduleEditor();
 }
 
-function removeFranja(dayNum, fi) {
-    const removed = scheduleState[dayNum][fi];
-    scheduleState[dayNum].splice(fi, 1);
-    if (scheduleState[dayNum].length === 0) delete scheduleState[dayNum];
-    console.log(`➖ Removed franja from day ${dayNum}:`, removed, '→ scheduleState:', scheduleState);
+function removeFranja(dateKey, fi) {
+    scheduleState[dateKey].splice(fi, 1);
+    if (scheduleState[dateKey].length === 0) delete scheduleState[dateKey];
     renderScheduleEditor();
 }
 
-function updateFranja(dayNum, fi, field, value) {
-    if (scheduleState[dayNum] && scheduleState[dayNum][fi]) {
-        scheduleState[dayNum][fi][field] = value;
+function updateFranja(dateKey, fi, field, value) {
+    if (scheduleState[dateKey] && scheduleState[dateKey][fi]) {
+        scheduleState[dateKey][fi][field] = value;
     }
 }
 
-function copyDaySchedule(fromDay) {
-    const franjas = scheduleState[fromDay];
+function copyDaySchedule(fromDate) {
+    const franjas = scheduleState[fromDate];
     if (!franjas || franjas.length === 0) return;
 
-    const dayNames = { 1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado',7:'Domingo' };
-    const options = DAYS.filter(d => d.num !== fromDay)
+    const weekDates = getWeekDates(currentWeekStart);
+    const options = weekDates.filter(d => d.date !== fromDate)
         .map(d => `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
-            <input type="checkbox" value="${d.num}" style="accent-color:var(--primary);width:16px;height:16px;">
+            <input type="checkbox" value="${d.date}" style="accent-color:var(--primary);width:16px;height:16px;">
             ${d.label}
         </label>`).join('');
 
+    const fromLabel = weekDates.find(d => d.date === fromDate)?.label || fromDate;
     const modal = document.createElement('div');
     modal.id = 'copyScheduleModal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
     modal.innerHTML = `
         <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;width:300px;">
-            <h4 style="margin:0 0 12px;color:var(--primary);">📋 Copiar horario de ${dayNames[fromDay]}</h4>
+            <h4 style="margin:0 0 12px;color:var(--primary);">📋 Copiar horario de ${fromLabel}</h4>
             <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:12px;">Selecciona los días a los que copiar:</p>
             <div id="copyDayOpts">${options}</div>
             <div style="display:flex;gap:8px;margin-top:16px;">
                 <button onclick="document.getElementById('copyScheduleModal').remove()" class="btn btn-secondary" style="flex:1;">Cancelar</button>
-                <button onclick="applyCopySchedule(${fromDay})" class="btn btn-primary" style="flex:1;">Copiar</button>
+                <button onclick="applyCopyDaySchedule('${fromDate}')" class="btn btn-primary" style="flex:1;">Copiar</button>
             </div>
         </div>`;
     document.body.appendChild(modal);
 }
 
-function applyCopySchedule(fromDay) {
-    const franjas = JSON.parse(JSON.stringify(scheduleState[fromDay]));
+function applyCopyDaySchedule(fromDate) {
+    const franjas = JSON.parse(JSON.stringify(scheduleState[fromDate]));
     const checked = document.querySelectorAll('#copyDayOpts input:checked');
     checked.forEach(cb => {
-        scheduleState[parseInt(cb.value)] = JSON.parse(JSON.stringify(franjas));
+        scheduleState[cb.value] = JSON.parse(JSON.stringify(franjas));
     });
-    document.querySelector('div[style*="position:fixed"]')?.remove();
+    document.getElementById('copyScheduleModal')?.remove();
     renderScheduleEditor();
     showToast(`Horario copiado a ${checked.length} día(s)`, 'success');
 }
 
+function copyWeekSchedule() {
+    // Mostrar modal para elegir semana destino
+    const modal = document.createElement('div');
+    modal.id = 'copyWeekModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const nextMonday = new Date(currentWeekStart + 'T12:00:00');
+    nextMonday.setDate(nextMonday.getDate() + 7);
+    const defaultTarget = nextMonday.toISOString().split('T')[0];
+    modal.innerHTML = `
+        <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;width:320px;">
+            <h4 style="margin:0 0 12px;color:var(--primary);">📋 Copiar semana completa</h4>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:12px;">Selecciona el lunes de la semana destino:</p>
+            <input type="date" id="copyWeekTarget" value="${defaultTarget}" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.3);color:#fff;font-size:0.9rem;">
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button onclick="document.getElementById('copyWeekModal').remove()" class="btn btn-secondary" style="flex:1;">Cancelar</button>
+                <button onclick="applyCopyWeek()" class="btn btn-primary" style="flex:1;">Copiar</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+async function applyCopyWeek() {
+    const targetDate = document.getElementById('copyWeekTarget').value;
+    if (!targetDate) return showToast('Selecciona una fecha', 'warning');
+    const targetMonday = getMonday(targetDate);
+    const clientId = document.getElementById('clientId')?.value;
+    if (!clientId) return;
+
+    // Build schedules for target week based on current week's offsets
+    const sourceDates = getWeekDates(currentWeekStart);
+    const targetDates = getWeekDates(targetMonday);
+    const newSchedules = [];
+
+    sourceDates.forEach((src, i) => {
+        const franjas = scheduleState[src.date];
+        if (franjas) {
+            franjas.forEach(f => {
+                newSchedules.push({ schedule_date: targetDates[i].date, start_time: f.start, end_time: f.end });
+            });
+        }
+    });
+
+    if (newSchedules.length === 0) {
+        return showToast('No hay horarios en esta semana para copiar', 'warning');
+    }
+
+    const res = await fetch(`/api/clients/${clientId}/schedules`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedules: newSchedules, week_start: targetMonday })
+    });
+
+    document.getElementById('copyWeekModal')?.remove();
+    if (res.ok) {
+        showToast(`Semana copiada a ${targetDates[0].label} — ${targetDates[6].label}`, 'success');
+    } else {
+        showToast('Error copiando semana', 'error');
+    }
+}
+
 async function loadClientSchedule(clientId) {
     try {
-        console.log(`🔄 Loading schedules for client ${clientId}...`);
-        const res = await fetch(`/api/clients/${clientId}/schedules`, {
+        if (!currentWeekStart) currentWeekStart = getMonday(new Date().toISOString().split('T')[0]);
+        const res = await fetch(`/api/clients/${clientId}/schedules?week_start=${currentWeekStart}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
-        console.log(`✅ Schedules received for client ${clientId}:`, data);
         initScheduleEditor(Array.isArray(data) ? data : []);
     } catch (e) {
-        console.error(`❌ Error loading schedules for client ${clientId}:`, e);
         initScheduleEditor([]);
     }
 }
@@ -1905,27 +2014,23 @@ async function saveClientSchedule() {
     if (!clientId) return showToast('Guarda el cliente primero', 'warning');
 
     const schedules = [];
-    Object.entries(scheduleState).forEach(([day, franjas]) => {
+    Object.entries(scheduleState).forEach(([dateKey, franjas]) => {
         franjas.forEach(f => {
-            schedules.push({ day_of_week: parseInt(day), start_time: f.start, end_time: f.end });
+            schedules.push({ schedule_date: dateKey, start_time: f.start, end_time: f.end });
         });
     });
 
-    console.log('📋 Saving schedules:', { clientId, scheduleState, schedules });
-
-    // Safeguard: prevent accidentally deleting all schedules
     if (schedules.length === 0) {
-        console.warn('⚠️ Attempting to save with NO schedules! scheduleState:', scheduleState);
-        return showToast('⚠️ No hay horarios configurados. Agrega al menos un día y una franja antes de guardar.', 'warning');
+        return showToast('No hay horarios configurados. Agrega al menos un día y una franja.', 'warning');
     }
 
     const res = await fetch(`/api/clients/${clientId}/schedules`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schedules })
+        body: JSON.stringify({ schedules, week_start: currentWeekStart })
     });
     if (res.ok) {
-        showToast('Horarios guardados ✅', 'success');
+        showToast('Horarios guardados', 'success');
     } else {
         showToast('Error guardando horarios', 'error');
     }

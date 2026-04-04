@@ -271,6 +271,34 @@ def init_db():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumo_timestamp ON consumo_eventos(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumo_proveedor ON consumo_eventos(proveedor)')
 
+        # Tabla de horarios por fecha específica
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS client_schedules (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                schedule_date DATE NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                UNIQUE(client_id, schedule_date, start_time)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_schedules_client_date ON client_schedules(client_id, schedule_date)')
+
+        # Migración: si existe columna day_of_week, migrar datos a schedule_date
+        try:
+            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='client_schedules' AND column_name='day_of_week'")
+            if cursor.fetchone():
+                # Migrar registros existentes: day_of_week → fecha más cercana
+                cursor.execute("""
+                    UPDATE client_schedules
+                    SET schedule_date = CURRENT_DATE + ((day_of_week - 1 - EXTRACT(DOW FROM CURRENT_DATE)::int + 7) % 7)::int
+                    WHERE schedule_date IS NULL AND day_of_week IS NOT NULL
+                """)
+                cursor.execute("ALTER TABLE client_schedules DROP COLUMN IF EXISTS day_of_week")
+                logger.info("Migración client_schedules: day_of_week → schedule_date completada")
+        except Exception as e:
+            logger.info(f"client_schedules migration check: {e}")
+
         # Tabla de tarifas por cliente
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS tarifas_cliente (
@@ -933,18 +961,37 @@ def get_available_slots(client_id: int, horario_inicio: str = "09:00", horario_f
         return []
 
 
-def get_client_schedules(client_id: int) -> list:
-    """Retorna las franjas horarias del cliente agrupadas por día."""
+def get_client_schedules(client_id: int, week_start: str = None) -> list:
+    """
+    Retorna las franjas horarias del cliente para una semana específica.
+    week_start: fecha del lunes de la semana (YYYY-MM-DD). Si None, retorna próximos 7 días.
+    """
     try:
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT day_of_week, start_time, end_time
-            FROM client_schedules
-            WHERE client_id = %s
-            ORDER BY day_of_week, start_time
-        """, (client_id,))
+        if week_start:
+            cur.execute("""
+                SELECT schedule_date, start_time, end_time
+                FROM client_schedules
+                WHERE client_id = %s AND schedule_date >= %s AND schedule_date < (%s::date + 7)
+                ORDER BY schedule_date, start_time
+            """, (client_id, week_start, week_start))
+        else:
+            from datetime import datetime, timedelta
+            now = datetime.now(MX_TZ).replace(tzinfo=None)
+            today = now.strftime("%Y-%m-%d")
+            end = (now + timedelta(days=7)).strftime("%Y-%m-%d")
+            cur.execute("""
+                SELECT schedule_date, start_time, end_time
+                FROM client_schedules
+                WHERE client_id = %s AND schedule_date >= %s AND schedule_date < %s
+                ORDER BY schedule_date, start_time
+            """, (client_id, today, end))
         rows = [dict(r) for r in cur.fetchall()]
+        # Convert date objects to strings
+        for r in rows:
+            if hasattr(r["schedule_date"], "strftime"):
+                r["schedule_date"] = r["schedule_date"].strftime("%Y-%m-%d")
         cur.close()
         conn.close()
         return rows
@@ -953,22 +1000,29 @@ def get_client_schedules(client_id: int) -> list:
         return []
 
 
-def save_client_schedules(client_id: int, schedules: list) -> bool:
+def save_client_schedules(client_id: int, schedules: list, week_start: str = None) -> bool:
     """
-    Reemplaza todas las franjas del cliente.
-    schedules: [{"day_of_week": 1, "start_time": "09:00", "end_time": "14:00"}, ...]
+    Guarda franjas horarias para fechas específicas.
+    Si week_start se provee, solo elimina horarios de esa semana antes de insertar.
+    schedules: [{"schedule_date": "2026-04-04", "start_time": "09:00", "end_time": "14:00"}, ...]
     """
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("DELETE FROM client_schedules WHERE client_id = %s", (client_id,))
+        if week_start:
+            cur.execute("""
+                DELETE FROM client_schedules
+                WHERE client_id = %s AND schedule_date >= %s AND schedule_date < (%s::date + 7)
+            """, (client_id, week_start, week_start))
+        else:
+            cur.execute("DELETE FROM client_schedules WHERE client_id = %s", (client_id,))
         for s in schedules:
             cur.execute("""
-                INSERT INTO client_schedules (client_id, day_of_week, start_time, end_time)
+                INSERT INTO client_schedules (client_id, schedule_date, start_time, end_time)
                 VALUES (%s, %s, %s, %s)
-                ON CONFLICT (client_id, day_of_week, start_time) DO UPDATE
+                ON CONFLICT (client_id, schedule_date, start_time) DO UPDATE
                 SET end_time = EXCLUDED.end_time
-            """, (client_id, s["day_of_week"], s["start_time"], s["end_time"]))
+            """, (client_id, s["schedule_date"], s["start_time"], s["end_time"]))
         conn.commit()
         cur.close()
         conn.close()
@@ -978,57 +1032,33 @@ def save_client_schedules(client_id: int, schedules: list) -> bool:
         return False
 
 
-def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante: int = 5, test_time: str = None) -> list:
+def get_available_slots_v2(client_id: int, duracion_min: int = 50, test_time: str = None) -> list:
     """
-    Genera slots disponibles usando client_schedules (soporta franjas partidas).
-    Excluye slots ya ocupados en la tabla citas.
-    Retorna [{"label": "Lun 6 Abr 09:00", "datetime": "2026-04-06 09:00", "ocupado": False}, ...]
-
-    Args:
-        client_id: ID del cliente
-        duracion_min: Duración de la cita en minutos (default 60)
-        dias_adelante: Cuántos días mirar adelante (default 5)
-        test_time: (TESTING ONLY) Tiempo en formato "2026-04-04 14:30" para simular
+    Genera slots disponibles usando client_schedules con fechas específicas.
+    Solo lee lo que existe en la BD — no proyecta patrones.
+    Retorna [{"label": "Sáb 4 Abr 09:00", "datetime": "2026-04-04 09:00", "ocupado": False}, ...]
     """
     from datetime import datetime, timedelta
     try:
+        # Hora actual en México
+        if test_time:
+            now = datetime.strptime(test_time, "%Y-%m-%d %H:%M")
+        else:
+            now = datetime.now(MX_TZ).replace(tzinfo=None)
+
+        # Leer franjas de la BD para los próximos 7 días
         schedules = get_client_schedules(client_id)
         if not schedules:
             return []
 
+        # Obtener citas ocupadas
         conn = get_connection()
         cur = conn.cursor()
-
-        # Support test mode
-        if test_time:
-            now = datetime.strptime(test_time, "%Y-%m-%d %H:%M")
-            logger.info(f"[TEST MODE] Using test_time: {now.strftime('%Y-%m-%d %H:%M:%S %A')}")
-        else:
-            now = datetime.now(MX_TZ).replace(tzinfo=None)  # Hora México sin tzinfo para comparar
-
-        logger.info(f"get_available_slots_v2: now={now.strftime('%Y-%m-%d %H:%M:%S %A')}")
-
-        # Días a revisar: solo dentro de los próximos 7 días calendario
-        dias = []
-        d = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        limite = d + timedelta(days=7)  # máximo 1 semana
-        while d < limite:
-            dow = d.weekday() + 1  # 1=Lun ... 7=Dom
-            if any(s["day_of_week"] == dow for s in schedules):
-                dias.append(d)
-            d += timedelta(days=1)
-
-        if not dias:
-            cur.close()
-            conn.close()
-            return []
-
-        logger.info(f"get_available_slots_v2: dias={[d.strftime('%Y-%m-%d %A') for d in dias]}")
-        fecha_inicio = dias[0].strftime("%Y-%m-%d")
-        fecha_fin    = dias[-1].strftime("%Y-%m-%d 23:59")
+        fecha_inicio = schedules[0]["schedule_date"]
+        fecha_fin = schedules[-1]["schedule_date"]
         cur.execute(
             "SELECT fecha_hora FROM citas WHERE client_id = %s AND fecha_hora::text >= %s AND fecha_hora::text <= %s",
-            (client_id, fecha_inicio, fecha_fin)
+            (client_id, fecha_inicio, fecha_fin + " 23:59")
         )
         ocupados = {str(r[0])[:16] for r in cur.fetchall()}
         cur.close()
@@ -1038,38 +1068,31 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
         dias_semana = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
 
         slots = []
-        for dia in dias:
-            dow = dia.weekday() + 1
-            franjas = [s for s in schedules if s["day_of_week"] == dow]
-            for franja in franjas:
-                h_ini = int(franja["start_time"].split(":")[0])
-                m_ini = int(franja["start_time"].split(":")[1])
-                h_fin = int(franja["end_time"].split(":")[0])
-                m_fin = int(franja["end_time"].split(":")[1])
-                minutos = h_ini * 60 + m_ini
-                fin_minutos = h_fin * 60 + m_fin
-                while minutos < fin_minutos:
-                    h, m = divmod(minutos, 60)
-                    slot_dt = dia.replace(hour=h, minute=m, second=0, microsecond=0)
-                    slot_key = slot_dt.strftime("%Y-%m-%d %H:%M")
+        for franja in schedules:
+            fecha = datetime.strptime(franja["schedule_date"], "%Y-%m-%d")
+            h_ini = int(franja["start_time"].split(":")[0])
+            m_ini = int(franja["start_time"].split(":")[1])
+            h_fin = int(franja["end_time"].split(":")[0])
+            m_fin = int(franja["end_time"].split(":")[1])
+            minutos = h_ini * 60 + m_ini
+            fin_minutos = h_fin * 60 + m_fin
+            while minutos < fin_minutos:
+                h, m = divmod(minutos, 60)
+                slot_dt = fecha.replace(hour=h, minute=m, second=0, microsecond=0)
+                slot_key = slot_dt.strftime("%Y-%m-%d %H:%M")
 
-                    # Excluir slots que ya pasaron (si es hoy)
-                    if slot_dt <= now:
-                        minutos += duracion_min
-                        continue
-
-                    label = f"{dias_semana[dia.weekday()]} {dia.day} {meses[dia.month-1]} {h:02d}:{m:02d}"
-                    slots.append({
-                        "label": label,
-                        "datetime": slot_key,
-                        "ocupado": slot_key in ocupados
-                    })
+                # Excluir slots que ya pasaron
+                if slot_dt <= now:
                     minutos += duracion_min
+                    continue
 
-        import sys
-        sys.stderr.write(f"[get_available_slots_v2] Returning {len(slots)} slots for client {client_id}\n")
-        if slots:
-            sys.stderr.write(f"[get_available_slots_v2] First slot: {slots[0]['label']} ({slots[0]['datetime']})\n")
+                label = f"{dias_semana[fecha.weekday()]} {fecha.day} {meses[fecha.month-1]} {h:02d}:{m:02d}"
+                slots.append({
+                    "label": label,
+                    "datetime": slot_key,
+                    "ocupado": slot_key in ocupados
+                })
+                minutos += duracion_min
         return slots
     except Exception as e:
         logger.error(f"ERROR get_available_slots_v2: {e}")
