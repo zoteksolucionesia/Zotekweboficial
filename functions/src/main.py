@@ -882,6 +882,25 @@ async def get_available_slots(client_id: int, current_user: str = Depends(get_cu
     slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
     return {"slots": slots}
 
+@app.get("/api/debug/slots/{client_id}")
+async def debug_slots(client_id: int):
+    """Endpoint temporal de debug — muestra hora del servidor y slots generados."""
+    from datetime import datetime
+    utc_now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    mx_now = datetime.now(database.MX_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    client = database.get_client_by_id(client_id)
+    duracion = int(client.get("appointment_duration") or 60) if client else 60
+    schedules = database.get_client_schedules(client_id)
+    slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
+    return {
+        "server_utc": utc_now,
+        "server_mexico": mx_now,
+        "client_schedules_db": schedules,
+        "appointment_duration": duracion,
+        "generated_slots": slots[:15],
+        "total_slots": len(slots),
+    }
+
 @app.post("/api/clients/{client_id}/upload-pdf")
 async def upload_pdf(client_id: int, request: Request, current_user: str = Depends(get_current_user)):
     import io
