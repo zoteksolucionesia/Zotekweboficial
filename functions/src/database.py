@@ -1047,6 +1047,11 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
                         "ocupado": slot_key in ocupados
                     })
                     minutos += duracion_min
+
+        import sys
+        sys.stderr.write(f"[get_available_slots_v2] Returning {len(slots)} slots for client {client_id}\n")
+        if slots:
+            sys.stderr.write(f"[get_available_slots_v2] First slot: {slots[0]['label']} ({slots[0]['datetime']})\n")
         return slots
     except Exception as e:
         logger.error(f"ERROR get_available_slots_v2: {e}")
