@@ -1008,10 +1008,10 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
 
         logger.info(f"get_available_slots_v2: now={now.strftime('%Y-%m-%d %H:%M:%S %A')}")
 
-        # Días a revisar: solo dentro de los próximos 14 días calendario
+        # Días a revisar: solo dentro de los próximos 7 días calendario
         dias = []
         d = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        limite = d + timedelta(days=14)  # máximo 2 semanas
+        limite = d + timedelta(days=7)  # máximo 1 semana
         while d < limite:
             dow = d.weekday() + 1  # 1=Lun ... 7=Dom
             if any(s["day_of_week"] == dow for s in schedules):
