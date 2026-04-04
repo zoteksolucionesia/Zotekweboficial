@@ -1768,6 +1768,7 @@ function initScheduleEditor(savedSchedules = []) {
         if (!scheduleState[s.day_of_week]) scheduleState[s.day_of_week] = [];
         scheduleState[s.day_of_week].push({ start: s.start_time, end: s.end_time });
     });
+    console.log('📅 Schedules loaded:', savedSchedules.length > 0 ? savedSchedules : '(empty)', '→ scheduleState:', scheduleState);
     renderScheduleEditor();
 }
 
@@ -1812,10 +1813,13 @@ function renderScheduleEditor() {
 }
 
 function toggleDay(dayNum, active) {
+    const dayNames = { 1:'Lunes',2:'Martes',3:'Miércoles',4:'Jueves',5:'Viernes',6:'Sábado',7:'Domingo' };
     if (active) {
         scheduleState[dayNum] = [{ start: '09:00', end: '18:00' }];
+        console.log(`✅ Enabled ${dayNames[dayNum]}`, scheduleState);
     } else {
         delete scheduleState[dayNum];
+        console.log(`❌ Disabled ${dayNames[dayNum]}`, scheduleState);
     }
     renderScheduleEditor();
 }
@@ -1825,12 +1829,15 @@ function addFranja(dayNum) {
     const last = scheduleState[dayNum].slice(-1)[0];
     const newStart = last ? last.end : '09:00';
     scheduleState[dayNum].push({ start: newStart, end: '20:00' });
+    console.log(`➕ Added franja to day ${dayNum}: ${newStart} → 20:00`, scheduleState);
     renderScheduleEditor();
 }
 
 function removeFranja(dayNum, fi) {
+    const removed = scheduleState[dayNum][fi];
     scheduleState[dayNum].splice(fi, 1);
     if (scheduleState[dayNum].length === 0) delete scheduleState[dayNum];
+    console.log(`➖ Removed franja from day ${dayNum}:`, removed, '→ scheduleState:', scheduleState);
     renderScheduleEditor();
 }
 
@@ -1880,12 +1887,15 @@ function applyCopySchedule(fromDay) {
 
 async function loadClientSchedule(clientId) {
     try {
+        console.log(`🔄 Loading schedules for client ${clientId}...`);
         const res = await fetch(`/api/clients/${clientId}/schedules`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
+        console.log(`✅ Schedules received for client ${clientId}:`, data);
         initScheduleEditor(Array.isArray(data) ? data : []);
     } catch (e) {
+        console.error(`❌ Error loading schedules for client ${clientId}:`, e);
         initScheduleEditor([]);
     }
 }
@@ -1900,6 +1910,14 @@ async function saveClientSchedule() {
             schedules.push({ day_of_week: parseInt(day), start_time: f.start, end_time: f.end });
         });
     });
+
+    console.log('📋 Saving schedules:', { clientId, scheduleState, schedules });
+
+    // Safeguard: prevent accidentally deleting all schedules
+    if (schedules.length === 0) {
+        console.warn('⚠️ Attempting to save with NO schedules! scheduleState:', scheduleState);
+        return showToast('⚠️ No hay horarios configurados. Agrega al menos un día y una franja antes de guardar.', 'warning');
+    }
 
     const res = await fetch(`/api/clients/${clientId}/schedules`, {
         method: 'POST',

@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from collections import deque, defaultdict
 from dotenv import load_dotenv
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logging.basicConfig(
     level=logging.INFO,
@@ -664,6 +664,50 @@ async def get_usage_metrics(client_id: int = None, current_user: str = Depends(g
             })
         
         return {'clients': usage_data}
+
+
+@app.get("/api/admin/consumo")
+async def get_consumo_dashboard(client_id: Optional[int] = None, mes: Optional[int] = None,
+                                anio: Optional[int] = None, current_user: str = Depends(get_current_user)):
+    """
+    Dashboard de costos: muestra consumo real (VAPI/Twilio/WhatsApp) vs ingresos.
+
+    Parámetros:
+    - client_id: filtrar por cliente específico (optional)
+    - mes: mes (1-12), default es mes actual
+    - anio: año, default es año actual
+    """
+    from datetime import datetime
+
+    if not mes:
+        mes = datetime.now().month
+    if not anio:
+        anio = datetime.now().year
+
+    try:
+        consumo_data = database.get_consumo_mensual(client_id=client_id, mes=mes, anio=anio)
+        facturacion_data = database.get_resumen_facturacion(client_id=client_id, mes=mes, anio=anio)
+
+        # Calcular totales
+        total_gastado_usd = sum(float(item.get('total_costo', 0) or 0) for item in consumo_data.get('datos', []))
+
+        # Calcular por proveedor
+        por_proveedor = {}
+        for item in consumo_data.get('datos', []):
+            prov = item.get('proveedor', 'UNKNOWN')
+            costo = float(item.get('total_costo', 0) or 0)
+            por_proveedor[prov] = por_proveedor.get(prov, 0) + costo
+
+        return {
+            "periodo": f"{anio}-{mes:02d}",
+            "total_gastado_usd": round(total_gastado_usd, 4),
+            "por_proveedor": {k: round(v, 4) for k, v in por_proveedor.items()},
+            "facturacion_clientes": facturacion_data,
+            "total_eventos": len(consumo_data.get('datos', []))
+        }
+    except Exception as e:
+        logger.error(f"Error en get_consumo_dashboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Routes ---
@@ -1312,8 +1356,9 @@ async def cron_reminders(request: Request):
                 texto += f"\n📋 Motivo: {cita['motivo']}"
             texto += "\n\nSi necesitas cancelar o cambiar, responde este mensaje."
 
+            numero_normalizado = database.normalize_phone(cita["cliente_telefono"])
             ok = whatsapp_service.enviar_mensaje_whatsapp(
-                numero=cita["cliente_telefono"],
+                numero=numero_normalizado,
                 texto=texto,
                 whatsapp_token=token_wa,
                 phone_number_id=cita["phone_number_id"],
@@ -1392,9 +1437,10 @@ async def run_reminder_job(current_user: str = Depends(get_current_user)):
         database.update_appointment_reminder_status(cita_id, "llamando")
 
         fecha_legible = format_fecha_legible(fecha_raw)
+        numero_normalizado = database.normalize_phone(numero)
 
         resultado_vapi = vapi.iniciar_llamada_recordatorio(
-            numero_paciente=numero,
+            numero_paciente=numero_normalizado,
             nombre_paciente=nombre_paciente,
             fecha_cita=fecha_legible,
             nombre_profesional=nombre_profesional,
@@ -1420,9 +1466,9 @@ async def run_reminder_job(current_user: str = Depends(get_current_user)):
 async def vapi_webhook(request: Request):
     """
     Webhook que VAPI llama cuando termina una llamada.
-    Actualiza el estado final de la cita en la base de datos.
-    
-    VAPI envía: call_id, status ('ended', 'failed'), summary, transcript, etc.
+    Actualiza el estado final de la cita y registra el consumo.
+
+    VAPI envía: call_id, status ('ended', 'failed'), cost, duration, summary, transcript, etc.
     """
     if VAPI_WEBHOOK_SECRET:
         auth = request.headers.get("x-vapi-secret", "")
@@ -1433,15 +1479,23 @@ async def vapi_webhook(request: Request):
         data = await request.json()
         call_id = data.get("id") or data.get("call", {}).get("id")
         status = data.get("status", "")
-        end_reason = data.get("endedReason", "")
+        cost = data.get("cost", 0) or data.get("call", {}).get("cost", 0)
+        duration = data.get("duration") or data.get("call", {}).get("duration")
 
-        logger.info(f"VAPI Webhook: call_id={call_id}, status={status}, end_reason={end_reason}")
+        logger.info(f"VAPI Webhook: call_id={call_id}, status={status}, cost=${cost}, duration={duration}s")
 
         if call_id:
             final_status = "llamado" if status in ("ended",) else "fallido"
+
+            # Obtener client_id de la cita para registrar consumo
             conn = database.get_connection()
             try:
                 cursor = conn.cursor()
+                cursor.execute("SELECT client_id FROM citas WHERE vapi_call_id = %s", (call_id,))
+                result = cursor.fetchone()
+                client_id = result[0] if result else None
+
+                # Actualizar estado de la cita
                 cursor.execute("""
                     UPDATE citas SET reminder_status = %s WHERE vapi_call_id = %s
                 """, (final_status, call_id))
@@ -1452,6 +1506,18 @@ async def vapi_webhook(request: Request):
                 logger.error(f"VAPI Webhook DB error: {db_err}")
             finally:
                 conn.close()
+
+            # Registrar consumo (no debe romper el flujo si falla)
+            if client_id:
+                database.registrar_consumo_evento(
+                    client_id=client_id,
+                    proveedor="VAPI",
+                    tipo="CALL",
+                    costo_usd=float(cost) if cost else 0,
+                    duracion=int(duration) if duration else None,
+                    estado=final_status,
+                    evento_id=call_id
+                )
 
         return {"status": "received"}
     except Exception as e:

@@ -33,3 +33,52 @@ Configurar las variables de entorno en Railway (copiar el .env)
 Actualizar la URL del webhook en Meta a la URL de Railway
 Re-habilitar la verificación de firma WhatsApp (que está desactivada por el bug del ASGI bridge de Firebase)
 Costo: ~$5/mes para el plan Hobby
+# trabajando en esto a partir de las 3:45 pm
+¿Quieres que configure el recordatorio de citas por WhatsApp usando cron-job.org para no depender de Google Cloud? Es la opción más rápida y gratuita.
+Antes de codear, déjame plantear la arquitectura para que estemos alineados:
+
+Componentes necesarios:
+
+
+Landing de la psicóloga
+    └── <script src="https://zotek.app/widget.js?bot=123">
+            ├── Crea botón flotante + ventana de chat
+            ├── Genera session_id (UUID en localStorage)
+            └── POST /api/widget/chat  ← nuevo endpoint público
+                    ├── Usa el mismo GeminiEngine que WhatsApp
+                    ├── Historial por session_id (no por teléfono)
+                    └── Devuelve texto + tool_calls como JSON
+Lo que cambia vs WhatsApp:
+
+WhatsApp	Widget web
+Botones nativos de Meta	Botones HTML en el chat
+Historial por numero_telefono	Historial por session_id (UUID)
+enviar_mensaje_whatsapp()	Respuesta JSON al browser
+registrar_cita con tel del usuario	Pide tel en formulario del widget
+Lo que NO cambia:
+
+GeminiEngine, tools, flujo de citas — todo igual
+La cita se guarda en la misma tabla citas
+El dashboard muestra las citas del widget igual que las de WhatsApp
+Fases:
+
+widget.js — UI flotante (botón, ventana, input)
+POST /api/widget/chat — endpoint sin JWT, protegido por client_id válido
+Adaptar tool_calls para web (slots como botones clicables, no lista de WhatsApp)
+Snippet de instalación que la psicóloga pega en su landing
+# 4 abril 2026
+Listo. El widget está en producción. Para probarlo la psicóloga (o tú) solo pega esto en cualquier HTML:
+
+
+<script src="https://zotek-ia.web.app/widget.js?bot=ID_DEL_CLIENTE"></script>
+Para cambiar el color del botón y la burbuja:
+
+
+<script src="https://zotek-ia.web.app/widget.js?bot=5&color=%23FF6B9D"></script>
+El ID_DEL_CLIENTE lo encuentras en el dashboard — es el id numérico del bot que configuraste. El widget ya:
+
+Muestra el nombre del bot en el encabezado
+Saluda automáticamente al abrirse
+Muestra los horarios como botones clicables
+Registra la cita en la misma tabla que WhatsApp
+Guarda el historial de la conversación por sesión del visitante

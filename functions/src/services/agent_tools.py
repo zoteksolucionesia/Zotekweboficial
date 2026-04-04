@@ -98,3 +98,27 @@ def get_appointment_tool():
         }
     }
 
+
+def get_show_available_slots_tool():
+    """
+    Returns the tool definition for showing available appointment slots.
+    Shows the user available times from today onwards (excluding past times).
+    """
+    return {
+        "name": "mostrar_horarios",
+        "description": (
+            "Muestra los horarios disponibles para agendar una cita, incluyendo hoy si hay horarios disponibles. "
+            "Excluye automáticamente horarios que ya pasaron. "
+            "Debe ejecutarse SIEMPRE al inicio para mostrar opciones de agendamiento al usuario."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "duracion_cita": {
+                    "type": "integer",
+                    "description": "Duración de la cita en minutos (default: 60)."
+                }
+            }
+        }
+    }
+

@@ -85,6 +85,42 @@ def sanitize_message_preview(text: str, max_len: int = 100) -> str:
     cleaned = text.replace('\n', ' ').strip()
     return cleaned[:max_len]
 
+def normalize_phone(phone: str, country_code: str = '52') -> str:
+    """
+    Normaliza número de teléfono a formato E.164 (+52XXXXXXXXXX para México).
+
+    Ejemplos:
+    - 3121149153 → +523121149153
+    - 523121149153 → +523121149153
+    - +523121149153 → +523121149153
+    - 521234567890 → +5212345678990 (quita el 1 extra de México)
+    - +52 312 1149153 → +523121149153
+    """
+    if not phone:
+        return ''
+
+    # Limpiar caracteres no numéricos excepto +
+    cleaned = sanitize_phone(phone)
+
+    # Si ya tiene formato E.164, retornar
+    if cleaned.startswith('+'):
+        return cleaned
+
+    # Si empieza con 521 (México con 1 extra), quitar el 1
+    if cleaned.startswith('521'):
+        cleaned = '52' + cleaned[3:]
+
+    # Si empieza con 52 pero no con +, agregar +
+    if cleaned.startswith('52'):
+        return '+' + cleaned
+
+    # Si son 10 dígitos (formato local México sin 52), agregar +52
+    if len(cleaned) == 10 and cleaned.isdigit():
+        return f'+52{cleaned}'
+
+    # Fallback: agregar código de país
+    return f'+{country_code}{cleaned}'
+
 def get_connection() -> _PooledConnection:
     """Obtiene una conexión del pool de PostgreSQL."""
     try:
@@ -210,6 +246,37 @@ def init_db():
                 email TEXT PRIMARY KEY,
                 code TEXT NOT NULL,
                 expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+            )
+        ''')
+
+        # Tabla de consumo de eventos (Twilio/VAPI/WhatsApp)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS consumo_eventos (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                proveedor TEXT NOT NULL,
+                tipo TEXT NOT NULL,
+                costo_usd NUMERIC(10,4) DEFAULT 0,
+                duracion_segundos INTEGER,
+                estado TEXT,
+                evento_id TEXT,
+                timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumo_client ON consumo_eventos(client_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumo_timestamp ON consumo_eventos(timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumo_proveedor ON consumo_eventos(proveedor)')
+
+        # Tabla de tarifas por cliente
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tarifas_cliente (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                fee_mensual_mxn NUMERIC(10,2) DEFAULT 0,
+                precio_por_mensaje_mxn NUMERIC(10,4) DEFAULT 0,
+                precio_por_llamada_mxn NUMERIC(10,4) DEFAULT 0,
+                activo BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         ''')
 
@@ -778,6 +845,9 @@ def save_appointment(client_id: int, paciente_nombre: str, cliente_telefono: str
                      fecha_hora: str, motivo: str = None) -> Optional[int]:
     """Guarda una nueva cita en la base de datos."""
     try:
+        # Normalizar teléfono antes de guardar
+        cliente_telefono = normalize_phone(cliente_telefono)
+
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -918,7 +988,7 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
         cur = conn.cursor()
         now = datetime.now()
 
-        # Días a revisar
+        # Días a revisar (empezando desde mañana para evitar saltar un día)
         dias = []
         d = now + timedelta(days=1)
         while len(dias) < dias_adelante:
@@ -960,6 +1030,12 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 60, dias_adelante
                     h, m = divmod(minutos, 60)
                     slot_dt = dia.replace(hour=h, minute=m, second=0, microsecond=0)
                     slot_key = slot_dt.strftime("%Y-%m-%d %H:%M")
+
+                    # Excluir slots que ya pasaron (si es hoy)
+                    if slot_dt <= now:
+                        minutos += duracion_min
+                        continue
+
                     label = f"{dias_semana[dia.weekday()]} {dia.day} {meses[dia.month-1]} {h:02d}:{m:02d}"
                     slots.append({
                         "label": label,
@@ -1035,6 +1111,158 @@ def get_verification_code(email: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"ERROR get_verification_code: {e}")
         return None
+
+
+def registrar_consumo_evento(client_id: int, proveedor: str, tipo: str, costo_usd: float = 0,
+                             duracion: Optional[int] = None, estado: Optional[str] = None,
+                             evento_id: Optional[str] = None) -> bool:
+    """
+    Registra un evento de consumo (llamada, SMS, WhatsApp).
+    No debe romper el flujo principal si falla — manejo silencioso de errores.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO consumo_eventos
+            (client_id, proveedor, tipo, costo_usd, duracion_segundos, estado, evento_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (client_id, proveedor, tipo, costo_usd, duracion, estado, evento_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logger.info(f"Consumo registrado: client={client_id}, proveedor={proveedor}, costo=${costo_usd}")
+        return True
+    except Exception as e:
+        logger.error(f"ERROR registrar_consumo_evento: {e}")
+        return False
+
+
+def get_consumo_mensual(client_id: Optional[int] = None, mes: Optional[int] = None,
+                       anio: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Obtiene el consumo del mes especificado, agrupado por proveedor y tipo.
+    Si mes/anio no se especifican, usa el mes/año actual.
+    """
+    from datetime import datetime
+    try:
+        if mes is None:
+            mes = datetime.now().month
+        if anio is None:
+            anio = datetime.now().year
+
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        if client_id:
+            cursor.execute("""
+                SELECT
+                    proveedor,
+                    tipo,
+                    COUNT(*) as cantidad,
+                    SUM(costo_usd) as total_costo,
+                    SUM(COALESCE(duracion_segundos, 0)) as duracion_total
+                FROM consumo_eventos
+                WHERE client_id = %s
+                  AND EXTRACT(MONTH FROM timestamp) = %s
+                  AND EXTRACT(YEAR FROM timestamp) = %s
+                GROUP BY proveedor, tipo
+                ORDER BY proveedor, tipo
+            """, (client_id, mes, anio))
+        else:
+            cursor.execute("""
+                SELECT
+                    client_id,
+                    proveedor,
+                    tipo,
+                    COUNT(*) as cantidad,
+                    SUM(costo_usd) as total_costo,
+                    SUM(COALESCE(duracion_segundos, 0)) as duracion_total
+                FROM consumo_eventos
+                WHERE EXTRACT(MONTH FROM timestamp) = %s
+                  AND EXTRACT(YEAR FROM timestamp) = %s
+                GROUP BY client_id, proveedor, tipo
+                ORDER BY client_id, proveedor, tipo
+            """, (mes, anio))
+
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        return {
+            "mes": f"{anio}-{mes:02d}",
+            "datos": [dict(r) for r in rows] if rows else []
+        }
+    except Exception as e:
+        logger.error(f"ERROR get_consumo_mensual: {e}")
+        return {"mes": f"{anio}-{mes:02d}", "datos": []}
+
+
+def get_resumen_facturacion(client_id: Optional[int] = None, mes: Optional[int] = None,
+                           anio: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Obtiene resumen de facturación: consumo real vs precio cobrado.
+    Requiere que tarifas_cliente esté configurado.
+    """
+    from datetime import datetime
+    try:
+        if mes is None:
+            mes = datetime.now().month
+        if anio is None:
+            anio = datetime.now().year
+
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        if client_id:
+            cursor.execute("""
+                SELECT
+                    c.id,
+                    c.name as nombre_cliente,
+                    SUM(ce.costo_usd) as costo_real_usd,
+                    COALESCE(tc.fee_mensual_mxn, 0) as fee_mensual_mxn,
+                    COALESCE(tc.precio_por_llamada_mxn, 0) as precio_llamada_mxn,
+                    COUNT(ce.id) as total_eventos
+                FROM clients c
+                LEFT JOIN consumo_eventos ce ON c.id = ce.client_id
+                    AND EXTRACT(MONTH FROM ce.timestamp) = %s
+                    AND EXTRACT(YEAR FROM ce.timestamp) = %s
+                LEFT JOIN tarifas_cliente tc ON c.id = tc.client_id AND tc.activo = TRUE
+                WHERE c.id = %s
+                GROUP BY c.id, c.name, tc.fee_mensual_mxn, tc.precio_por_llamada_mxn
+            """, (mes, anio, client_id))
+        else:
+            cursor.execute("""
+                SELECT
+                    c.id,
+                    c.name as nombre_cliente,
+                    SUM(ce.costo_usd) as costo_real_usd,
+                    COALESCE(tc.fee_mensual_mxn, 0) as fee_mensual_mxn,
+                    COALESCE(tc.precio_por_llamada_mxn, 0) as precio_llamada_mxn,
+                    COUNT(ce.id) as total_eventos
+                FROM clients c
+                LEFT JOIN consumo_eventos ce ON c.id = ce.client_id
+                    AND EXTRACT(MONTH FROM ce.timestamp) = %s
+                    AND EXTRACT(YEAR FROM ce.timestamp) = %s
+                LEFT JOIN tarifas_cliente tc ON c.id = tc.client_id AND tc.activo = TRUE
+                GROUP BY c.id, c.name, tc.fee_mensual_mxn, tc.precio_por_llamada_mxn
+                ORDER BY c.name
+            """, (mes, anio))
+
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        resultado = []
+        for row in rows:
+            r = dict(row)
+            r["costo_real_usd"] = float(r["costo_real_usd"] or 0)
+            r["fee_mensual_mxn"] = float(r["fee_mensual_mxn"] or 0)
+            resultado.append(r)
+        return resultado
+    except Exception as e:
+        logger.error(f"ERROR get_resumen_facturacion: {e}")
+        return []
 
 
 if __name__ == "__main__":
