@@ -898,14 +898,75 @@ async def debug_slots(client_id: int):
     duracion = int(client.get("appointment_duration") or 50) if client else 50
     schedules = database.get_client_schedules(client_id)
     slots = database.get_available_slots_v2(client_id, duracion_min=duracion)
+    # Check table columns
+    try:
+        conn = database.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='client_schedules' ORDER BY ordinal_position")
+        columns = [r[0] for r in cur.fetchall()]
+        cur.close()
+        conn.close()
+    except Exception as e:
+        columns = [f"error: {e}"]
+
     return {
         "server_utc": utc_now,
         "server_mexico": mx_now,
+        "table_columns": columns,
         "client_schedules_db": schedules,
         "appointment_duration": duracion,
         "generated_slots": slots[:15],
         "total_slots": len(slots),
     }
+
+@app.get("/api/debug/migrate-schedules")
+async def debug_migrate():
+    """Force migration of client_schedules table."""
+    try:
+        conn = database.get_connection()
+        cur = conn.cursor()
+        # Check current state
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='client_schedules'")
+        cols = [r[0] for r in cur.fetchall()]
+
+        actions = []
+        if 'day_of_week' in cols and 'schedule_date' not in cols:
+            cur.execute("ALTER TABLE client_schedules ADD COLUMN schedule_date DATE")
+            cur.execute("""
+                UPDATE client_schedules
+                SET schedule_date = CURRENT_DATE + ((day_of_week - 1 - EXTRACT(DOW FROM CURRENT_DATE)::int + 7) % 7)::int
+                WHERE schedule_date IS NULL
+            """)
+            actions.append("added schedule_date and migrated data")
+
+        if 'day_of_week' in cols and 'schedule_date' in cols:
+            cur.execute("ALTER TABLE client_schedules DROP COLUMN day_of_week")
+            actions.append("dropped day_of_week")
+
+        if 'schedule_date' in cols:
+            cur.execute("ALTER TABLE client_schedules DROP CONSTRAINT IF EXISTS client_schedules_client_id_day_of_week_start_time_key")
+            try:
+                cur.execute("""
+                    ALTER TABLE client_schedules ADD CONSTRAINT client_schedules_date_unique
+                    UNIQUE(client_id, schedule_date, start_time)
+                """)
+                actions.append("added unique constraint on schedule_date")
+            except Exception:
+                actions.append("unique constraint already exists")
+
+        conn.commit()
+
+        # Verify
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='client_schedules'")
+        final_cols = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT * FROM client_schedules LIMIT 5")
+        sample = [dict(zip(final_cols, r)) for r in cur.fetchall()]
+
+        cur.close()
+        conn.close()
+        return {"actions": actions, "columns": final_cols, "sample_data": sample}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/api/clients/{client_id}/upload-pdf")
 async def upload_pdf(client_id: int, request: Request, current_user: str = Depends(get_current_user)):

@@ -1757,12 +1757,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 let scheduleState = {};
 let currentWeekStart = null; // Monday of the selected week (YYYY-MM-DD)
 
-function getMonday(d) {
-    const date = new Date(d);
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-    date.setDate(diff);
-    return date.toISOString().split('T')[0];
+function toLocalDateStr(d) {
+    // Format as YYYY-MM-DD using local timezone (not UTC)
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+}
+
+function getMonday(dateStr) {
+    // Parse with time to avoid UTC shift
+    const date = new Date(dateStr + 'T12:00:00');
+    const day = date.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const diff = day === 0 ? -6 : 1 - day; // days to subtract to get Monday
+    date.setDate(date.getDate() + diff);
+    return toLocalDateStr(date);
 }
 
 function getWeekDates(mondayStr) {
@@ -1772,7 +1781,7 @@ function getWeekDates(mondayStr) {
     for (let i = 0; i < 7; i++) {
         const d = new Date(mondayStr + 'T12:00:00');
         d.setDate(d.getDate() + i);
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDateStr(d);
         days.push({
             date: dateStr,
             label: `${dayLabels[i]} ${d.getDate()} ${monthNames[d.getMonth()]}`
@@ -1998,7 +2007,7 @@ async function applyCopyWeek() {
 
 async function loadClientSchedule(clientId) {
     try {
-        if (!currentWeekStart) currentWeekStart = getMonday(new Date().toISOString().split('T')[0]);
+        if (!currentWeekStart) currentWeekStart = getMonday(toLocalDateStr(new Date()));
         const res = await fetch(`/api/clients/${clientId}/schedules?week_start=${currentWeekStart}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
