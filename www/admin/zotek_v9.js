@@ -1837,9 +1837,9 @@ function renderScheduleEditor() {
 
         const franjasHtml = franjas.map((f, fi) => `
             <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-                <input type="time" value="${f.start}" style="${inputStyle}width:100px;" onchange="updateFranja(${dateKey},${fi},'start',this.value)">
+                <input type="time" value="${f.start}" style="${inputStyle}width:100px;" oninput="updateFranja(${dateKey},${fi},'start',this.value)">
                 <span style="color:var(--text-muted)">→</span>
-                <input type="time" value="${f.end}" style="${inputStyle}width:100px;" onchange="updateFranja(${dateKey},${fi},'end',this.value)">
+                <input type="time" value="${f.end}" style="${inputStyle}width:100px;" oninput="updateFranja(${dateKey},${fi},'end',this.value)">
                 <button type="button" onclick="removeFranja(${dateKey},${fi})" style="background:rgba(255,80,80,0.2);border:none;color:#ff5050;border-radius:4px;padding:4px 8px;cursor:pointer;">✕</button>
                 <button type="button" onclick="copyDaySchedule(${dateKey})" title="Copiar a otros días"
                     style="background:rgba(99,102,241,0.2);border:none;color:#a5b4fc;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;">
