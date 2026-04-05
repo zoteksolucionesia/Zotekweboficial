@@ -505,7 +505,7 @@ async function editClient(id) {
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
 
         // Horario de atención
-        document.getElementById('appointmentDuration').value = client.appointment_duration || 60;
+        document.getElementById('appointmentDuration').value = client.appointment_duration || 50;
         await loadClientSchedule(id);
 
         // Clean UI state before loading menu
@@ -556,7 +556,7 @@ async function viewClient(id) {
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
 
         // Horario de atención
-        document.getElementById('appointmentDuration').value = client.appointment_duration || 60;
+        document.getElementById('appointmentDuration').value = client.appointment_duration || 50;
         await loadClientSchedule(id);
 
         // Cargar menú
