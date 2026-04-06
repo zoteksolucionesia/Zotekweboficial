@@ -325,6 +325,38 @@ def init_db():
             )
         ''')
 
+        # Tabla de Lead Tracking
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lead_tracking (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+                phone_number TEXT NOT NULL,
+                customer_name TEXT DEFAULT '',
+                customer_email TEXT DEFAULT '',
+                source TEXT DEFAULT 'whatsapp',
+                status TEXT DEFAULT 'new',
+                last_message_sent TEXT,
+                last_message_response TEXT,
+                last_interaction TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                followup_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(client_id, phone_number)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_lead_client ON lead_tracking(client_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_lead_status ON lead_tracking(status)')
+        # Migraciones seguras para columnas nuevas en lead_tracking
+        for col, col_type in [
+            ('source', "TEXT DEFAULT 'whatsapp'"),
+            ('customer_name', "TEXT DEFAULT ''"),
+            ('customer_email', "TEXT DEFAULT ''"),
+        ]:
+            try:
+                cursor.execute(f'ALTER TABLE lead_tracking ADD COLUMN IF NOT EXISTS {col} {col_type}')
+            except Exception:
+                pass
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -1118,19 +1150,25 @@ def get_available_slots_v2(client_id: int, duracion_min: int = 50, test_time: st
         return []
 
 
-def save_lead(client_id: int, nombre: str, telefono: str, interes: str) -> bool:
+def save_lead(client_id: int, nombre: str, telefono: str, interes: str,
+              source: str = 'whatsapp', customer_email: str = '') -> bool:
     """Registra o actualiza un lead en lead_tracking."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO lead_tracking (client_id, phone_number, status, last_message_response)
-            VALUES (%s, %s, 'nuevo', %s)
+            INSERT INTO lead_tracking
+                (client_id, phone_number, customer_name, customer_email, source, status, last_message_response)
+            VALUES (%s, %s, %s, %s, %s, 'nuevo', %s)
             ON CONFLICT (client_id, phone_number) DO UPDATE
             SET status = 'interesado',
+                customer_name = CASE WHEN EXCLUDED.customer_name != '' THEN EXCLUDED.customer_name ELSE lead_tracking.customer_name END,
+                customer_email = CASE WHEN EXCLUDED.customer_email != '' THEN EXCLUDED.customer_email ELSE lead_tracking.customer_email END,
+                source = EXCLUDED.source,
                 last_message_response = EXCLUDED.last_message_response,
+                last_interaction = CURRENT_TIMESTAMP,
                 updated_at = CURRENT_TIMESTAMP
-        """, (client_id, telefono, f"{nombre} — {interes}"))
+        """, (client_id, telefono, nombre, customer_email, source, f"{nombre} — {interes}"))
         conn.commit()
         cursor.close()
         conn.close()

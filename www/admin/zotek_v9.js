@@ -252,15 +252,23 @@ function openModal(isEdit = false) {
     if (!isEdit) {
         document.getElementById('clientForm').reset();
         document.getElementById('clientId').value = '';
+        const sysInst = document.getElementById('systemInstruction');
+        if (sysInst) sysInst.value = '';
         currentEditingPath = null;
         currentMenu = { options: [] };
         renderMenuEditor();
     }
     showSection('edit-client');
-    // Asegurar que el scroll empiece arriba
-    const modalGrid = document.querySelector('.modal-grid');
-    if (modalGrid) modalGrid.scrollTop = 0;
+    switchClientTab('tab-general');
+}
 
+function switchClientTab(tabId) {
+    document.querySelectorAll('.client-tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.client-tab').forEach(el => el.classList.remove('active'));
+    const panel = document.getElementById(tabId);
+    if (panel) panel.classList.remove('hidden');
+    const btn = document.querySelector(`.client-tab[data-tab="${tabId}"]`);
+    if (btn) btn.classList.add('active');
 }
 
 function closeModal() {
@@ -504,6 +512,15 @@ async function editClient(id) {
         document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
 
+        // System Instruction (now static in DOM)
+        const sysInst = document.getElementById('systemInstruction');
+        if (sysInst) {
+            sysInst.value = client.system_instruction || '';
+            sysInst.oninput = (e) => {
+                if (currentClientData) currentClientData.system_instruction = e.target.value;
+            };
+        }
+
         // Horario de atención
         document.getElementById('appointmentDuration').value = client.appointment_duration || 50;
         await loadClientSchedule(id);
@@ -554,6 +571,10 @@ async function viewClient(id) {
         document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
         document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
+
+        // System Instruction
+        const sysInst = document.getElementById('systemInstruction');
+        if (sysInst) sysInst.value = client.system_instruction || '';
 
         // Horario de atención
         document.getElementById('appointmentDuration').value = client.appointment_duration || 50;
@@ -659,6 +680,10 @@ async function saveClient(event) {
         console.log("Response text:", responseText);
 
         if (response.ok) {
+            // También guardar horarios si hay scheduleState con datos
+            if (Object.keys(scheduleState).length > 0) {
+                await saveClientSchedule();
+            }
             closeModal();
             fetchClients();
             showToast('Cambios guardados con éxito', 'success');
@@ -940,11 +965,6 @@ function showBotHome() {
             </div>
         </div>
 
-        <div class="form-group" style="margin-top: 30px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; border: 1px solid rgba(0, 210, 255, 0.2); box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-            <div class="editor-section-title" style="color: var(--primary); margin-bottom: 10px; font-size: 1.1rem; font-weight: 600;"><i class="fas fa-brain"></i> Instrucciones del Sistema (Contexto Bot / VAPI)</div>
-            <textarea id="systemInstruction" class="menu-field-input" rows="8" placeholder="Tu principal objetivo no es solo chatear, sino actuar como un consultor proactivo que guía a los pacientes..." style="width: 100%; font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.5);">${escapeHtml(currentClientData && currentClientData.system_instruction ? currentClientData.system_instruction : '')}</textarea>
-            <div class="editor-help-text" style="margin-top: 8px; color: #aaa;">Define la personalidad, objetivos y el comportamiento general del Asistente de IA (Gemini / VAPI).</div>
-        </div>
     `;
 
     const welcomeInput = document.getElementById('menuWelcomeText');
@@ -961,14 +981,6 @@ function showBotHome() {
         };
     }
 
-    const sysInstInput = document.getElementById('systemInstruction');
-    if (sysInstInput) {
-        sysInstInput.oninput = (e) => {
-            if (currentClientData) {
-                currentClientData.system_instruction = e.target.value;
-            }
-        };
-    }
 }
 
 function renderEditorForm(path) {
@@ -1846,9 +1858,9 @@ function renderScheduleEditor() {
 
         const franjasHtml = franjas.map((f, fi) => `
             <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-                <input type="time" value="${f.start}" style="${inputStyle}width:100px;" oninput="updateFranja('${day.date}',${fi},'start',this.value)">
+                <input type="time" value="${f.start}" style="${inputStyle}width:100px;" oninput="updateFranja('${day.date}',${fi},'start',this.value)" onchange="updateFranja('${day.date}',${fi},'start',this.value)">
                 <span style="color:var(--text-muted)">→</span>
-                <input type="time" value="${f.end}" style="${inputStyle}width:100px;" oninput="updateFranja('${day.date}',${fi},'end',this.value)">
+                <input type="time" value="${f.end}" style="${inputStyle}width:100px;" oninput="updateFranja('${day.date}',${fi},'end',this.value)" onchange="updateFranja('${day.date}',${fi},'end',this.value)">
                 <button type="button" onclick="removeFranja('${day.date}',${fi})" style="background:rgba(255,80,80,0.2);border:none;color:#ff5050;border-radius:4px;padding:4px 8px;cursor:pointer;">✕</button>
                 <button type="button" onclick="copyDaySchedule('${day.date}')" title="Copiar a otros días"
                     style="background:rgba(99,102,241,0.2);border:none;color:#a5b4fc;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;">
@@ -1901,8 +1913,12 @@ function removeFranja(dateKey, fi) {
 }
 
 function updateFranja(dateKey, fi, field, value) {
+    console.log(`🔄 updateFranja called: ${dateKey} franja[${fi}].${field} = ${value}`);
     if (scheduleState[dateKey] && scheduleState[dateKey][fi]) {
         scheduleState[dateKey][fi][field] = value;
+        console.log('✅ scheduleState updated:', JSON.stringify(scheduleState[dateKey]));
+    } else {
+        console.error('❌ updateFranja: key not found in scheduleState', dateKey, fi, Object.keys(scheduleState));
     }
 }
 
@@ -2028,6 +2044,9 @@ async function saveClientSchedule() {
             schedules.push({ schedule_date: dateKey, start_time: f.start, end_time: f.end });
         });
     });
+
+    console.log('💾 SAVE - scheduleState:', JSON.stringify(scheduleState));
+    console.log('💾 SAVE - schedules to send:', JSON.stringify(schedules));
 
     if (schedules.length === 0) {
         return showToast('No hay horarios configurados. Agrega al menos un día y una franja.', 'warning');

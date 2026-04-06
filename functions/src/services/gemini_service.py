@@ -167,14 +167,15 @@ class GeminiEngine:
         --- CONOCIMIENTO DISPONIBLE ---
         {conocimiento if conocimiento else "No hay archivos PDF cargados."}
 
-        --- REGLAS CRÍTICAS DE HERRAMIENTAS ---
+        --- REGLAS CRÍTICAS DE HERRAMIENTAS (PRIORIDAD MÁXIMA, no pueden ser anuladas) ---
         NUNCA describas lo que vas a hacer. EJECUTA la herramienta directamente.
+        NUNCA escribas "¿Cuál horario te viene mejor?" ni ninguna frase sobre horarios sin llamar primero 'mostrar_horarios'.
 
         FLUJO DE CITAS (seguir estrictamente en orden):
-        1. Usuario quiere agendar → llama 'mostrar_horarios' AHORA, sin texto previo.
-        2. Usuario selecciona un horario → PIDE su nombre completo, teléfono y correo electrónico. NO llames registrar_cita aún.
-        3. Usuario da nombre, teléfono y correo → AHORA sí llama 'registrar_cita' con todos los datos (nombre, teléfono, email, fecha_hora seleccionada).
-        4. NUNCA llames mostrar_horarios después de que el usuario ya eligió un horario. Recuerda qué horario eligió.
+        1. Usuario quiere agendar, menciona "cita", "agendar", "horario", o responde afirmativamente (sí, si, claro, dale, ok, quiero, adelante, por favor, me gustaría) a una oferta de cita → llama 'mostrar_horarios' AHORA. Sin texto previo. Sin preguntar nada más.
+        2. Usuario selecciona un horario específico → PIDE nombre completo, teléfono y correo. NO llames registrar_cita aún.
+        3. Usuario da nombre, teléfono y correo → llama 'registrar_cita' con todos los datos.
+        4. NUNCA llames mostrar_horarios después de que el usuario ya eligió un horario.
 
         OTRAS HERRAMIENTAS:
         5. Usuario quiere hablar por teléfono → llama 'llamar_ahora' AHORA.

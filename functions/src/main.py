@@ -158,6 +158,12 @@ async def login_page():
 async def admin_dashboard():
     return FileResponse(os.path.join(ADMIN_DIR, "index.html"))
 
+PORTAL_DIR = os.path.join(WWW_DIR, "portal")
+
+@app.get("/portal")
+async def portal_page():
+    return FileResponse(os.path.join(PORTAL_DIR, "index.html"))
+
 # Cache for WhatsApp retries
 PROCESSED_MESSAGES = deque(maxlen=100)
 DEMO_SESSIONS = {}  # {phone_number: target_phone_number_id}
@@ -734,6 +740,139 @@ async def get_me(current_user: str = Depends(get_current_user)):
         "role": "admin" if current_user == ADMIN_EMAIL else "client"
     }
 
+# ============================================
+# PORTAL DEL CLIENTE — AUTH (código por email)
+# ============================================
+
+@app.post("/api/portal/auth/request-code")
+async def portal_request_code(request: Request):
+    """
+    Genera un código de 6 dígitos y lo envía al email del cliente.
+    Solo funciona si el email corresponde a un cliente registrado.
+    """
+    _ensure_initialized()
+    data = await request.json()
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Email requerido")
+
+    # Verificar rate limiting (3 intentos por 10 minutos)
+    if not rate_limiter.is_allowed(f"portal_code:{email}", 3, 600):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 10 minutos.")
+
+    # Verificar que el email pertenece a algún cliente
+    conn = database.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id, name FROM clients WHERE LOWER(email) = %s", (email,))
+        client = cursor.fetchone()
+        cursor.close()
+    finally:
+        conn.close()
+
+    if not client:
+        # Respuesta genérica para no revelar si el email existe
+        return {"status": "sent", "message": "Si el email está registrado, recibirás un código."}
+
+    code = str(random.randint(100000, 999999))
+    database.save_verification_code(email, code, expires_minutes=10)
+
+    # Email con diseño
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText as MimeText
+        msg = MIMEMultipart("alternative")
+        msg['Subject'] = f"{code} — Tu código de acceso a Zotek Portal"
+        msg['From'] = ADMIN_EMAIL
+        msg['To'] = email
+        html_body = f"""
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#f9f9f9;border-radius:12px;">
+          <h2 style="color:#6C63FF;margin-top:0;">Zotek IA — Acceso al Portal</h2>
+          <p style="color:#333;">Hola <strong>{dict(client).get('name','')}</strong>, tu código de acceso es:</p>
+          <div style="font-size:40px;font-weight:bold;letter-spacing:10px;color:#1a1a2e;background:#fff;padding:24px;border-radius:8px;text-align:center;margin:20px 0;">{code}</div>
+          <p style="color:#666;font-size:13px;">Este código expira en 10 minutos. No lo compartas con nadie.</p>
+        </div>
+        """
+        msg.attach(MimeText(html_body, "html"))
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(ADMIN_EMAIL, EMAIL_PASSWORD)
+            server.send_message(msg)
+    except Exception as e:
+        logger.error(f"Error enviando código portal: {e}")
+
+    return {"status": "sent", "message": "Si el email está registrado, recibirás un código."}
+
+
+@app.post("/api/portal/auth/verify-code")
+async def portal_verify_code(request: Request):
+    """
+    Valida el código y devuelve un JWT de 30 días para el portal del cliente.
+    """
+    data = await request.json()
+    email = (data.get("email") or "").strip().lower()
+    code  = (data.get("code") or "").strip()
+
+    if not email or not code:
+        raise HTTPException(status_code=400, detail="Email y código son requeridos")
+
+    # Rate limiting: 5 intentos por 15 minutos
+    if not rate_limiter.is_allowed(f"portal_verify:{email}", 5, 900):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera unos minutos.")
+
+    stored = database.get_verification_code(email)
+    if not stored or stored != code:
+        raise HTTPException(status_code=401, detail="Código incorrecto o expirado")
+
+    # Obtener client_id
+    conn = database.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id, name FROM clients WHERE LOWER(email) = %s", (email,))
+        client = cursor.fetchone()
+        cursor.close()
+    finally:
+        conn.close()
+
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    client_dict = dict(client)
+    token = create_access_token(
+        data={"sub": email, "role": "client", "client_id": client_dict['id']},
+        expires_delta=timedelta(days=30)
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "client_id": client_dict['id'],
+        "client_name": client_dict.get('name', ''),
+    }
+
+
+@app.get("/api/portal/me")
+async def portal_me(current_user: str = Depends(get_current_user)):
+    """Devuelve datos básicos del cliente autenticado en el portal."""
+    conn = database.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id, name, email FROM clients WHERE LOWER(email) = %s", (current_user.lower(),))
+        client = cursor.fetchone()
+        cursor.close()
+    finally:
+        conn.close()
+
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    c = dict(client)
+    return {"id": c['id'], "name": c['name'], "email": c['email'], "role": "client"}
+
 # --- Protected Admin API ---
 
 @app.get("/api/clients")
@@ -965,6 +1104,36 @@ async def debug_migrate():
         cur.close()
         conn.close()
         return {"actions": actions, "columns": final_cols, "sample_data": sample}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.delete("/api/clients/{client_id}/schedules/{schedule_date}")
+async def delete_schedule_date(client_id: int, schedule_date: str, current_user: str = Depends(get_current_user)):
+    """Delete all schedules for a specific date."""
+    try:
+        conn = database.get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM client_schedules WHERE client_id = %s AND schedule_date = %s::date", (client_id, schedule_date))
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"deleted": deleted, "date": schedule_date}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/debug/delete-schedule/{client_id}/{schedule_date}")
+async def debug_delete_schedule(client_id: int, schedule_date: str):
+    """Temporary debug endpoint to delete a schedule by date."""
+    try:
+        conn = database.get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM client_schedules WHERE client_id = %s AND schedule_date = %s::date", (client_id, schedule_date))
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        return {"deleted": deleted, "date": schedule_date}
     except Exception as e:
         return {"error": str(e)}
 
@@ -1325,7 +1494,7 @@ async def widget_chat(request: Request):
                 response_payload["type"]  = "slots"
                 response_payload["text"]  = "📅 ¿Cuál horario te viene mejor?"
                 response_payload["items"] = [
-                    {"label": s["label"], "value": s["datetime"]} for s in libres[:10]
+                    {"label": s["label"], "value": s["datetime"]} for s in libres
                 ]
             else:
                 response_payload["text"] = "Por el momento no hay horarios disponibles. Por favor contáctanos."
@@ -1352,6 +1521,16 @@ async def widget_chat(request: Request):
                     f"👤 {args.get('paciente_nombre', '')}\n"
                     f"📅 {args.get('fecha_hora', '')}\n"
                     f"Recibirás un recordatorio. ¡Hasta pronto!"
+                )
+                # Registrar lead desde el widget con datos reales de la cita
+                lead_phone = args.get("cliente_telefono", "").strip() or f"widget_{session_id}"
+                database.save_lead(
+                    client_id=client_data['id'],
+                    nombre=args.get("paciente_nombre", ""),
+                    telefono=lead_phone,
+                    interes=args.get("motivo", "cita agendada"),
+                    source="widget",
+                    customer_email=paciente_email,
                 )
                 # Enviar confirmación por correo al paciente si proporcionó email
                 if paciente_email:
@@ -1388,6 +1567,25 @@ async def widget_chat(request: Request):
                 telefono=f"widget_{session_id}",
                 interes=args.get("interes", ""),
             )
+
+    # ── Fallback: el LLM mencionó horarios en texto pero no llamó la herramienta ──
+    if response_payload["type"] == "text" and not response_payload["items"]:
+        BOT_SLOT_PHRASES = [
+            "horario", "hora te viene", "cuál hora", "elegir hora",
+            "elige una hora", "selecciona una hora", "cuándo te queda",
+            "qué horario", "que horario", "ver horarios", "horarios disponibles",
+        ]
+        bot_wants_slots = any(p in respuesta_text.lower() for p in BOT_SLOT_PHRASES)
+        if bot_wants_slots:
+            duracion = int(client_data.get("appointment_duration") or 50)
+            libres = [s for s in database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
+                      if not s["ocupado"]]
+            if libres:
+                response_payload["type"]  = "slots"
+                response_payload["items"] = [{"label": s["label"], "value": s["datetime"]} for s in libres]
+                logger.info(f"[FALLBACK-SLOTS] inyectados={len(libres)} texto='{respuesta_text[:60]}'")
+            else:
+                logger.info("[FALLBACK-SLOTS] sin slots libres disponibles")
 
     return response_payload
 

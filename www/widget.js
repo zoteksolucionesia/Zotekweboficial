@@ -58,7 +58,9 @@
     '.ztk-msg.bot.typing span:nth-child(2){animation-delay:.2s;}',
     '.ztk-msg.bot.typing span:nth-child(3){animation-delay:.4s;}',
     '@keyframes ztk-blink{0%,80%,100%{opacity:0;}40%{opacity:1;}}',
-    '.ztk-btns{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0 6px;}',
+    '.ztk-btns{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0 6px;max-height:220px;overflow-y:auto;}',
+    '.ztk-day-label{width:100%;font-size:12px;font-weight:600;color:#666;padding:6px 0 2px;border-bottom:1px solid #eee;margin-bottom:2px;}',
+    '.ztk-day-label:first-child{padding-top:0;}',
     '.ztk-btn-opt{background:#fff;border:1.5px solid ' + ACCENT + ';color:' + ACCENT + ';border-radius:20px;padding:6px 14px;cursor:pointer;font-size:13px;transition:background .15s,color .15s;}',
     '.ztk-btn-opt:hover{background:' + ACCENT + ';color:#fff;}',
     '.ztk-confirmed{background:#e6f9ed;border-left:4px solid #34c759;border-radius:10px;padding:12px 14px;color:#1c1c1e;}',
@@ -151,15 +153,27 @@
   }
 
   // ── Renderizar botones (slots u opciones) ────────────────────────────────
-  function renderButtons(items, onSelect) {
+  function renderButtons(items, onSelect, grouped) {
     var wrap = document.createElement('div');
     wrap.className = 'ztk-btns';
+
+    var lastDay = '';
     items.forEach(function (item) {
+      // Agrupar por día si grouped=true (slots)
+      if (grouped && item.label) {
+        var dayPart = item.label.replace(/\s+\d{1,2}:\d{2}$/, '');
+        if (dayPart !== lastDay) {
+          var lbl = document.createElement('div');
+          lbl.className = 'ztk-day-label';
+          lbl.textContent = '📅 ' + dayPart;
+          wrap.appendChild(lbl);
+          lastDay = dayPart;
+        }
+      }
       var b = document.createElement('button');
       b.className = 'ztk-btn-opt';
-      b.textContent = item.label;
+      b.textContent = grouped ? item.label.replace(/.*\s(\d{1,2}:\d{2})$/, '$1') : item.label;
       b.addEventListener('click', function () {
-        // Deshabilitar todos los botones del grupo
         wrap.querySelectorAll('.ztk-btn-opt').forEach(function (x) {
           x.disabled = true;
           x.style.opacity = '0.5';
@@ -203,7 +217,7 @@
           renderButtons(data.items, function (item) {
             addMsg(item.label, 'usr');
             sendMessage(item.label);
-          });
+          }, true);
         } else if (data.type === 'options' && data.items && data.items.length) {
           renderButtons(data.items, function (item) {
             addMsg(item.label, 'usr');

@@ -431,7 +431,7 @@ async def recibir_mensaje(request: Request):
                     sys.stderr.flush()
                     if libres:
                         # Enviar todos los slots en una sola lista interactiva (máx 10)
-                        opciones = [s["label"] for s in libres[:10]]
+                        opciones = [s["label"] for s in libres[:20]]
                         ok = whatsapp_service.enviar_lista(
                             numero=numero_usuario,
                             texto="📅 Horarios disponibles — ¿cuál te viene mejor?",
@@ -1325,7 +1325,7 @@ async def widget_chat(request: Request):
                 response_payload["type"]  = "slots"
                 response_payload["text"]  = "📅 ¿Cuál horario te viene mejor?"
                 response_payload["items"] = [
-                    {"label": s["label"], "value": s["datetime"]} for s in libres[:10]
+                    {"label": s["label"], "value": s["datetime"]} for s in libres[:20]
                 ]
             else:
                 response_payload["text"] = "Por el momento no hay horarios disponibles. Por favor contáctanos."

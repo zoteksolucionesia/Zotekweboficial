@@ -230,6 +230,41 @@ tbody tr:hover {
     }
 }
 
+/* Client Editor Tabs */
+.client-editor-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.client-editor-tabs::-webkit-scrollbar { display: none; }
+.client-tab {
+    padding: 12px 22px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+.client-tab:hover { color: #e6edf3; background: rgba(255,255,255,0.03); }
+.client-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
+.client-tab-content { min-height: 70vh; }
+.client-tab-content.hidden { display: none !important; }
+
 .form-group {
     margin-bottom: 1.5rem;
 }

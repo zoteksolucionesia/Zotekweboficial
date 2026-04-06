@@ -33,6 +33,10 @@
         "destination": "/admin/index.html"
       },
       {
+        "source": "/portal",
+        "destination": "/portal/index.html"
+      },
+      {
         "source": "/api/**",
         "function": "api_handler"
       },
