@@ -1568,14 +1568,30 @@ async def widget_chat(request: Request):
                 interes=args.get("interes", ""),
             )
 
-    # ── Fallback: el LLM mencionó horarios en texto pero no llamó la herramienta ──
-    if response_payload["type"] == "text" and not response_payload["items"]:
+    # ── Fallback AGRESIVO: si el usuario pidió cita, FORZAR los slots ──
+    USER_APPOINTMENT_KEYWORDS = ["agendar", "cita", "quiero agendar", "quiero una cita", "me gustaría agendar", "agendar una cita"]
+    user_wants_appointment = any(k in message.lower() for k in USER_APPOINTMENT_KEYWORDS)
+
+    if user_wants_appointment:
+        # El usuario pidió cita explícitamente → SIEMPRE inyectar slots, sin importar qué respondió el bot
+        duracion = int(client_data.get("appointment_duration") or 50)
+        libres = [s for s in database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
+                  if not s["ocupado"]]
+        if libres:
+            response_payload["type"]  = "slots"
+            response_payload["text"]  = "📅 ¿Cuál horario te viene mejor?"
+            response_payload["items"] = [{"label": s["label"], "value": s["datetime"]} for s in libres]
+            logger.info(f"[FALLBACK-SLOTS-FORCE] usuario pidió cita, inyectados={len(libres)}")
+
+    # ── Fallback suave: si el bot mencionó horarios pero no llamó la herramienta ──
+    elif response_payload["type"] == "text" and not response_payload["items"]:
         BOT_SLOT_PHRASES = [
             "horario", "hora te viene", "cuál hora", "elegir hora",
             "elige una hora", "selecciona una hora", "cuándo te queda",
             "qué horario", "que horario", "ver horarios", "horarios disponibles",
         ]
         bot_wants_slots = any(p in respuesta_text.lower() for p in BOT_SLOT_PHRASES)
+
         if bot_wants_slots:
             duracion = int(client_data.get("appointment_duration") or 50)
             libres = [s for s in database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
@@ -1583,9 +1599,9 @@ async def widget_chat(request: Request):
             if libres:
                 response_payload["type"]  = "slots"
                 response_payload["items"] = [{"label": s["label"], "value": s["datetime"]} for s in libres]
-                logger.info(f"[FALLBACK-SLOTS] inyectados={len(libres)} texto='{respuesta_text[:60]}'")
+                logger.info(f"[FALLBACK-SLOTS] bot mencionó horarios, inyectados={len(libres)}")
             else:
-                logger.info("[FALLBACK-SLOTS] sin slots libres disponibles")
+                logger.info("[FALLBACK-SLOTS] sin slots libres")
 
     return response_payload
 
