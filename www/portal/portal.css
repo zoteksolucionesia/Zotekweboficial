@@ -1,10 +1,10 @@
-﻿/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-   Zotek Portal ÔÇö Dashboard del Cliente
-   ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */
+/* ==============================================
+   Zotek Portal — Dashboard del Cliente
+   ============================================== */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ÔöÇÔöÇ Modo oscuro (default) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Modo oscuro (default) ———————————————— */
 :root,
 [data-theme="dark"] {
   --primary:      #6C63FF;
@@ -25,7 +25,7 @@
   --phone-border: #2c2c2e;
 }
 
-/* ÔöÇÔöÇ Modo claro ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Modo claro —————————————————————————— */
 [data-theme="light"] {
   --primary:      #6C63FF;
   --primary-dim:  rgba(108,99,255,.1);
@@ -54,10 +54,10 @@ html, body {
   transition: background .25s, color .25s;
 }
 
-/* ÔöÇÔöÇ Screens ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Screens ————————————————————————————— */
 .screen { min-height: 100vh; }
 
-/* ÔöÇÔöÇ Login ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Login ——————————————————————————————— */
 #screen-login {
   display: flex; align-items: center; justify-content: center;
   background: radial-gradient(ellipse at 60% 40%, rgba(108,99,255,.16) 0%, transparent 65%), var(--bg);
@@ -74,10 +74,9 @@ html, body {
 }
 
 .login-logo {
-  display: flex; align-items: center; gap: 14px; margin-bottom: 28px;
+  display: flex; justify-content: center; margin-bottom: 32px;
 }
-.login-logo-img { width: 52px; height: 52px; }
-.login-logo span { font-size: 1.7rem; font-weight: 800; color: var(--text); }
+.login-logo-img { width: 156px; height: 156px; }
 
 .login-title    { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
 .login-subtitle { color: var(--text-muted); margin-bottom: 28px; }
@@ -91,7 +90,7 @@ html, body {
 
 .login-theme-row { display: flex; justify-content: flex-end; margin-top: 20px; }
 
-/* ÔöÇÔöÇ Inputs / Forms ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Inputs / Forms —————————————————————— */
 .form-group { margin-bottom: 16px; }
 .form-group label {
   display: block; font-size: 12px; font-weight: 600; color: var(--text-muted);
@@ -104,7 +103,7 @@ html, body {
 }
 .form-group input:focus { border-color: var(--primary); }
 
-/* ÔöÇÔöÇ Buttons ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Buttons ————————————————————————————— */
 .btn-primary {
   background: var(--primary); color: #fff; border: none; border-radius: 10px;
   padding: 12px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
@@ -149,10 +148,10 @@ html, body {
 .mt-14 { margin-top: 14px; }
 .mt-20 { margin-top: 20px; }
 
-/* ÔöÇÔöÇ Dashboard layout ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Dashboard layout ———————————————————— */
 #screen-dashboard { display: flex; height: 100vh; overflow: hidden; }
 
-/* ÔöÇÔöÇ Sidebar ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Sidebar ————————————————————————————— */
 .sidebar {
   width: 240px; background: var(--surface); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; flex-shrink: 0; z-index: 100;
@@ -201,7 +200,7 @@ html, body {
 }
 .btn-logout:hover { color: #ff3b30; background: rgba(255,59,48,.1); }
 
-/* ÔöÇÔöÇ Mobile header ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Mobile header ——————————————————————— */
 .mobile-header {
   display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 200;
   background: var(--surface); border-bottom: 1px solid var(--border);
@@ -210,10 +209,10 @@ html, body {
 .mobile-title { flex: 1; font-weight: 700; font-size: 15px; }
 .mobile-header-actions { display: flex; gap: 6px; align-items: center; }
 
-/* ÔöÇÔöÇ Main content ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Main content ———————————————————————— */
 .main-content { flex: 1; overflow-y: auto; padding: 28px; }
 
-/* ÔöÇÔöÇ Section header ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Section header —————————————————————— */
 .section-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
@@ -236,12 +235,12 @@ html, body {
 .kpi-value { font-size: 1.8rem; font-weight: 800; line-height: 1; }
 .kpi-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
-/* ÔöÇÔöÇ Card ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Card ———————————————————————————————— */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: background .25s; }
 .card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 .card-header h3 { font-size: 14px; font-weight: 600; }
 
-/* ÔöÇÔöÇ Tables ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Tables —————————————————————————————— */
 .table-wrap { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th {
@@ -257,7 +256,7 @@ html, body {
 .text-muted { color: var(--text-muted); }
 .text-sm    { font-size: 12px; }
 
-/* ÔöÇÔöÇ Badges ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Badges —————————————————————————————— */
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .badge-green  { background: rgba(52,199,89,.15);  color: #34c759; }
 .badge-yellow { background: rgba(255,149,0,.15);  color: #ff9500; }
@@ -266,7 +265,7 @@ html, body {
 .badge-purple { background: rgba(191,90,242,.15); color: #bf5af2; }
 .badge-gray   { background: rgba(128,128,128,.15);color: var(--text-muted); }
 
-/* ÔöÇÔöÇ Filters ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Filters ————————————————————————————— */
 .select-filter {
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
   padding: 7px 12px; color: var(--text); font-size: 13px; font-family: inherit;
@@ -274,20 +273,20 @@ html, body {
 }
 .select-filter:focus { border-color: var(--primary); }
 
-/* ÔöÇÔöÇ Empty states ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Empty states ———————————————————————— */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; color: var(--text-muted); gap: 10px; }
 .empty-state i { font-size: 32px; opacity: .35; }
 .empty-state p  { font-size: 14px; }
 .empty-state-sm { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; padding: 8px 0; }
 
-/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+/* ==============================================
    PROBAR AGENTE
-ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */
+   ============================================== */
 .probar-layout {
   display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap;
 }
 
-/* ÔöÇÔöÇ Agent config panel ÔöÇÔöÇÔöÇ */
+/* —— Agent config panel —————————————————— */
 .agent-config-panel {
   flex: 1; min-width: 280px; max-width: 420px; display: flex; flex-direction: column; gap: 0;
 }
@@ -356,7 +355,7 @@ html, body {
 .btn-upload:disabled { opacity: .5; cursor: not-allowed; }
 .upload-hint { font-size: 11px; color: var(--text-muted); }
 
-/* ÔöÇÔöÇ Phone mockup ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Phone mockup ———————————————————————— */
 .phone-mockup { display: flex; justify-content: center; flex-shrink: 0; }
 .phone-frame {
   width: 320px; height: 620px;
@@ -425,7 +424,7 @@ html, body {
 }
 #chat-send:hover { opacity: .85; }
 
-/* ÔöÇÔöÇ Toast ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Toast ——————————————————————————————— */
 .portal-toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   padding: 12px 22px; border-radius: 10px; font-size: 14px; font-weight: 500;
@@ -436,7 +435,7 @@ html, body {
 .toast-error   { background: #ff3b30; color: #fff; }
 .toast-info    { background: var(--primary); color: #fff; }
 
-/* ÔöÇÔöÇ Responsive ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ */
+/* —— Responsive —————————————————————————— */
 @media (max-width: 900px) {
   .probar-layout { flex-direction: column; align-items: center; }
   .agent-config-panel { max-width: 100%; width: 100%; }

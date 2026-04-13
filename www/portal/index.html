@@ -1,23 +1,22 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zotek Portal ÔÇö Mi Panel</title>
+  <title>Zotek Portal — Mi Panel</title>
   <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="portal.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
 <body>
 
-<!-- ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+<!-- ==============================================
      PANTALLA DE LOGIN
-ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ -->
+=============================================== -->
 <div id="screen-login" class="screen">
   <div class="login-card">
     <div class="login-logo">
       <img src="/assets/logo.svg" alt="Zotek" class="login-logo-img" />
-      <span>Zotek</span>
     </div>
     <h1 class="login-title">Accede a tu panel</h1>
     <p class="login-subtitle">Ingresa el email con el que te registraste</p>
@@ -29,7 +28,7 @@
         <input type="email" id="inp-email" placeholder="tu@email.com" autocomplete="email" />
       </div>
       <button class="btn-primary btn-full" id="btn-send-code">
-        <span id="btn-send-text">Enviar c├│digo</span>
+        <span id="btn-send-text">Enviar código</span>
         <i id="btn-send-spin" class="fas fa-spinner fa-spin" style="display:none"></i>
       </button>
       <p class="login-note" id="login-error" style="display:none;color:#ff6b6b;"></p>
@@ -39,10 +38,10 @@
     <div id="step-code" style="display:none">
       <p class="login-sent-msg">
         <i class="fas fa-envelope-circle-check" style="color:#6C63FF"></i>
-        Te enviamos un c├│digo de 6 d├¡gitos a <strong id="sent-to-email"></strong>
+        Te enviamos un código de 6 dígitos a <strong id="sent-to-email"></strong>
       </p>
       <div class="form-group">
-        <label for="inp-code">C├│digo de verificaci├│n</label>
+        <label for="inp-code">Código de verificación</label>
         <input type="text" id="inp-code" placeholder="000000" maxlength="6" inputmode="numeric"
                autocomplete="one-time-code" style="letter-spacing:8px;font-size:1.5rem;text-align:center;" />
       </div>
@@ -51,7 +50,7 @@
         <i id="btn-verify-spin" class="fas fa-spinner fa-spin" style="display:none"></i>
       </button>
       <p class="login-note" id="code-error" style="display:none;color:#ff6b6b;"></p>
-      <button class="btn-link" id="btn-resend">Reenviar c├│digo</button>
+      <button class="btn-link" id="btn-resend">Reenviar código</button>
     </div>
 
     <!-- Theme toggle en login -->
@@ -63,9 +62,9 @@
   </div>
 </div>
 
-<!-- ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+<!-- ==============================================
      DASHBOARD
-ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ -->
+=============================================== -->
 <div id="screen-dashboard" class="screen" style="display:none">
 
   <!-- Sidebar -->
@@ -94,15 +93,15 @@
       <div class="user-info">
         <div class="user-avatar" id="user-avatar-initial"></div>
         <div class="user-info-text">
-          <div class="user-name" id="sidebar-client-name">ÔÇö</div>
-          <div class="user-email" id="sidebar-client-email">ÔÇö</div>
+          <div class="user-name" id="sidebar-client-name">—</div>
+          <div class="user-email" id="sidebar-client-email">—</div>
         </div>
       </div>
       <div class="sidebar-footer-actions">
         <button class="btn-icon" id="btn-theme-sidebar" title="Cambiar tema">
           <i class="fas fa-sun" id="theme-icon-sidebar"></i>
         </button>
-        <button class="btn-logout" id="btn-logout" title="Cerrar sesi├│n">
+        <button class="btn-logout" id="btn-logout" title="Cerrar sesión">
           <i class="fas fa-sign-out-alt"></i>
         </button>
       </div>
@@ -122,7 +121,7 @@
   <!-- Main content -->
   <main class="main-content">
 
-    <!-- ÔöÇÔöÇ SECCI├ôN: RESUMEN ÔöÇÔöÇ -->
+    <!-- —— SECCIÓN: RESUMEN —— -->
     <section id="section-resumen" class="section">
       <div class="section-header">
         <h2>Resumen</h2>
@@ -135,7 +134,7 @@
             <i class="fas fa-calendar-day"></i>
           </div>
           <div class="kpi-body">
-            <div class="kpi-value" id="kpi-hoy">ÔÇö</div>
+            <div class="kpi-value" id="kpi-hoy">—</div>
             <div class="kpi-label">Citas hoy</div>
           </div>
         </div>
@@ -144,7 +143,7 @@
             <i class="fas fa-calendar-week"></i>
           </div>
           <div class="kpi-body">
-            <div class="kpi-value" id="kpi-semana">ÔÇö</div>
+            <div class="kpi-value" id="kpi-semana">—</div>
             <div class="kpi-label">Citas esta semana</div>
           </div>
         </div>
@@ -153,7 +152,7 @@
             <i class="fas fa-user-plus"></i>
           </div>
           <div class="kpi-body">
-            <div class="kpi-value" id="kpi-leads-nuevos">ÔÇö</div>
+            <div class="kpi-value" id="kpi-leads-nuevos">—</div>
             <div class="kpi-label">Leads nuevos</div>
           </div>
         </div>
@@ -162,7 +161,7 @@
             <i class="fas fa-user-clock"></i>
           </div>
           <div class="kpi-body">
-            <div class="kpi-value" id="kpi-leads-total">ÔÇö</div>
+            <div class="kpi-value" id="kpi-leads-total">—</div>
             <div class="kpi-label">Total leads</div>
           </div>
         </div>
@@ -170,7 +169,7 @@
 
       <div class="card mt-20">
         <div class="card-header">
-          <h3>Pr├│ximas citas</h3>
+          <h3>Próximas citas</h3>
           <a href="#" class="btn-link" data-section="citas">Ver todas</a>
         </div>
         <div id="proximas-citas-list" class="table-wrap">
@@ -189,7 +188,7 @@
       </div>
     </section>
 
-    <!-- ÔöÇÔöÇ SECCI├ôN: CITAS ÔöÇÔöÇ -->
+    <!-- —— SECCIÓN: CITAS —— -->
     <section id="section-citas" class="section" style="display:none">
       <div class="section-header">
         <h2>Citas</h2>
@@ -209,7 +208,7 @@
       </div>
     </section>
 
-    <!-- ÔöÇÔöÇ SECCI├ôN: LEADS ÔöÇÔöÇ -->
+    <!-- —— SECCIÓN: LEADS —— -->
     <section id="section-leads" class="section" style="display:none">
       <div class="section-header">
         <h2>Leads</h2>
@@ -223,7 +222,7 @@
             <option value="">Todos los estados</option>
             <option value="nuevo">Nuevos</option>
             <option value="interesado">Interesados</option>
-            <option value="cold">Fr├¡os</option>
+            <option value="cold">Fríos</option>
             <option value="converted">Convertidos</option>
           </select>
         </div>
@@ -235,11 +234,11 @@
       </div>
     </section>
 
-    <!-- ÔöÇÔöÇ SECCI├ôN: HORARIOS ÔöÇÔöÇ -->
+    <!-- —— SECCIÓN: HORARIOS —— -->
     <section id="section-horarios" class="section" style="display:none">
       <div class="section-header">
-        <h2>Horarios de Atenci├│n</h2>
-        <p class="section-sub">Configura los d├¡as y horarios en que tu agente podr├í agendar citas.</p>
+        <h2>Horarios de Atención</h2>
+        <p class="section-sub">Configura los días y horarios en que tu agente podrá agendar citas.</p>
       </div>
 
       <div class="card">
@@ -257,11 +256,11 @@
       </div>
     </section>
 
-    <!-- ÔöÇÔöÇ SECCI├ôN: PROBAR AGENTE ÔöÇÔöÇ -->
+    <!-- —— SECCIÓN: PROBAR AGENTE —— -->
     <section id="section-probar" class="section" style="display:none">
       <div class="section-header">
         <h2>Probar Agente</h2>
-        <p class="section-sub">Simula la conversaci├│n tal como la ve un usuario real.</p>
+        <p class="section-sub">Simula la conversación tal como la ve un usuario real.</p>
       </div>
 
       <div class="probar-layout">
@@ -278,18 +277,18 @@
             </button>
           </div>
 
-          <!-- Instrucci├│n del agente -->
+          <!-- Instrucción del agente -->
           <div class="config-card">
             <div class="config-card-header">
               <i class="fas fa-brain" style="color:#6C63FF"></i>
-              <h3>Instrucci├│n del Agente</h3>
+              <h3>Instrucción del Agente</h3>
             </div>
             <p class="config-hint">Define el comportamiento y personalidad de tu asistente.</p>
             <textarea id="agent-system-instruction" class="sys-textarea"
-              placeholder="Ej: Eres un asistente virtual de consulta psicol├│gica. Tu nombre es Lili. Respondes de forma amable y emp├ítica..."></textarea>
+              placeholder="Ej: Eres un asistente virtual de consulta psicológica. Tu nombre es Lili. Respondes de forma amable y empática..."></textarea>
             <div class="config-card-footer">
               <button class="btn-secondary btn-sm" id="btn-save-instruction">
-                <i class="fas fa-floppy-disk"></i> Guardar instrucci├│n
+                <i class="fas fa-floppy-disk"></i> Guardar instrucción
               </button>
             </div>
           </div>
@@ -300,7 +299,7 @@
               <i class="fas fa-file-lines" style="color:#ff9500"></i>
               <h3>Documentos de Conocimiento</h3>
             </div>
-            <p class="config-hint">El agente usa estos PDFs para responder preguntas espec├¡ficas.</p>
+            <p class="config-hint">El agente usa estos PDFs para responder preguntas específicas.</p>
 
             <div id="docs-list" class="docs-list">
               <div class="empty-state-sm"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
@@ -328,9 +327,9 @@
                 <div class="chat-avatar" id="chat-avatar-initial"></div>
                 <div>
                   <div class="chat-name" id="chat-bot-name">Asistente</div>
-                  <div class="chat-status">En l├¡nea</div>
+                  <div class="chat-status">En línea</div>
                 </div>
-                <button class="chat-reset-btn" id="btn-reset-chat" title="Nueva conversaci├│n">
+                <button class="chat-reset-btn" id="btn-reset-chat" title="Nueva conversación">
                   <i class="fas fa-rotate-left"></i>
                 </button>
               </div>
