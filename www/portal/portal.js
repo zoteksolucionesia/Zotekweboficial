@@ -5,7 +5,7 @@ const TOKEN_KEY  = 'zotek_portal_token';
 const CLIENT_KEY = 'zotek_portal_client';
 const THEME_KEY  = 'zotek_portal_theme';
 
-// ÔöÇÔöÇÔöÇ Estado global ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+// ——— Estado global ————————————————————————————————————————————————
 let authToken  = localStorage.getItem(TOKEN_KEY)  || null;
 let clientData = JSON.parse(localStorage.getItem(CLIENT_KEY) || 'null');
 let allCitas   = [];
@@ -19,9 +19,9 @@ let chatGreeted   = false;
 let originalInstruction = '';
 let pendingChanges      = false;
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // UTILS
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 function newUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
@@ -49,9 +49,9 @@ function setLoading(btnId, spinId, loading) {
   if (spin) spin.style.display = loading ? 'inline-block' : 'none';
 }
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // TEMA CLARO / OSCURO
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 const THEME_ICONS = { dark: 'fa-sun', light: 'fa-moon' };
 
 function applyTheme(theme) {
@@ -76,9 +76,9 @@ document.getElementById('btn-theme-login')?.addEventListener('click', toggleThem
 document.getElementById('btn-theme-sidebar')?.addEventListener('click', toggleTheme);
 document.getElementById('btn-theme-mobile')?.addEventListener('click', toggleTheme);
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-// AUTH ÔÇö LOGIN
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
+// AUTH — LOGIN
+// ===========================================
 const stepEmail = document.getElementById('step-email');
 const stepCode  = document.getElementById('step-code');
 
@@ -107,7 +107,7 @@ async function requestCode() {
     });
     const data = await res.json();
     if (!res.ok) {
-      errEl.textContent = data.detail || 'Error enviando c├│digo.'; errEl.style.display = 'block';
+      errEl.textContent = data.detail || 'Error enviando código.'; errEl.style.display = 'block';
     } else {
       document.getElementById('sent-to-email').textContent = email;
       stepEmail.style.display = 'none';
@@ -115,10 +115,10 @@ async function requestCode() {
       setTimeout(() => document.getElementById('inp-code').focus(), 100);
     }
   } catch {
-    errEl.textContent = 'Error de conexi├│n. Intenta de nuevo.'; errEl.style.display = 'block';
+    errEl.textContent = 'Error de conexión. Intenta de nuevo.'; errEl.style.display = 'block';
   } finally {
     setLoading('btn-send-code', 'btn-send-spin', false);
-    document.getElementById('btn-send-text').textContent = 'Enviar c├│digo';
+    document.getElementById('btn-send-text').textContent = 'Enviar código';
   }
 }
 
@@ -127,7 +127,7 @@ async function verifyCode() {
   const code  = document.getElementById('inp-code').value.trim();
   const errEl = document.getElementById('code-error');
   errEl.style.display = 'none';
-  if (!code || code.length < 6) { errEl.textContent = 'Ingresa el c├│digo de 6 d├¡gitos.'; errEl.style.display = 'block'; return; }
+  if (!code || code.length < 6) { errEl.textContent = 'Ingresa el código de 6 dígitos.'; errEl.style.display = 'block'; return; }
 
   setLoading('btn-verify-code', 'btn-verify-spin', true);
   document.getElementById('btn-verify-text').textContent = 'Verificando...';
@@ -138,7 +138,7 @@ async function verifyCode() {
     });
     const data = await res.json();
     if (!res.ok) {
-      errEl.textContent = data.detail || 'C├│digo incorrecto.'; errEl.style.display = 'block';
+      errEl.textContent = data.detail || 'Código incorrecto.'; errEl.style.display = 'block';
     } else {
       authToken  = data.access_token;
       clientData = { id: data.client_id, name: data.client_name, email };
@@ -147,16 +147,16 @@ async function verifyCode() {
       showDashboard();
     }
   } catch {
-    errEl.textContent = 'Error de conexi├│n. Intenta de nuevo.'; errEl.style.display = 'block';
+    errEl.textContent = 'Error de conexión. Intenta de nuevo.'; errEl.style.display = 'block';
   } finally {
     setLoading('btn-verify-code', 'btn-verify-spin', false);
     document.getElementById('btn-verify-text').textContent = 'Ingresar';
   }
 }
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // LOGOUT
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 function logout() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(CLIENT_KEY);
@@ -171,9 +171,9 @@ function logout() {
 document.getElementById('btn-logout').addEventListener('click', logout);
 document.getElementById('btn-logout-mobile').addEventListener('click', logout);
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // NAVEGACI├ôN
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 const SECTION_TITLES = { resumen: 'Resumen', citas: 'Citas', leads: 'Leads', horarios: 'Horarios', probar: 'Probar Agente' };
 
 document.querySelectorAll('.nav-item').forEach(link => {
@@ -203,15 +203,15 @@ document.getElementById('btn-menu-toggle').addEventListener('click', () => {
   document.querySelector('.sidebar').classList.toggle('open');
 });
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // DASHBOARD
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 async function showDashboard() {
   document.getElementById('screen-login').style.display     = 'none';
   document.getElementById('screen-dashboard').style.display = '';
 
-  const name  = clientData?.name  || 'ÔÇö';
-  const email = clientData?.email || 'ÔÇö';
+  const name  = clientData?.name  || '—';
+  const email = clientData?.email || '—';
   document.getElementById('sidebar-client-name').textContent  = name;
   document.getElementById('sidebar-client-email').textContent = email;
   document.getElementById('user-avatar-initial').textContent  = name.charAt(0).toUpperCase();
@@ -219,7 +219,7 @@ async function showDashboard() {
   document.getElementById('chat-bot-name').textContent        = name;
 
   const hour     = new Date().getHours();
-  const greeting = hour < 12 ? 'Buenos d├¡as' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
   document.getElementById('resumen-greeting').textContent = `${greeting}, ${name.split(' ')[0]}`;
 
   await loadDashboardData();
@@ -255,9 +255,9 @@ async function loadDashboardData() {
   } catch (e) { console.error('Error cargando dashboard:', e); }
 }
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // KPIs
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 function updateCitasKPIs() {
   const today = new Date().toISOString().slice(0, 10);
   const wStart = getWeekStart();
@@ -280,9 +280,9 @@ function getWeekStart() {
   return d;
 }
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-// TABLAS ÔÇö RESUMEN
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
+// TABLAS — RESUMEN
+// ===========================================
 function renderProximasCitas() {
   const container = document.getElementById('proximas-citas-list');
   // fecha_hora se guarda como texto ("Jue 9 Abr 10:00"), ordenar por created_at
@@ -295,8 +295,8 @@ function renderProximasCitas() {
   }
   container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Fecha y hora</th><th>Estado</th></tr></thead><tbody>
     ${proximas.map(c => `<tr>
-      <td>${escHtml(c.paciente_nombre || c.customer_name || 'ÔÇö')}</td>
-      <td>${escHtml(c.fecha_hora || c.appointment_date || 'ÔÇö')}</td>
+      <td>${escHtml(c.paciente_nombre || c.customer_name || '—')}</td>
+      <td>${escHtml(c.fecha_hora || c.appointment_date || '—')}</td>
       <td>${statusBadge(c.status || 'pendiente')}</td>
     </tr>`).join('')}</tbody></table>`;
 }
@@ -308,20 +308,20 @@ function renderLeadsRecientes() {
     .slice(0, 5);
 
   if (!recientes.length) {
-    container.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><p>A├║n no hay leads registrados</p></div>'; return;
+    container.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><p>Aún no hay leads registrados</p></div>'; return;
   }
-  container.innerHTML = `<table class="data-table"><thead><tr><th>Nombre / Tel├®fono</th><th>Fuente</th><th>Estado</th><th>├Ültima interacci├│n</th></tr></thead><tbody>
+  container.innerHTML = `<table class="data-table"><thead><tr><th>Nombre / Teléfono</th><th>Fuente</th><th>Estado</th><th>Última interacción</th></tr></thead><tbody>
     ${recientes.map(l => `<tr>
-      <td><div>${escHtml(l.customer_name || l.phone_number || 'ÔÇö')}</div><div class="text-muted text-sm">${escHtml(l.phone_number || '')}</div></td>
+      <td><div>${escHtml(l.customer_name || l.phone_number || '—')}</div><div class="text-muted text-sm">${escHtml(l.phone_number || '')}</div></td>
       <td>${sourceBadge(l.source)}</td>
       <td>${leadStatusBadge(l.status)}</td>
       <td class="text-muted text-sm">${formatDateTime(l.last_interaction || l.created_at)}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // TABLA CITAS
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 function renderCitasTable() {
   const container    = document.getElementById('citas-table-wrap');
   const filterStatus = document.getElementById('filter-citas-status').value;
@@ -332,20 +332,20 @@ function renderCitasTable() {
   if (!citas.length) {
     container.innerHTML = '<div class="empty-state"><i class="fas fa-calendar-xmark"></i><p>No hay citas</p></div>'; return;
   }
-  container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Tel├®fono</th><th>Fecha y hora</th><th>Motivo</th><th>Estado</th></tr></thead><tbody>
+  container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Teléfono</th><th>Fecha y hora</th><th>Motivo</th><th>Estado</th></tr></thead><tbody>
     ${citas.map(c => `<tr>
-      <td>${escHtml(c.paciente_nombre || c.customer_name || 'ÔÇö')}</td>
-      <td class="text-muted">${escHtml(c.cliente_telefono || c.phone_number || 'ÔÇö')}</td>
-      <td>${escHtml(c.fecha_hora || c.appointment_date || 'ÔÇö')}</td>
-      <td class="text-muted">${escHtml(c.motivo || c.notes || 'ÔÇö')}</td>
+      <td>${escHtml(c.paciente_nombre || c.customer_name || '—')}</td>
+      <td class="text-muted">${escHtml(c.cliente_telefono || c.phone_number || '—')}</td>
+      <td>${escHtml(c.fecha_hora || c.appointment_date || '—')}</td>
+      <td class="text-muted">${escHtml(c.motivo || c.notes || '—')}</td>
       <td>${statusBadge(c.status || 'pendiente')}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 document.getElementById('filter-citas-status').addEventListener('change', renderCitasTable);
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // TABLA LEADS
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 function renderLeadsTable() {
   const container    = document.getElementById('leads-table-wrap');
   const filterSource = document.getElementById('filter-leads-source').value;
@@ -358,11 +358,11 @@ function renderLeadsTable() {
   if (!leads.length) {
     container.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><p>No hay leads con ese filtro</p></div>'; return;
   }
-  container.innerHTML = `<table class="data-table"><thead><tr><th>Nombre</th><th>Tel├®fono</th><th>Email</th><th>Fuente</th><th>Estado</th><th>├Ültima interacci├│n</th></tr></thead><tbody>
+  container.innerHTML = `<table class="data-table"><thead><tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Fuente</th><th>Estado</th><th>Última interacción</th></tr></thead><tbody>
     ${leads.map(l => `<tr>
-      <td>${escHtml(l.customer_name || 'ÔÇö')}</td>
-      <td class="text-muted">${escHtml(l.phone_number || 'ÔÇö')}</td>
-      <td class="text-muted">${escHtml(l.customer_email || 'ÔÇö')}</td>
+      <td>${escHtml(l.customer_name || '—')}</td>
+      <td class="text-muted">${escHtml(l.phone_number || '—')}</td>
+      <td class="text-muted">${escHtml(l.customer_email || '—')}</td>
       <td>${sourceBadge(l.source)}</td>
       <td>${leadStatusBadge(l.status)}</td>
       <td class="text-muted text-sm">${formatDateTime(l.last_interaction || l.created_at)}</td>
@@ -371,9 +371,9 @@ function renderLeadsTable() {
 document.getElementById('filter-leads-source').addEventListener('change', renderLeadsTable);
 document.getElementById('filter-leads-status').addEventListener('change', renderLeadsTable);
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-// PROBAR AGENTE ÔÇö Configuraci├│n del agente
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
+// PROBAR AGENTE — Configuración del agente
+// ===========================================
 let agentConfigLoaded = false;
 
 async function initProbarSection() {
@@ -431,7 +431,7 @@ document.getElementById('agent-system-instruction').addEventListener('input', fu
   setPendingChanges(changed);
 });
 
-// Guardar instrucci├│n
+// Guardar instrucción
 document.getElementById('btn-save-instruction').addEventListener('click', async () => {
   if (!clientData?.id) return;
   const text = document.getElementById('agent-system-instruction').value;
@@ -448,14 +448,14 @@ document.getElementById('btn-save-instruction').addEventListener('click', async 
     if (res.ok) {
       originalInstruction = text;
       setPendingChanges(false);
-      showToast('Instrucci├│n guardada', 'success');
+      showToast('Instrucción guardada', 'success');
     } else {
       showToast('Error al guardar', 'error');
     }
-  } catch { showToast('Error de conexi├│n', 'error'); }
+  } catch { showToast('Error de conexión', 'error'); }
   finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar instrucci├│n';
+    btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar instrucción';
   }
 });
 
@@ -485,7 +485,7 @@ document.getElementById('doc-file-input').addEventListener('change', async funct
     });
     const data = await res.json();
     if (res.ok) {
-      showToast(`PDF subido: ${data.pages} p├íginas`, 'success');
+      showToast(`PDF subido: ${data.pages} páginas`, 'success');
       setPendingChanges(true);
       // Recargar lista de docs
       const docsRes = await fetch(`${API}/api/clients/${clientData.id}/documents`, { headers: authHeader() });
@@ -496,7 +496,7 @@ document.getElementById('doc-file-input').addEventListener('change', async funct
     } else {
       showToast(data.detail || 'Error al subir PDF', 'error');
     }
-  } catch { showToast('Error de conexi├│n', 'error'); }
+  } catch { showToast('Error de conexión', 'error'); }
   finally {
     btn.disabled  = false;
     btnText.textContent = 'Subir PDF';
@@ -504,7 +504,7 @@ document.getElementById('doc-file-input').addEventListener('change', async funct
 });
 
 async function deleteDoc(docId) {
-  if (!confirm('┬┐Eliminar este documento del bot?')) return;
+  if (!confirm('¿Eliminar este documento del bot?')) return;
   try {
     const res = await fetch(`${API}/api/clients/${clientData.id}/documents/${docId}`, {
       method: 'DELETE', headers: authHeader(),
@@ -518,7 +518,7 @@ async function deleteDoc(docId) {
         renderDocsList(Array.isArray(docsData) ? docsData : (docsData.documents || []));
       }
     } else { showToast('Error al eliminar', 'error'); }
-  } catch { showToast('Error de conexi├│n', 'error'); }
+  } catch { showToast('Error de conexión', 'error'); }
 }
 
 // Banner de cambios pendientes
@@ -527,15 +527,15 @@ function setPendingChanges(hasChanges) {
   document.getElementById('reset-bot-banner').style.display = hasChanges ? 'flex' : 'none';
 }
 
-// Reiniciar bot (nueva sesi├│n de chat)
+// Reiniciar bot (nueva sesión de chat)
 document.getElementById('btn-reset-bot').addEventListener('click', resetChat);
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // CHAT (Probar Agente)
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 function initChat() {
   chatGreeted = true;
-  // El usuario inicia la conversaci├│n libremente
+  // El usuario inicia la conversación libremente
 }
 
 function scrollChatBottom() {
@@ -572,7 +572,7 @@ function renderChatButtons(items, onSelect, grouped) {
       const dayPart = item.label.replace(/\s+\d{1,2}:\d{2}$/, '');
       if (dayPart !== lastDay) {
         const lbl = document.createElement('div');
-        lbl.className = 'chat-day-label'; lbl.textContent = '­ƒôà ' + dayPart;
+        lbl.className = 'chat-day-label'; lbl.textContent = '📅 ' + dayPart;
         wrap.appendChild(lbl); lastDay = dayPart;
       }
     }
@@ -603,20 +603,20 @@ async function sendChatMessage(text) {
     const data = await res.json();
     hideChatTyping();
     if (data.type === 'slots' && data.items?.length) {
-      // Mostrar slots como texto plano agrupado por d├¡a
-      let slotText = data.text ? data.text + '\n\n' : '­ƒôà Horarios disponibles:\n\n';
+      // Mostrar slots como texto plano agrupado por día
+      let slotText = data.text ? data.text + '\n\n' : '📅 Horarios disponibles:\n\n';
       let lastDay = '';
       data.items.forEach(item => {
         const dayPart = item.label.replace(/\s+\d{1,2}:\d{2}$/, '');
         const timePart = item.label.replace(/.*\s(\d{1,2}:\d{2})$/, '$1');
         if (dayPart !== lastDay) {
           if (lastDay) slotText += '\n';
-          slotText += `­ƒôå ${dayPart}\n`;
+          slotText += `📆 ${dayPart}\n`;
           lastDay = dayPart;
         }
         slotText += `  ÔÇó ${timePart}\n`;
       });
-      slotText += '\nEscribe el d├¡a y hora que prefieras.';
+      slotText += '\nEscribe el día y hora que prefieras.';
       addChatMsg(slotText, 'bot');
     } else {
       if (data.text) addChatMsg(data.text, 'bot', data.type === 'confirmed' ? 'confirmed' : 'text');
@@ -624,7 +624,7 @@ async function sendChatMessage(text) {
         renderChatButtons(data.items, item => { addChatMsg(item.label, 'user'); sendChatMessage(item.label); }, false);
       }
     }
-  } catch(err) { console.error('[CHAT ERROR]', err); hideChatTyping(); addChatMsg('Error de conexi├│n. Intenta de nuevo.', 'bot'); }
+  } catch(err) { console.error('[CHAT ERROR]', err); hideChatTyping(); addChatMsg('Error de conexión. Intenta de nuevo.', 'bot'); }
   finally { chatLoading = false; scrollChatBottom(); }
 }
 
@@ -641,14 +641,14 @@ document.getElementById('chat-input').addEventListener('keydown', e => { if (e.k
 document.getElementById('chat-input').addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 80) + 'px'; });
 document.getElementById('btn-reset-chat').addEventListener('click', resetChat);
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // HELPERS DE FORMATO
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function formatDateTime(str) {
-  if (!str) return 'ÔÇö';
+  if (!str) return '—';
   try {
     const d = new Date(str);
     return d.toLocaleDateString('es-MX', {day:'2-digit',month:'short',year:'numeric'}) + ' ' +
@@ -661,7 +661,7 @@ function statusBadge(s) {
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
 function leadStatusBadge(s) {
-  const m = { nuevo:['badge-blue','Nuevo'], new:['badge-blue','Nuevo'], interesado:['badge-green','Interesado'], contacted:['badge-yellow','Contactado'], cold:['badge-gray','Fr├¡o'], converted:['badge-purple','Convertido'] };
+  const m = { nuevo:['badge-blue','Nuevo'], new:['badge-blue','Nuevo'], interesado:['badge-green','Interesado'], contacted:['badge-yellow','Contactado'], cold:['badge-gray','Frío'], converted:['badge-purple','Convertido'] };
   const [cls, lbl] = m[s] || ['badge-gray', s];
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
@@ -670,9 +670,9 @@ function sourceBadge(source) {
   return '<span class="badge badge-green"><i class="fab fa-whatsapp" style="font-size:10px"></i> WhatsApp</span>';
 }
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
-// HORARIOS ÔÇö Editor de franjas por semana
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
+// HORARIOS — Editor de franjas por semana
+// ===========================================
 let scheduleState = {};
 let currentWeekStart = null;
 let horariosLoaded = false;
@@ -694,7 +694,7 @@ function getMonday(dateStr) {
 
 function getWeekDates(mondayStr) {
   const days = [];
-  const dayLabels = ['Lun','Mar','Mi├®','Jue','Vie','S├íb','Dom'];
+  const dayLabels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   for (let i = 0; i < 7; i++) {
     const d = new Date(mondayStr + 'T12:00:00');
@@ -737,12 +737,12 @@ function renderWeekSelector() {
   const weekDates = getWeekDates(currentWeekStart);
   container.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <button class="btn-secondary" style="padding:6px 14px;" onclick="changeScheduleWeek(-1)">ÔåÉ Anterior</button>
-      <span style="font-weight:600;color:var(--accent,#6C63FF);">${weekDates[0].label} ÔÇö ${weekDates[6].label}</span>
-      <button class="btn-secondary" style="padding:6px 14px;" onclick="changeScheduleWeek(1)">Siguiente ÔåÆ</button>
+      <button class="btn-secondary" style="padding:6px 14px;" onclick="changeScheduleWeek(-1)">← Anterior</button>
+      <span style="font-weight:600;color:var(--accent,#6C63FF);">${weekDates[0].label} — ${weekDates[6].label}</span>
+      <button class="btn-secondary" style="padding:6px 14px;" onclick="changeScheduleWeek(1)">Siguiente →</button>
     </div>
     <div style="margin-top:8px;">
-      <button class="btn-secondary" style="padding:4px 10px;font-size:0.8rem;" onclick="copyWeekSchedule()">­ƒôï Copiar semana</button>
+      <button class="btn-secondary" style="padding:4px 10px;font-size:0.8rem;" onclick="copyWeekSchedule()">📋 Copiar semana</button>
     </div>
   `;
 }
@@ -770,11 +770,11 @@ function renderScheduleEditor() {
       <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
         <input type="time" value="${f.start}" style="${inputStyle}width:110px;"
           onchange="updateScheduleFranja('${day.date}',${fi},'start',this.value)">
-        <span style="color:var(--text-muted,#888)">ÔåÆ</span>
+        <span style="color:var(--text-muted,#888)">→</span>
         <input type="time" value="${f.end}" style="${inputStyle}width:110px;"
           onchange="updateScheduleFranja('${day.date}',${fi},'end',this.value)">
         <button onclick="removeScheduleFranja('${day.date}',${fi})"
-          style="background:rgba(255,80,80,0.15);border:none;color:#ff5050;border-radius:6px;padding:4px 8px;cursor:pointer;">Ô£ò</button>
+          style="background:rgba(255,80,80,0.15);border:none;color:#ff5050;border-radius:6px;padding:4px 8px;cursor:pointer;">✖</button>
       </div>
     `).join('');
 
@@ -791,7 +791,7 @@ function renderScheduleEditor() {
           style="background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);color:var(--accent,#6C63FF);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
           + Franja</button>` : ''}
       </div>
-      ${isActive ? franjasHtml : '<span style="color:var(--text-muted,#888);font-size:0.8rem;margin-left:24px;">D├¡a no laborable</span>'}
+      ${isActive ? franjasHtml : '<span style="color:var(--text-muted,#888);font-size:0.8rem;margin-left:24px;">Día no laborable</span>'}
     </div>`;
   }).join('');
 
@@ -879,9 +879,9 @@ async function applyCopyWeekSchedule() {
     });
     document.getElementById('copyWeekModal')?.remove();
     if (res.ok) {
-      showToast(`Semana copiada a ${targetDates[0].label} ÔÇö ${targetDates[6].label}`, 'success');
+      showToast(`Semana copiada a ${targetDates[0].label} — ${targetDates[6].label}`, 'success');
     } else { showToast('Error copiando semana', 'error'); }
-  } catch { document.getElementById('copyWeekModal')?.remove(); showToast('Error de conexi├│n', 'error'); }
+  } catch { document.getElementById('copyWeekModal')?.remove(); showToast('Error de conexión', 'error'); }
 }
 
 document.getElementById('btn-save-schedule')?.addEventListener('click', async () => {
@@ -905,16 +905,16 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
     if (res.ok) {
       showToast('Horarios guardados', 'success');
     } else { showToast('Error guardando horarios', 'error'); }
-  } catch { showToast('Error de conexi├│n', 'error'); }
+  } catch { showToast('Error de conexión', 'error'); }
   finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Horarios';
   }
 });
 
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 // INIT
-// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+// ===========================================
 (function init() {
   if (authToken && clientData) showDashboard();
 })();
