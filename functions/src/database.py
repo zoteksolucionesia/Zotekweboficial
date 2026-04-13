@@ -1,9 +1,7 @@
 import os
 import json
-import threading
 import logging
 from datetime import timezone, timedelta as td
-from psycopg2 import pool as pg_pool
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
 from typing import Optional, Dict, Any, List, Tuple
@@ -22,68 +20,23 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # ============================================
-# CONNECTION POOL
+# CONNECTION — Direct via PgBouncer (handles pooling externally)
 # ============================================
-_pool: Optional[pg_pool.ThreadedConnectionPool] = None
-_pool_lock = threading.Lock()
+import psycopg2
 
 
-class _PooledConnection:
-    """Wraps a psycopg2 connection from the pool. close() returns it to the pool."""
-
-    def __init__(self, conn, pool: pg_pool.ThreadedConnectionPool):
-        self._conn = conn
-        self._pool = pool
-
-    def cursor(self, *args, **kwargs):
-        return self._conn.cursor(*args, **kwargs)
-
-    def commit(self):
-        return self._conn.commit()
-
-    def rollback(self):
-        return self._conn.rollback()
-
-    def close(self):
-        if self._conn is not None:
-            self._pool.putconn(self._conn)
-            self._conn = None
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
-
-
-def _get_pool() -> pg_pool.ThreadedConnectionPool:
-    global _pool
-    if _pool is None:
-        with _pool_lock:
-            if _pool is None:
-                if not DATABASE_URL:
-                    raise ValueError("DATABASE_URL no está configurada. Verifica tu archivo .env.")
-                _pool = pg_pool.ThreadedConnectionPool(
-                    minconn=2,
-                    maxconn=10,
-                    dsn=DATABASE_URL,
-                    sslmode='require',
-                )
-                logger.info("PostgreSQL connection pool initialized (min=2, max=10)")
-    return _pool
-
-
-def get_connection() -> _PooledConnection:
-    """Obtiene una conexión del pool de PostgreSQL."""
+def get_connection():
+    """Crea una conexión directa a PostgreSQL vía PgBouncer.
+    PgBouncer en Supabase (puerto 6543) maneja el pooling,
+    así que no necesitamos ThreadedConnectionPool localmente."""
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL no está configurada. Verifica tu archivo .env.")
     try:
-        pool = _get_pool()
-        conn = pool.getconn()
-        return _PooledConnection(conn, pool)
+        conn = psycopg2.connect(dsn=DATABASE_URL, sslmode='require', connect_timeout=10)
+        conn.autocommit = False
+        return conn
     except Exception as e:
-        logger.error(f"Error obteniendo conexión del pool: {e}")
+        logger.error(f"Error conectando a PostgreSQL: {e}")
         raise
 
 import re
@@ -374,9 +327,16 @@ def get_client_by_phone_id(phone_number_id):
         client = cursor.fetchone()
         cursor.close()
         conn.close()
-        return decrypt_client_fields(dict(client)) if client else None
+        logger.info(f"get_client_by_phone_id({phone_number_id}): found={client is not None}")
+        if client:
+            try:
+                return decrypt_client_fields(dict(client))
+            except Exception as dec_err:
+                logger.error(f"ERROR decrypt in get_client_by_phone_id: {dec_err}")
+                return dict(client)
+        return None
     except Exception as e:
-        logger.error(f"ERROR get_client_by_phone_id: {e}")
+        logger.error(f"ERROR get_client_by_phone_id({phone_number_id}): {e}", exc_info=True)
         return None
 
 def list_clients():
@@ -399,7 +359,7 @@ def list_clients():
             real_clients.append(c)
         return real_clients
     except Exception as e:
-        logger.error(f"ERROR list_clients: {e}")
+        logger.error(f"ERROR list_clients: {e}", exc_info=True)
         return []
 
 

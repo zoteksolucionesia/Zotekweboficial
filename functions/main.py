@@ -79,7 +79,7 @@ def asgi_to_response(asgi_app, request: https_fn.Request) -> https_fn.Response:
     )
 
 
-@https_fn.on_request(timeout_sec=120, memory=2048, min_instances=1)
+@https_fn.on_request(timeout_sec=120, memory=2048, min_instances=0)
 def api_handler(req: https_fn.Request) -> https_fn.Response:
     try:
         return asgi_to_response(app, req)

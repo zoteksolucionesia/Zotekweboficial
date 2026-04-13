@@ -1,5 +1,6 @@
 # Deploy Trigger: Force redeploy to fix persistent NameError in production.
 # SaaS Improvements: Security, caching, metrics, conversation history
+# Fix: Supabase PgBouncer port 6543 + direct connections
 import os
 import json
 import logging
@@ -150,6 +151,7 @@ async def custom_404_handler(request: Request, __):
 async def ping():
     return {"message": "pong"}
 
+
 @app.get("/login")
 async def login_page():
     return FileResponse(os.path.join(ADMIN_DIR, "login.html"))
@@ -203,13 +205,17 @@ def _ensure_initialized():
     if not _initialized:
         database.init_db()
         gemini = GeminiEngine(api_key=GEMINI_API_KEY)
-        email_service = EmailService(
-            smtp_server=Config.SMTP_SERVER,
-            smtp_port=Config.SMTP_PORT,
-            email_user=Config.ADMIN_EMAIL,
-            email_password=Config.EMAIL_APP_PASSWORD or "",
-            email_from_name="Zotek IA",
-        )
+        try:
+            email_service = EmailService(
+                smtp_server=Config.SMTP_SERVER,
+                smtp_port=Config.SMTP_PORT,
+                email_user=Config.ADMIN_EMAIL,
+                email_password=Config.EMAIL_APP_PASSWORD or "",
+                email_from_name="Zotek IA",
+            )
+        except Exception as e:
+            logger.warning(f"EmailService no inicializado (emails deshabilitados): {e}")
+            email_service = None
         _initialized = True
 
 @app.on_event("startup")
@@ -1289,6 +1295,7 @@ async def get_client_leads(client_id: int, status: str = None, limit: int = 50,
     verify_client_access(client_id, current_user)
     conn = database.get_connection()
     try:
+        from psycopg2.extras import RealDictCursor
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         query = "SELECT * FROM lead_tracking WHERE client_id = %s"
@@ -1307,7 +1314,10 @@ async def get_client_leads(client_id: int, status: str = None, limit: int = 50,
         return {"leads": [dict(lead) for lead in leads], "total": len(leads)}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Error al obtener leads")
+        logger.error(f"Error leads client_id={client_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error al obtener leads: {e}")
     finally:
         conn.close()
 
@@ -1319,6 +1329,7 @@ async def get_cold_leads(client_id: int, hours: int = 24,
     try:
         conn = database.get_connection()
         try:
+            from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
                 SELECT lt.*, c.name as client_name, c.phone_number_id as business_phone
@@ -1472,7 +1483,7 @@ async def widget_chat(request: Request):
         numero_telefono=f"widget_{session_id}",
     )
 
-    respuesta_text = resultado.get("text", "")
+    respuesta_text = resultado.get("text") or ""
     tool_calls     = resultado.get("tool_calls", [])
 
     # Respuesta base que el widget interpretará
@@ -1533,7 +1544,7 @@ async def widget_chat(request: Request):
                     customer_email=paciente_email,
                 )
                 # Enviar confirmación por correo al paciente si proporcionó email
-                if paciente_email:
+                if paciente_email and email_service:
                     try:
                         fecha_parts = args.get("fecha_hora", "").split(" ")
                         # Usar cuenta de email del cliente si tiene password configurado, si no la de Zotek
@@ -1568,40 +1579,42 @@ async def widget_chat(request: Request):
                 interes=args.get("interes", ""),
             )
 
-    # ── Fallback AGRESIVO: si el usuario pidió cita, FORZAR los slots ──
-    USER_APPOINTMENT_KEYWORDS = ["agendar", "cita", "quiero agendar", "quiero una cita", "me gustaría agendar", "agendar una cita"]
-    user_wants_appointment = any(k in message.lower() for k in USER_APPOINTMENT_KEYWORDS)
+    # ── Fallback: inyectar slots cuando corresponda ──
+    try:
+        msg_lower = message.lower().strip()
+        bot_lower = respuesta_text.lower()
 
-    if user_wants_appointment:
-        # El usuario pidió cita explícitamente → SIEMPRE inyectar slots, sin importar qué respondió el bot
-        duracion = int(client_data.get("appointment_duration") or 50)
-        libres = [s for s in database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
-                  if not s["ocupado"]]
-        if libres:
-            response_payload["type"]  = "slots"
-            response_payload["text"]  = "📅 ¿Cuál horario te viene mejor?"
-            response_payload["items"] = [{"label": s["label"], "value": s["datetime"]} for s in libres]
-            logger.info(f"[FALLBACK-SLOTS-FORCE] usuario pidió cita, inyectados={len(libres)}")
+        # Caso 1: usuario pidió cita explícitamente
+        APPOINTMENT_KEYWORDS = ["agendar", "cita", "reservar", "turno", "disponibilidad"]
+        user_wants_appointment = any(k in msg_lower for k in APPOINTMENT_KEYWORDS)
 
-    # ── Fallback suave: si el bot mencionó horarios pero no llamó la herramienta ──
-    elif response_payload["type"] == "text" and not response_payload["items"]:
-        BOT_SLOT_PHRASES = [
-            "horario", "hora te viene", "cuál hora", "elegir hora",
-            "elige una hora", "selecciona una hora", "cuándo te queda",
-            "qué horario", "que horario", "ver horarios", "horarios disponibles",
-        ]
-        bot_wants_slots = any(p in respuesta_text.lower() for p in BOT_SLOT_PHRASES)
+        # Caso 2: respuesta afirmativa muy corta (1-2 palabras) → inyectar slots directamente
+        # El bot probablemente ofreció agendar en su mensaje ANTERIOR, no en el actual
+        AFFIRMATIVE = ["si", "sí", "claro", "dale", "ok", "va", "por favor",
+                       "porfa", "adelante", "quiero", "me gustaria", "me gustaría",
+                       "perfecto", "bueno", "está bien", "esta bien", "de acuerdo",
+                       "sale", "va bien", "orale", "órale"]
+        word_count = len(msg_lower.split())
+        user_affirms_short = word_count <= 2 and any(
+            msg_lower == a or msg_lower.startswith(a + " ") or msg_lower.startswith(a + ",")
+            for a in AFFIRMATIVE
+        )
 
-        if bot_wants_slots:
+        should_inject_slots = user_wants_appointment or user_affirms_short
+
+        if should_inject_slots and response_payload["type"] != "confirmed":
             duracion = int(client_data.get("appointment_duration") or 50)
             libres = [s for s in database.get_available_slots_v2(client_data['id'], duracion_min=duracion)
                       if not s["ocupado"]]
             if libres:
                 response_payload["type"]  = "slots"
+                fallback_texts = ["no entendí", "no entendi", "no comprendo"]
+                bot_text_ok = respuesta_text.strip() and not any(f in bot_lower for f in fallback_texts)
+                response_payload["text"]  = respuesta_text if bot_text_ok else "📅 ¿Cuál horario te viene mejor?"
                 response_payload["items"] = [{"label": s["label"], "value": s["datetime"]} for s in libres]
-                logger.info(f"[FALLBACK-SLOTS] bot mencionó horarios, inyectados={len(libres)}")
-            else:
-                logger.info("[FALLBACK-SLOTS] sin slots libres")
+                logger.info(f"[FALLBACK-SLOTS] inyectados={len(libres)} user_explicit={user_wants_appointment} user_affirm={user_affirms} bot_offered={bot_offered_appointment}")
+    except Exception as e:
+        logger.error(f"[FALLBACK-SLOTS-ERROR] {e}")
 
     return response_payload
 
@@ -1618,9 +1631,12 @@ async def cron_reminders(request: Request):
 
     _ensure_initialized()
 
-    from datetime import datetime, timedelta
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    from datetime import datetime, timedelta, timezone
+    mexico_tz = timezone(timedelta(hours=-6))
+    now_mx = datetime.now(mexico_tz)
+    tomorrow = (now_mx + timedelta(days=1)).strftime("%Y-%m-%d")
     tomorrow_end = tomorrow + " 23:59"
+    logger.info(f"cron_reminders: now_mx={now_mx.isoformat()}, buscando citas para {tomorrow}")
 
     try:
         from psycopg2.extras import RealDictCursor as RDC

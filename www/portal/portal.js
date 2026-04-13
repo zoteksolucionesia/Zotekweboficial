@@ -1,6 +1,6 @@
 'use strict';
 
-const API        = 'https://api-handler-gfd2ph2qpq-uc.a.run.app';
+const API        = '';
 const TOKEN_KEY  = 'zotek_portal_token';
 const CLIENT_KEY = 'zotek_portal_client';
 const THEME_KEY  = 'zotek_portal_theme';
@@ -232,15 +232,24 @@ async function loadDashboardData() {
       fetch(`${API}/api/clients/${cid}/appointments`, { headers: authHeader() }),
       fetch(`${API}/api/clients/${cid}/leads?limit=200`,  { headers: authHeader() }),
     ]);
+    console.log('[PORTAL] citasRes status:', citasRes.status, 'leadsRes status:', leadsRes.status);
     if (citasRes.ok) {
       const data = await citasRes.json();
+      console.log('[PORTAL] citas raw:', JSON.stringify(data).substring(0, 300));
       allCitas = Array.isArray(data) ? data : (data.appointments || data.citas || []);
+      console.log('[PORTAL] allCitas count:', allCitas.length);
       updateCitasKPIs(); renderProximasCitas();
+    } else {
+      console.error('[PORTAL] citas error:', await citasRes.text());
     }
     if (leadsRes.ok) {
       const data = await leadsRes.json();
+      console.log('[PORTAL] leads raw:', JSON.stringify(data).substring(0, 300));
       allLeads = data.leads || [];
+      console.log('[PORTAL] allLeads count:', allLeads.length);
       updateLeadsKPIs(); renderLeadsRecientes();
+    } else {
+      console.error('[PORTAL] leads error:', await leadsRes.text());
     }
   } catch (e) { console.error('Error cargando dashboard:', e); }
 }
@@ -528,13 +537,18 @@ function initChat() {
   // El usuario inicia la conversación libremente
 }
 
+function scrollChatBottom() {
+  const msgs = document.getElementById('chat-msgs');
+  requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
+}
+
 function addChatMsg(text, role, type) {
   const msgs = document.getElementById('chat-msgs');
   const div  = document.createElement('div');
   div.className   = type === 'confirmed' ? 'chat-msg confirmed' : `chat-msg ${role}`;
   div.textContent = text;
   msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+  scrollChatBottom();
   return div;
 }
 
@@ -543,7 +557,7 @@ function showChatTyping() {
   const div  = document.createElement('div');
   div.id = 'chat-typing'; div.className = 'chat-msg bot typing';
   div.innerHTML = '<span></span><span></span><span></span>';
-  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+  msgs.appendChild(div); scrollChatBottom();
 }
 function hideChatTyping() { document.getElementById('chat-typing')?.remove(); }
 
@@ -570,7 +584,7 @@ function renderChatButtons(items, onSelect, grouped) {
     });
     wrap.appendChild(b);
   });
-  msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
+  msgs.appendChild(wrap); scrollChatBottom();
 }
 
 async function sendChatMessage(text) {
@@ -587,14 +601,30 @@ async function sendChatMessage(text) {
     });
     const data = await res.json();
     hideChatTyping();
-    if (data.text) addChatMsg(data.text, 'bot', data.type === 'confirmed' ? 'confirmed' : 'text');
     if (data.type === 'slots' && data.items?.length) {
-      renderChatButtons(data.items, item => { addChatMsg(item.label, 'user'); sendChatMessage(item.label); }, true);
-    } else if (data.type === 'options' && data.items?.length) {
-      renderChatButtons(data.items, item => { addChatMsg(item.label, 'user'); sendChatMessage(item.label); }, false);
+      // Mostrar slots como texto plano agrupado por día
+      let slotText = data.text ? data.text + '\n\n' : '📅 Horarios disponibles:\n\n';
+      let lastDay = '';
+      data.items.forEach(item => {
+        const dayPart = item.label.replace(/\s+\d{1,2}:\d{2}$/, '');
+        const timePart = item.label.replace(/.*\s(\d{1,2}:\d{2})$/, '$1');
+        if (dayPart !== lastDay) {
+          if (lastDay) slotText += '\n';
+          slotText += `📆 ${dayPart}\n`;
+          lastDay = dayPart;
+        }
+        slotText += `  • ${timePart}\n`;
+      });
+      slotText += '\nEscribe el día y hora que prefieras.';
+      addChatMsg(slotText, 'bot');
+    } else {
+      if (data.text) addChatMsg(data.text, 'bot', data.type === 'confirmed' ? 'confirmed' : 'text');
+      if (data.type === 'options' && data.items?.length) {
+        renderChatButtons(data.items, item => { addChatMsg(item.label, 'user'); sendChatMessage(item.label); }, false);
+      }
     }
-  } catch { hideChatTyping(); addChatMsg('Error de conexión. Intenta de nuevo.', 'bot'); }
-  finally { chatLoading = false; document.getElementById('chat-msgs').scrollTop = 9999; }
+  } catch(err) { console.error('[CHAT ERROR]', err); hideChatTyping(); addChatMsg('Error de conexión. Intenta de nuevo.', 'bot'); }
+  finally { chatLoading = false; scrollChatBottom(); }
 }
 
 function resetChat() {

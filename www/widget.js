@@ -19,7 +19,7 @@
   var urlParams = new URL(src, location.href).searchParams;
   var CLIENT_ID  = urlParams.get('bot') || '';
   var ACCENT     = urlParams.get('color') || '#6C63FF';
-  var API_BASE   = 'https://api-handler-gfd2ph2qpq-uc.a.run.app';
+  var API_BASE   = 'https://zotek-ia.web.app';
 
   if (!CLIENT_ID) {
     console.warn('[Zotek Widget] Falta el parámetro ?bot=CLIENT_ID');
