@@ -1,0 +1,357 @@
+﻿<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zotek Portal ÔÇö Mi Panel</title>
+  <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="portal.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+</head>
+<body>
+
+<!-- ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+     PANTALLA DE LOGIN
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ -->
+<div id="screen-login" class="screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <img src="/assets/logo.svg" alt="Zotek" class="login-logo-img" />
+      <span>Zotek</span>
+    </div>
+    <h1 class="login-title">Accede a tu panel</h1>
+    <p class="login-subtitle">Ingresa el email con el que te registraste</p>
+
+    <!-- Paso 1: Email -->
+    <div id="step-email">
+      <div class="form-group">
+        <label for="inp-email">Email</label>
+        <input type="email" id="inp-email" placeholder="tu@email.com" autocomplete="email" />
+      </div>
+      <button class="btn-primary btn-full" id="btn-send-code">
+        <span id="btn-send-text">Enviar c├│digo</span>
+        <i id="btn-send-spin" class="fas fa-spinner fa-spin" style="display:none"></i>
+      </button>
+      <p class="login-note" id="login-error" style="display:none;color:#ff6b6b;"></p>
+    </div>
+
+    <!-- Paso 2: C├│digo -->
+    <div id="step-code" style="display:none">
+      <p class="login-sent-msg">
+        <i class="fas fa-envelope-circle-check" style="color:#6C63FF"></i>
+        Te enviamos un c├│digo de 6 d├¡gitos a <strong id="sent-to-email"></strong>
+      </p>
+      <div class="form-group">
+        <label for="inp-code">C├│digo de verificaci├│n</label>
+        <input type="text" id="inp-code" placeholder="000000" maxlength="6" inputmode="numeric"
+               autocomplete="one-time-code" style="letter-spacing:8px;font-size:1.5rem;text-align:center;" />
+      </div>
+      <button class="btn-primary btn-full" id="btn-verify-code">
+        <span id="btn-verify-text">Ingresar</span>
+        <i id="btn-verify-spin" class="fas fa-spinner fa-spin" style="display:none"></i>
+      </button>
+      <p class="login-note" id="code-error" style="display:none;color:#ff6b6b;"></p>
+      <button class="btn-link" id="btn-resend">Reenviar c├│digo</button>
+    </div>
+
+    <!-- Theme toggle en login -->
+    <div class="login-theme-row">
+      <button class="btn-theme-toggle" id="btn-theme-login" aria-label="Cambiar tema">
+        <i class="fas fa-sun" id="theme-icon-login"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+     DASHBOARD
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ -->
+<div id="screen-dashboard" class="screen" style="display:none">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <img src="/assets/logo.svg" alt="Zotek" class="sidebar-logo-img" />
+    </div>
+    <ul class="sidebar-menu">
+      <li><a href="#" class="nav-item active" data-section="resumen">
+        <i class="fas fa-chart-pie"></i><span>Resumen</span>
+      </a></li>
+      <li><a href="#" class="nav-item" data-section="citas">
+        <i class="fas fa-calendar-check"></i><span>Citas</span>
+      </a></li>
+      <li><a href="#" class="nav-item" data-section="leads">
+        <i class="fas fa-users"></i><span>Leads</span>
+      </a></li>
+      <li><a href="#" class="nav-item" data-section="horarios">
+        <i class="fas fa-calendar-alt"></i><span>Horarios</span>
+      </a></li>
+      <li><a href="#" class="nav-item" data-section="probar">
+        <i class="fas fa-robot"></i><span>Probar Agente</span>
+      </a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar-initial"></div>
+        <div class="user-info-text">
+          <div class="user-name" id="sidebar-client-name">ÔÇö</div>
+          <div class="user-email" id="sidebar-client-email">ÔÇö</div>
+        </div>
+      </div>
+      <div class="sidebar-footer-actions">
+        <button class="btn-icon" id="btn-theme-sidebar" title="Cambiar tema">
+          <i class="fas fa-sun" id="theme-icon-sidebar"></i>
+        </button>
+        <button class="btn-logout" id="btn-logout" title="Cerrar sesi├│n">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Mobile header -->
+  <header class="mobile-header">
+    <button id="btn-menu-toggle"><i class="fas fa-bars"></i></button>
+    <span class="mobile-title" id="mobile-section-title">Resumen</span>
+    <div class="mobile-header-actions">
+      <button id="btn-theme-mobile"><i class="fas fa-sun" id="theme-icon-mobile"></i></button>
+      <button id="btn-logout-mobile"><i class="fas fa-sign-out-alt"></i></button>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="main-content">
+
+    <!-- ÔöÇÔöÇ SECCI├ôN: RESUMEN ÔöÇÔöÇ -->
+    <section id="section-resumen" class="section">
+      <div class="section-header">
+        <h2>Resumen</h2>
+        <span class="section-sub" id="resumen-greeting"></span>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(108,99,255,.15);color:#6C63FF">
+            <i class="fas fa-calendar-day"></i>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-value" id="kpi-hoy">ÔÇö</div>
+            <div class="kpi-label">Citas hoy</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(52,199,89,.15);color:#34c759">
+            <i class="fas fa-calendar-week"></i>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-value" id="kpi-semana">ÔÇö</div>
+            <div class="kpi-label">Citas esta semana</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(255,149,0,.15);color:#ff9500">
+            <i class="fas fa-user-plus"></i>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-value" id="kpi-leads-nuevos">ÔÇö</div>
+            <div class="kpi-label">Leads nuevos</div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(255,59,48,.15);color:#ff3b30">
+            <i class="fas fa-user-clock"></i>
+          </div>
+          <div class="kpi-body">
+            <div class="kpi-value" id="kpi-leads-total">ÔÇö</div>
+            <div class="kpi-label">Total leads</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-20">
+        <div class="card-header">
+          <h3>Pr├│ximas citas</h3>
+          <a href="#" class="btn-link" data-section="citas">Ver todas</a>
+        </div>
+        <div id="proximas-citas-list" class="table-wrap">
+          <div class="empty-state"><i class="fas fa-calendar-xmark"></i><p>Cargando...</p></div>
+        </div>
+      </div>
+
+      <div class="card mt-20">
+        <div class="card-header">
+          <h3>Leads recientes</h3>
+          <a href="#" class="btn-link" data-section="leads">Ver todos</a>
+        </div>
+        <div id="leads-recientes-list" class="table-wrap">
+          <div class="empty-state"><i class="fas fa-users"></i><p>Cargando...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ÔöÇÔöÇ SECCI├ôN: CITAS ÔöÇÔöÇ -->
+    <section id="section-citas" class="section" style="display:none">
+      <div class="section-header">
+        <h2>Citas</h2>
+        <div class="section-actions">
+          <select id="filter-citas-status" class="select-filter">
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendientes</option>
+            <option value="confirmed">Confirmadas</option>
+            <option value="cancelled">Canceladas</option>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <div id="citas-table-wrap" class="table-wrap">
+          <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ÔöÇÔöÇ SECCI├ôN: LEADS ÔöÇÔöÇ -->
+    <section id="section-leads" class="section" style="display:none">
+      <div class="section-header">
+        <h2>Leads</h2>
+        <div class="section-actions">
+          <select id="filter-leads-source" class="select-filter">
+            <option value="">Todas las fuentes</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="widget">Widget Web</option>
+          </select>
+          <select id="filter-leads-status" class="select-filter">
+            <option value="">Todos los estados</option>
+            <option value="nuevo">Nuevos</option>
+            <option value="interesado">Interesados</option>
+            <option value="cold">Fr├¡os</option>
+            <option value="converted">Convertidos</option>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <div id="leads-table-wrap" class="table-wrap">
+          <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ÔöÇÔöÇ SECCI├ôN: HORARIOS ÔöÇÔöÇ -->
+    <section id="section-horarios" class="section" style="display:none">
+      <div class="section-header">
+        <h2>Horarios de Atenci├│n</h2>
+        <p class="section-sub">Configura los d├¡as y horarios en que tu agente podr├í agendar citas.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div id="weekSelector"></div>
+        </div>
+        <div id="scheduleEditor" style="display:flex;flex-direction:column;gap:8px;padding:16px;">
+          <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando...</p></div>
+        </div>
+        <div style="padding:0 16px 16px;">
+          <button class="btn-primary btn-full" id="btn-save-schedule">
+            <i class="fas fa-floppy-disk"></i> Guardar Horarios
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ÔöÇÔöÇ SECCI├ôN: PROBAR AGENTE ÔöÇÔöÇ -->
+    <section id="section-probar" class="section" style="display:none">
+      <div class="section-header">
+        <h2>Probar Agente</h2>
+        <p class="section-sub">Simula la conversaci├│n tal como la ve un usuario real.</p>
+      </div>
+
+      <div class="probar-layout">
+
+        <!-- Panel izquierdo: config del agente -->
+        <div class="agent-config-panel">
+
+          <!-- Reiniciar bot (oculto hasta que haya cambios) -->
+          <div id="reset-bot-banner" class="reset-banner" style="display:none">
+            <i class="fas fa-triangle-exclamation"></i>
+            <span>Hay cambios sin aplicar al bot.</span>
+            <button class="btn-reset-bot" id="btn-reset-bot">
+              <i class="fas fa-rotate"></i> Reiniciar bot
+            </button>
+          </div>
+
+          <!-- Instrucci├│n del agente -->
+          <div class="config-card">
+            <div class="config-card-header">
+              <i class="fas fa-brain" style="color:#6C63FF"></i>
+              <h3>Instrucci├│n del Agente</h3>
+            </div>
+            <p class="config-hint">Define el comportamiento y personalidad de tu asistente.</p>
+            <textarea id="agent-system-instruction" class="sys-textarea"
+              placeholder="Ej: Eres un asistente virtual de consulta psicol├│gica. Tu nombre es Lili. Respondes de forma amable y emp├ítica..."></textarea>
+            <div class="config-card-footer">
+              <button class="btn-secondary btn-sm" id="btn-save-instruction">
+                <i class="fas fa-floppy-disk"></i> Guardar instrucci├│n
+              </button>
+            </div>
+          </div>
+
+          <!-- Documentos de conocimiento -->
+          <div class="config-card mt-14">
+            <div class="config-card-header">
+              <i class="fas fa-file-lines" style="color:#ff9500"></i>
+              <h3>Documentos de Conocimiento</h3>
+            </div>
+            <p class="config-hint">El agente usa estos PDFs para responder preguntas espec├¡ficas.</p>
+
+            <div id="docs-list" class="docs-list">
+              <div class="empty-state-sm"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
+            </div>
+
+            <!-- Upload -->
+            <div class="upload-area" id="upload-area">
+              <input type="file" id="doc-file-input" accept=".pdf" style="display:none" />
+              <button class="btn-upload" id="btn-upload-trigger">
+                <i class="fas fa-cloud-arrow-up"></i>
+                <span id="upload-btn-text">Subir PDF</span>
+              </button>
+              <span class="upload-hint">Solo archivos .pdf</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Panel derecho: phone mockup -->
+        <div class="phone-mockup">
+          <div class="phone-frame">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="chat-header">
+                <div class="chat-avatar" id="chat-avatar-initial"></div>
+                <div>
+                  <div class="chat-name" id="chat-bot-name">Asistente</div>
+                  <div class="chat-status">En l├¡nea</div>
+                </div>
+                <button class="chat-reset-btn" id="btn-reset-chat" title="Nueva conversaci├│n">
+                  <i class="fas fa-rotate-left"></i>
+                </button>
+              </div>
+              <div class="chat-messages" id="chat-msgs"></div>
+              <div class="chat-footer">
+                <textarea id="chat-input" placeholder="Escribe un mensaje..." rows="1"></textarea>
+                <button id="chat-send"><i class="fas fa-paper-plane"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="portal-toast" class="portal-toast" style="display:none"></div>
+
+<script src="portal.js"></script>
+</body>
+</html>
