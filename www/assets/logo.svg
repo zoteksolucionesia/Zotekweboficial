@@ -1,4 +1,4 @@
-<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+<svg width="160" height="60" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg">
   <style>
     /* Animación para el círculo principal */
     @keyframes pulse {
@@ -9,8 +9,6 @@
 
     .circle-main {
       animation: pulse 2s infinite ease-in-out;
-      transform-box: fill-box;
-      transform-origin: center;
     }
 
     /* Animación para los puntos */
@@ -21,13 +19,11 @@
 
     .dot-group {
       animation: rotateDots 5s linear infinite;
-      transform-box: fill-box;
-      transform-origin: center;
     }
   </style>
 
   <!-- Icono IA / Chip tecnológico (centrado) -->
-  <g transform="translate(30, 30)">
+  <g transform="translate(35, 30)">
     <!-- Círculo principal -->
     <circle r="14" cx="0" cy="0" fill="#00bcd4" class="circle-main"/>
 
@@ -45,4 +41,7 @@
     <line x1="-18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
     <line x1="18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
   </g>
+
+  <!-- Texto "Zotek" en azul (visible en ambos modos) -->
+  <text x="65" y="38" fill="#1565C0" font-family="'Space Grotesk', 'Segoe UI', sans-serif" font-size="28" font-weight="600" dominant-baseline="middle" text-anchor="start">Zotek</text>
 </svg>

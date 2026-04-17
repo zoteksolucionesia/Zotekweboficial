@@ -5,19 +5,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zotek IA | Panel de Control</title>
-    
+
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-    
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+        rel="stylesheet">
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+
     <!-- Link the main stylesheet -->
     <link rel="stylesheet" href="/style.css">
     <!-- Admin-specific styles -->
     <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.12">
-    
+
     <script>
         // Force theme immediately to prevent flashing/overrides
         const savedTheme = localStorage.getItem('theme');
@@ -219,14 +221,16 @@
                     <select id="chat-client-selector" class="btn" onchange="loadChats()">
                         <option value="">Selecciona un cliente...</option>
                     </select>
-                    <input type="number" id="chat-limit" value="50" min="10" max="500" placeholder="Límite" style="width: 80px; padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                    <input type="number" id="chat-limit" value="50" min="10" max="500" placeholder="Límite"
+                        style="width: 80px; padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
                     <button class="btn" onclick="loadChats()">🔄 Actualizar</button>
                     <button class="btn btn-warning" onclick="exportChats()">📤 Exportar CSV</button>
                     <button class="btn btn-danger" onclick="clearChats()">🗑️ Vaciar Chats</button>
                 </div>
             </div>
             <div id="chat-history-list" class="chat-history-list">
-                <p class="chat-placeholder">Selecciona un cliente para ver el historial de conversaciones con el bot.</p>
+                <p class="chat-placeholder">Selecciona un cliente para ver el historial de conversaciones con el bot.
+                </p>
             </div>
         </section>
 
@@ -254,7 +258,8 @@
                             <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div class="form-group">
                                     <label>SMTP Server</label>
-                                    <input type="text" id="smtp-server" value="smtp.gmail.com" placeholder="smtp.gmail.com">
+                                    <input type="text" id="smtp-server" value="smtp.gmail.com"
+                                        placeholder="smtp.gmail.com">
                                 </div>
                                 <div class="form-group">
                                     <label>SMTP Port</label>
@@ -265,14 +270,16 @@
                             <div class="form-group">
                                 <label>Email de la cuenta</label>
                                 <input type="email" id="email-user" placeholder="tu@email.com">
-                                <small style="color: var(--text-muted);">Usa una App Password, no tu contraseña normal</small>
+                                <small style="color: var(--text-muted);">Usa una App Password, no tu contraseña
+                                    normal</small>
                             </div>
 
                             <div class="form-group">
                                 <label>Contraseña de aplicación</label>
                                 <input type="password" id="email-password" placeholder="••••••••••••••••">
                                 <small style="color: var(--text-muted);">
-                                    <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: var(--primary);">Generar en Gmail</a>
+                                    <a href="https://myaccount.google.com/apppasswords" target="_blank"
+                                        style="color: var(--primary);">Generar en Gmail</a>
                                 </small>
                             </div>
 
@@ -289,8 +296,10 @@
                             </div>
 
                             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                                <button class="btn btn-primary" onclick="saveEmailConfig()">💾 Guardar Configuración</button>
-                                <button class="btn btn-secondary" onclick="testEmailConfig()">📧 Enviar Email de Prueba</button>
+                                <button class="btn btn-primary" onclick="saveEmailConfig()">💾 Guardar
+                                    Configuración</button>
+                                <button class="btn btn-secondary" onclick="testEmailConfig()">📧 Enviar Email de
+                                    Prueba</button>
                             </div>
 
                             <div id="email-test-result" style="margin-top: 15px;"></div>
@@ -371,35 +380,44 @@
                     <div class="settings-card-body">
                         <div style="display: grid; gap: 15px;">
                             <div style="display: flex; gap: 15px; align-items: start;">
-                                <div style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">1</div>
+                                <div
+                                    style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">
+                                    1</div>
                                 <div>
                                     <h4 style="margin-bottom: 5px;">Follow-up de Leads Fríos</h4>
                                     <p style="color: var(--text-muted); font-size: 0.9rem;">
-                                        Se ejecuta cada hora para detectar leads que no han respondido en 24/48/72 horas.
+                                        Se ejecuta cada hora para detectar leads que no han respondido en 24/48/72
+                                        horas.
                                         Envía emails automáticos de seguimiento para recuperar ventas perdidas.
                                     </p>
                                 </div>
                             </div>
 
                             <div style="display: flex; gap: 15px; align-items: start;">
-                                <div style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">2</div>
+                                <div
+                                    style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">
+                                    2</div>
                                 <div>
                                     <h4 style="margin-bottom: 5px;">Recordatorio de Citas</h4>
                                     <p style="color: var(--text-muted); font-size: 0.9rem;">
-                                        Se ejecuta todos los días a las 10 AM para enviar recordatorios de citas del día siguiente.
+                                        Se ejecuta todos los días a las 10 AM para enviar recordatorios de citas del día
+                                        siguiente.
                                         Reduce los no-shows en 60% y mejora la experiencia del cliente.
                                     </p>
                                 </div>
                             </div>
 
                             <div style="display: flex; gap: 15px; align-items: start;">
-                                <div style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">3</div>
+                                <div
+                                    style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">
+                                    3</div>
                                 <div>
                                     <h4 style="margin-bottom: 5px;">Configuración en Cloud Scheduler</h4>
                                     <p style="color: var(--text-muted); font-size: 0.9rem;">
                                         Las automatizaciones se ejecutan en Google Cloud Scheduler.
                                         Puedes configurar horarios, ver logs y ejecutar manualmente desde la consola.
-                                        <a href="https://console.cloud.google.com/cloudscheduler?project=zotek-ia" target="_blank" style="color: var(--primary);">Abrir Cloud Scheduler →</a>
+                                        <a href="https://console.cloud.google.com/cloudscheduler?project=zotek-ia"
+                                            target="_blank" style="color: var(--primary);">Abrir Cloud Scheduler →</a>
                                     </p>
                                 </div>
                             </div>
@@ -525,7 +543,8 @@
             <input type="hidden" id="clientId">
 
             <div class="editor-grid" style="min-height: 85vh; padding-bottom: 20px;">
-                <div class="editor-left" style="overflow-y: auto; max-height: 85vh; padding-right: 8px; display: block;">
+                <div class="editor-left"
+                    style="overflow-y: auto; max-height: 85vh; padding-right: 8px; display: block;">
                     <!-- Configuración General -->
                     <div class="settings-card" style="margin-bottom: 20px; flex-shrink: 0; min-height: max-content;">
                         <div class="settings-card-header">
@@ -563,11 +582,13 @@
                                 </div>
                             </div>
 
-                            <h4 style="color: var(--primary); margin: 15px 0 10px 0; font-size: 1rem;">VAPI y Calendario</h4>
+                            <h4 style="color: var(--primary); margin: 15px 0 10px 0; font-size: 1rem;">VAPI y Calendario
+                            </h4>
                             <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div class="form-group">
                                     <label>A quién llamar (Objetivo VAPI)</label>
-                                    <select id="vapiTarget" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+                                    <select id="vapiTarget"
+                                        style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
                                         <option value="paciente">Al Paciente (Cliente final)</option>
                                         <option value="profesional">Al Profesional (Especialista)</option>
                                     </select>

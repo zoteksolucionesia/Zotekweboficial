@@ -5,20 +5,32 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any, List
 
-# Cargar variables de entorno
-load_dotenv()
+# Cargar variables de entorno (forzamos override para usar Supabase y no variables de sistema locales)
+# Buscamos el archivo .env en la raíz del proyecto
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+env_path = os.path.join(BASE_DIR, ".env")
+load_dotenv(dotenv_path=env_path, override=True)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_connection():
-    """Obtiene una conexión a la base de datos PostgreSQL de InsForge."""
+    """Obtiene una conexión a la base de datos PostgreSQL de Supabase."""
     if not DATABASE_URL:
-        raise ValueError("⚠️ DATABASE_URL no está configurada. Configura la variable en Firebase Functions.")
+        raise ValueError("⚠️ DATABASE_URL no está configurada.")
+    
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        # Usamos sslmode='prefer' para mayor compatibilidad con Supabase Pooler
+        conn = psycopg2.connect(DATABASE_URL, sslmode='prefer')
         return conn
     except Exception as e:
-        print(f"❌ Error conectando a PostgreSQL: {e}")
+        # Intentamos extraer el host para el log
+        host = "unknown"
+        try:
+            if DATABASE_URL:
+                host = DATABASE_URL.split("@")[-1].split(":")[0]
+        except:
+            pass
+        print(f"❌ Error conectando a {host}: {e}")
         raise e
 
 _db = None
@@ -141,8 +153,25 @@ def init_db():
             )
         ''')
 
+        cursor.execute('ALTER TABLE client_chats ADD COLUMN IF NOT EXISTS user_number TEXT DEFAULT \'\'')
+
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_chats_client ON client_chats(client_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_chats_user ON client_chats(user_number)')
+
+        # Tabla de Horarios del Cliente
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS client_schedules (
+                id SERIAL PRIMARY KEY,
+                client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+                schedule_date TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_schedules_client ON client_schedules(client_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_schedules_date ON client_schedules(schedule_date)')
 
         conn.commit()
         cursor.close()
@@ -195,6 +224,44 @@ def get_client_by_email(email):
         return None
     except Exception as e:
         print(f"❌ ERROR get_client_by_email: {e}")
+        return None
+
+
+def save_verification_code(email: str, code: str, expires_minutes: int = 10):
+    """Guarda un código de verificación en PostgreSQL"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        email_clean = email.lower().strip()
+        cursor.execute('''
+            INSERT INTO verification_codes (email, code, expires_at)
+            VALUES (%s, %s, NOW() + INTERVAL '1 minute' * %s)
+            ON CONFLICT (email) DO UPDATE SET code = EXCLUDED.code, expires_at = NOW() + INTERVAL '1 minute' * %s
+        ''', (email_clean, code, expires_minutes, expires_minutes))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR save_verification_code: {e}")
+        return False
+
+def get_verification_code(email: str):
+    """Obtiene el último código de verificación."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        email_clean = email.lower().strip()
+        cursor.execute('''
+            SELECT code FROM verification_codes
+            WHERE email = %s AND expires_at >= NOW()
+        ''', (email_clean,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return row['code'] if row else None
+    except Exception as e:
+        print(f"❌ ERROR get_verification_code: {e}")
         return None
 
 
@@ -647,11 +714,58 @@ def track_message(client_id, direction="outbound", phone_number=None):
         print(f"⚠️ ERROR track_message: {e}")
 
 
+# --- GESTIÓN DE HORARIOS ---
+
+def get_client_schedules(client_id):
+    """Obtiene los horarios configurados para un cliente."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute('''
+            SELECT schedule_date, start_time, end_time 
+            FROM client_schedules 
+            WHERE client_id = %s
+            ORDER BY schedule_date ASC, start_time ASC
+        ''', (client_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print(f"❌ ERROR get_client_schedules: {e}")
+        return []
+
+def save_client_schedules(client_id, schedules):
+    """Guarda una lista de horarios para un cliente (reemplaza los anteriores)."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Primero eliminamos los existentes para ese cliente
+        cursor.execute("DELETE FROM client_schedules WHERE client_id = %s", (client_id,))
+        
+        # Insertamos los nuevos
+        for sch in schedules:
+            cursor.execute('''
+                INSERT INTO client_schedules (client_id, schedule_date, start_time, end_time)
+                VALUES (%s, %s, %s, %s)
+            ''', (client_id, sch.get('schedule_date'), sch.get('start_time'), sch.get('end_time')))
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR save_client_schedules: {e}")
+        return False
+
 if __name__ == "__main__":
     # Prueba de conexión
     print("Probando conexión a PostgreSQL...")
     try:
         init_db()
         print("✅ Conexión exitosa")
+    except Exception as e:
+        print(f"❌ Error: {e}")
     except Exception as e:
         print(f"❌ Error: {e}")

@@ -1,3 +1,4 @@
+from psycopg2.extras import RealDictCursor
 import os
 import hmac
 import hashlib
@@ -90,6 +91,9 @@ app.add_middleware(
     allow_origins=[
         "https://zotek-ia.web.app",
         "https://zotek-ia.firebaseapp.com",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "*"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -1227,13 +1231,20 @@ async def verify_code(request: Request):
     normalized_email = email.lower().strip()
     is_admin = normalized_email in [e.lower().strip() for e in ADMIN_EMAILS]
     role = "admin" if is_admin else "client"
-    client_id = None
-    if role == "client":
-        client = database.get_client_by_email(normalized_email)
-        client_id = str(client['id']) if client else None
+    
+    # Buscar su id asociado al email sin importar si es admin o no
+    client = database.get_client_by_email(normalized_email)
+    client_id = str(client['id']) if client else "13" # Fallback a 13 para administradores sin tabla
+    client_name = client['name'] if client else "Usuario Admin"
 
     access_token = create_access_token(data={"sub": email, "role": role, "client_id": client_id})
-    return {"access_token": access_token, "token_type": "bearer", "role": role}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer", 
+        "role": role, 
+        "client_id": client_id,
+        "client_name": client_name
+    }
 
 @app.get("/api/me")
 async def get_me(token: str = Depends(oauth2_scheme)):
@@ -1248,8 +1259,8 @@ async def get_me(token: str = Depends(oauth2_scheme)):
         role = "admin" if is_admin else "client"
         
         client_id = payload.get("client_id")
-        if role == "client" and not client_id:
-            # Re-vincular si es necesario
+        if not client_id:
+            # Re-vincular si es necesario o si antes el token de admin venia con null
             client = database.get_client_by_email(email)
             client_id = str(client['id']) if client else None
         
@@ -1719,7 +1730,7 @@ async def update_email_config(client_id: str, request: Request, current_user: st
 @app.post("/api/clients/{client_id}/email-test")
 async def test_email_config(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     """Prueba la configuración de email enviando un email de prueba"""
-    from src.services.email_service import EmailService
+    from functions.src.services.email_service import EmailService
 
     data = await request.json()
     test_email = data.get('email', '')
@@ -1758,7 +1769,7 @@ async def test_email_config(client_id: str, request: Request, current_user: str 
 async def get_client_leads(client_id: str, status: str = None, limit: int = 50,
                           current_user: str = Depends(get_current_user)):
     """Obtiene los leads de un cliente"""
-    from src.services.lead_service import LeadService
+    from functions.src.services.lead_service import LeadService
     lead_service = LeadService()
 
     client_id_value = int(client_id) if client_id.isdigit() else client_id
@@ -1788,13 +1799,15 @@ async def get_client_leads(client_id: str, status: str = None, limit: int = 50,
         return {"leads": [dict(lead) for lead in leads], "total": len(leads)}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        err = traceback.format_exc()
+        raise HTTPException(status_code=500, detail=str(err))
 
 @app.get("/api/clients/{client_id}/leads/cold")
 async def get_cold_leads(client_id: str, hours: int = 24,
                          current_user: str = Depends(get_current_user)):
     """Obtiene leads fríos (no han respondido en X horas)"""
-    from src.services.lead_service import LeadService
+    from functions.src.services.lead_service import LeadService
     lead_service = LeadService()
 
     client_id_value = int(client_id) if client_id.isdigit() else client_id
@@ -1806,8 +1819,8 @@ async def get_cold_leads(client_id: str, hours: int = 24,
 async def send_lead_followup(client_id: str, lead_id: int, request: Request,
                             current_user: str = Depends(get_current_user)):
     """Envía follow-up manual a un lead"""
-    from src.services.lead_service import LeadService
-    from src.services.email_service import get_email_service_for_client
+    from functions.src.services.lead_service import LeadService
+    from functions.src.services.email_service import get_email_service_for_client
 
     data = await request.json()
     message = data.get('message', '')
@@ -1846,7 +1859,7 @@ async def send_lead_followup(client_id: str, lead_id: int, request: Request,
 async def get_client_appointments(client_id: str, status: str = None,
                                   current_user: str = Depends(get_current_user)):
     """Obtiene las citas de un cliente"""
-    from src.services.appointment_service import AppointmentService
+    from functions.src.services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
     client_id_value = int(client_id) if client_id.isdigit() else client_id
@@ -1868,45 +1881,184 @@ async def get_client_appointments(client_id: str, status: str = None,
             conn.close()
             appointments = [dict(apt) for apt in appointments]
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            import traceback
+            err = traceback.format_exc()
+            raise HTTPException(status_code=500, detail=str(err))
     else:
-        appointments = apt_service.get_pending_appointments(client_id_value)
+        try:
+            appointments = apt_service.get_pending_appointments(client_id_value)
+        except Exception as e:
+            import traceback
+            err = traceback.format_exc()
+            raise HTTPException(status_code=500, detail=str(err))
 
     return {"appointments": appointments, "total": len(appointments)}
 
+@app.post("/api/widget/chat")
+async def widget_chat(request: Request):
+    try:
+        data = await request.json()
+        client_id = data.get("client_id")
+        message = data.get("message", "")
+        session_id = data.get("session_id", "web-session")
+        
+        if not client_id:
+            raise HTTPException(status_code=400, detail="Missing client_id")
+            
+        client_data = database.get_client_by_id(client_id)
+        if not client_data:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Obtenemos la respuesta del motor de Gemini (usamos el flujo de agente completo)
+        respuesta_json = gemini.generar_respuesta_agente(
+            mensaje_usuario=message,
+            client_data=client_data,
+            numero_telefono=session_id
+        )
+        
+        # Procesamos las tool calls para que surtan efecto en la base de datos
+        tool_calls = respuesta_json.get("tool_calls", [])
+        if tool_calls:
+            print(f"[{session_id}] Widget chat detectó {len(tool_calls)} herramientas")
+            # Reutilizamos ejecutar_herramientas_agente adaptado para web
+            confirmation_msg = ""
+            for tool in tool_calls:
+                name = tool.get('name')
+                args_raw = tool.get('args')
+                try:
+                    args = dict(args_raw) if args_raw is not None else {}
+                except Exception:
+                    args = {}
+                
+                print(f"[{session_id}] Web Widget tool call: {name} con {args}")
+                if name == "registrar_cita":
+                    from .services.appointment_service import appointment_service
+                    appointment_date = args.get("fecha_cita")
+                    start_time = args.get("hora_cita")
+                    
+                    try:
+                        dt_obj = datetime.strptime(f"{appointment_date} {start_time}", "%Y-%m-%d %H:%M")
+                    except:
+                        dt_obj = datetime.now()
+
+                    appointment_service.create_appointment(
+                        client_id=client_id,
+                        name=args.get("nombre_cliente", "Web User"),
+                        phone=args.get("telefono_contacto", ""),
+                        email=args.get("email_cliente", ""),
+                        date_time=dt_obj
+                    )
+                    confirmation_msg = f"¡Perfecto! He agendado tu cita para el {appointment_date} a las {start_time}. ¿Hay algo más en lo que pueda ayudarte?"
+                elif name == "registrar_cliente_potencial":
+                    from .services.lead_service import save_lead
+                    save_lead(
+                        client_id=client_id,
+                        name=args.get("nombre", "Web User"),
+                        phone=args.get("telefono", ""),
+                        source="web_widget",
+                        status="nuevo"
+                    )
+                    confirmation_msg = "¡Excelente! Ya he registrado tus datos. En breve nos pondremos en contacto contigo."
+                    
+        # Retornamos formato esperado por widget
+        res_text = respuesta_json.get("text")
+        if not res_text or res_text == "Procesando acción solicitada...":
+            if confirmation_msg:
+                res_text = confirmation_msg
+            else:
+                res_text = res_text or "Lo siento, no pude generar una respuesta clara."
+        
+        print(f"[{session_id}] Respuesta enviada: {res_text[:50]}...")
+        return {
+            "type": "text", 
+            "text": res_text
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+import json
+import os
+
+@app.get("/api/clients/{client_id}/schedules")
+async def get_schedules(client_id: str, week_start: str = None):
+    # Ya no requiere auth para que la landing page pueda consultarlo
+    from .services.appointment_service import appointment_service
+    schedules = database.get_client_schedules(client_id)
+    booked = appointment_service.get_pending_appointments(client_id)
+    
+    # Formatear booked para que sea fácil de procesar
+    booked_list = []
+    for b in booked:
+        booked_list.append({
+            "date": b['date_time'].strftime('%Y-%m-%d'),
+            "time": b['date_time'].strftime('%H:%M')
+        })
+        
+    return {
+        "schedules": schedules,
+        "booked": booked_list
+    }
+
+@app.post("/api/clients/{client_id}/schedules")
+async def post_schedules(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
+    try:
+        data = await request.json()
+        schedules = data.get("schedules", [])
+        if not schedules and isinstance(data, list):
+            schedules = data
+            
+        success = database.save_client_schedules(client_id, schedules)
+        if success:
+            return {"status": "success", "message": "Horarios guardados en base de datos"}
+        else:
+            raise HTTPException(status_code=500, detail="Error al guardar en base de datos")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/clients/{client_id}/appointments")
-async def create_appointment(client_id: str, request: Request,
-                            current_user: str = Depends(get_current_user)):
-    """Crea una nueva cita"""
-    from src.services.appointment_service import AppointmentService
-    apt_service = AppointmentService()
+async def create_appointment_api(client_id: str, request: Request):
+    """Crea una nueva cita (público para landing/widget)"""
+    from .services.appointment_service import appointment_service
 
     data = await request.json()
     client_id_value = int(client_id) if client_id.isdigit() else client_id
 
     # Parsear fecha
     try:
-        appointment_date = datetime.fromisoformat(data.get('appointment_date'))
-    except:
-        raise HTTPException(status_code=400, detail="Fecha inválida. Usa formato ISO")
+        # Intentar parsear fecha y hora combinados o separados
+        if 'appointment_date' in data:
+            dt_str = data.get('appointment_date')
+            if ' ' in dt_str or 'T' in dt_str:
+                dt_obj = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            else:
+                hr_str = data.get('appointment_time', '00:00')
+                dt_obj = datetime.strptime(f"{dt_str} {hr_str}", "%Y-%m-%d %H:%M")
+        else:
+            raise ValueError("Falta fecha de cita")
+    except Exception as e:
+        print(f"Error parsing date: {e}")
+        raise HTTPException(status_code=400, detail="Fecha inválida. Usa formato YYYY-MM-DD e incluye appointment_time.")
 
-    appointment_id = apt_service.create_appointment(
+    appointment_id = appointment_service.create_appointment(
         client_id=client_id_value,
-        phone_number=data.get('phone_number', ''),
-        appointment_date=appointment_date,
-        customer_name=data.get('customer_name', ''),
+        phone=data.get('phone_number') or data.get('phone', ''),
+        date_time=dt_obj,
+        name=data.get('customer_name') or data.get('name', ''),
+        email=data.get('email', ''),
         notes=data.get('notes', '')
     )
 
     if appointment_id > 0:
         return {"status": "created", "appointment_id": appointment_id}
-    raise HTTPException(status_code=400, detail="Error al crear cita")
+    raise HTTPException(status_code=400, detail="Error al crear cita en la base de datos")
 
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/confirm")
 async def confirm_appointment(client_id: str, appointment_id: int,
                              current_user: str = Depends(get_current_user)):
     """Confirma una cita"""
-    from src.services.appointment_service import AppointmentService
+    from functions.src.services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
     if apt_service.confirm_appointment(appointment_id):
@@ -1917,9 +2069,18 @@ async def confirm_appointment(client_id: str, appointment_id: int,
 async def cancel_appointment(client_id: str, appointment_id: int,
                             current_user: str = Depends(get_current_user)):
     """Cancela una cita"""
-    from src.services.appointment_service import AppointmentService
+    from functions.src.services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
     if apt_service.cancel_appointment(appointment_id):
         return {"status": "cancelled", "message": "Cita cancelada"}
     raise HTTPException(status_code=400, detail="Error al cancelar cita")
+
+# === STATIC FILES (LOCAL DEV) ===
+# Firebase Hosting maneja los estáticos en producción, pero aquí
+# los montamos para poder probar localmente (http://127.0.0.1:8000/portal/index.html)
+REPO_ROOT = os.path.dirname(BASE_DIR) # Sube de functions/ a ZotekSolucionesIA/
+WWW_DIR = os.path.join(REPO_ROOT, "www")
+print(f"Mounting static files from: {WWW_DIR}")
+if os.path.isdir(WWW_DIR):
+    app.mount("/", StaticFiles(directory=WWW_DIR, html=True), name="static")

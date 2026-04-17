@@ -256,10 +256,10 @@ function closeModal() {
     if (window.viewClientCleanup) {
         window.viewClientCleanup();
     }
-    
+
     showSection('clients');
     document.getElementById('clientForm').reset();
-    
+
     // Restaurar título del modal
     document.getElementById('modalTitle').textContent = 'Agregar Nuevo Cliente';
 }
@@ -280,13 +280,13 @@ async function resetDemoClient(id) {
                 const rawText = await response.text();
                 if (response.ok) {
                     showToast(`Cliente '${id}' restablecido correctamente.`, 'success');
-                    
+
                     // Recargar lista de clientes
                     await fetchClients();
-                    
+
                     // Pequeña pausa para asegurar que la lista se actualizó
                     await new Promise(resolve => setTimeout(resolve, 300));
-                    
+
                     // Abrir automáticamente el formulario de edición para este cliente
                     editClient(id);
                 } else {
@@ -327,7 +327,7 @@ async function duplicateDemoClient(demoId) {
 
                     // Recargar lista y abrir el nuevo cliente
                     await fetchClients();
-                    
+
                     if (data.new_client_id) {
                         setTimeout(() => {
                             editClient(data.new_client_id);
@@ -354,7 +354,7 @@ function showConfirmDuplicate(options) {
 
     titleEl.innerHTML = `<i class="fas fa-copy" style="color: var(--primary);"></i> ${options.title || 'Duplicar'}`;
     messageEl.textContent = options.message || '';
-    
+
     // Cambiar estilo del botón temporalmente para que sea azul (primario) en lugar de rojo (danger)
     okBtn.textContent = 'Sí, Duplicar';
     okBtn.className = 'btn btn-primary';
@@ -552,7 +552,7 @@ async function viewClient(id) {
         // Ocultar botones de guardar y cancelar
         const saveBtn = document.querySelector('button[type="submit"]');
         const cancelBtn = document.getElementById('cancelBtn');
-        
+
         if (saveBtn) saveBtn.style.display = 'none';
         if (cancelBtn) cancelBtn.textContent = 'Cerrar';
 
@@ -596,12 +596,12 @@ async function saveClient(event) {
     // Recuperar instrucción del sistema desde el DOM si está visible, o desde la variable global
     const sysInstEl = document.getElementById('systemInstruction');
     const finalSystemInstruction = sysInstEl ? sysInstEl.value : (currentClientData ? currentClientData.system_instruction : '');
-    
+
     // Debug: Log del menú actual
     console.log("=== SAVE CLIENT DEBUG ===");
     console.log("Client ID:", id);
     console.log("Current Menu:", JSON.stringify(currentMenu, null, 2));
-    
+
     const data = {
         name: nameInput.value,
         whatsapp_token: document.getElementById('whatsappToken').value,

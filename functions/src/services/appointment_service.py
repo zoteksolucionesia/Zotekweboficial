@@ -22,17 +22,18 @@ class AppointmentService:
         """Obtiene conexión a la base de datos"""
         return psycopg2.connect(self.db_url)
     
-    def create_appointment(self, client_id: int, phone_number: str,
-                          appointment_date: datetime, customer_name: str = None,
-                          notes: str = None) -> int:
+    def create_appointment(self, client_id: int, phone: str,
+                          date_time: datetime, name: str = None,
+                          email: str = '', notes: str = None) -> int:
         """
         Crea una nueva cita
         
         Args:
             client_id: ID del cliente (negocio)
-            phone_number: Teléfono del cliente
-            appointment_date: Fecha y hora de la cita
-            customer_name: Nombre del cliente (opcional)
+            phone: Teléfono del cliente
+            date_time: Fecha y hora de la cita
+            name: Nombre del cliente (opcional)
+            email: Email del cliente (opcional)
             notes: Notas adicionales
             
         Returns:
@@ -44,17 +45,17 @@ class AppointmentService:
             
             cursor.execute("""
                 INSERT INTO appointments 
-                (client_id, phone_number, appointment_date, customer_name, notes)
-                VALUES (%s, %s, %s, %s, %s)
+                (client_id, phone, date_time, name, email, notes)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (client_id, phone_number, appointment_date, customer_name, notes))
+            """, (client_id, phone, date_time, name, email, notes))
             
             appointment_id = cursor.fetchone()['id']
             conn.commit()
             cursor.close()
             conn.close()
             
-            print(f"[Appointment] Created appointment {appointment_id} for {phone_number}")
+            print(f"[Appointment] Created appointment {appointment_id} for {phone}")
             return appointment_id
             
         except Exception as e:
@@ -149,56 +150,22 @@ class AppointmentService:
                 FROM appointments a
                 JOIN clients c ON a.client_id = c.id
                 WHERE a.client_id = %s 
-                  AND a.appointment_date >= %s 
-                  AND a.appointment_date < %s
+                  AND a.date_time >= %s 
+                  AND a.date_time < %s
                   AND a.status IN ('pending', 'confirmed')
-                ORDER BY a.appointment_date ASC
+                ORDER BY a.date_time ASC
             """, (client_id, tomorrow_start, tomorrow_end))
             
             appointments = cursor.fetchall()
             cursor.close()
             conn.close()
             
-            print(f"[Appointment] Found {len(appointments)} appointments for tomorrow")
             return [dict(apt) for apt in appointments]
             
         except Exception as e:
             print(f"[Appointment] Error getting tomorrow appointments: {e}")
             return []
-    
-    def mark_reminder_sent(self, appointment_id: int) -> bool:
-        """
-        Marca que el recordatorio fue enviado
-        
-        Args:
-            appointment_id: ID de la cita
-            
-        Returns:
-            True si se actualizó correctamente
-        """
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                UPDATE appointments 
-                SET reminder_sent = TRUE,
-                    reminder_sent_at = CURRENT_TIMESTAMP,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (appointment_id,))
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
-            
-            print(f"[Appointment] Marked reminder sent for appointment {appointment_id}")
-            return True
-            
-        except Exception as e:
-            print(f"[Appointment] Error marking reminder sent: {e}")
-            return False
-    
+
     def get_appointment_by_id(self, appointment_id: int) -> Optional[Dict[str, Any]]:
         """
         Obtiene una cita por ID
@@ -232,7 +199,7 @@ class AppointmentService:
     
     def get_pending_appointments(self, client_id: int) -> List[Dict[str, Any]]:
         """
-        Obtiene citas pendientes de un cliente
+        Obtiene citas pendientes de un cliente (desde hoy en adelante)
         
         Args:
             client_id: ID del cliente
@@ -250,8 +217,8 @@ class AppointmentService:
                 JOIN clients c ON a.client_id = c.id
                 WHERE a.client_id = %s 
                   AND a.status = 'pending'
-                  AND a.appointment_date >= CURRENT_TIMESTAMP
-                ORDER BY a.appointment_date ASC
+                  AND a.date_time >= CURRENT_TIMESTAMP
+                ORDER BY a.date_time ASC
             """, (client_id,))
             
             appointments = cursor.fetchall()
