@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const API        = '';
 const TOKEN_KEY  = 'zotek_portal_token';
@@ -102,7 +102,7 @@ async function requestCode() {
   document.getElementById('btn-send-text').textContent = 'Enviando...';
 
   try {
-    const res  = await fetch(`${API}/api/auth/request-code`, {
+    const res  = await fetch(`${API}/api/portal/auth/request-code`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
     });
     const data = await res.json();
@@ -133,7 +133,7 @@ async function verifyCode() {
   document.getElementById('btn-verify-text').textContent = 'Verificando...';
 
   try {
-    const res  = await fetch(`${API}/api/auth/verify-code`, {
+    const res  = await fetch(`${API}/api/portal/auth/verify-code`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }),
     });
     const data = await res.json();
