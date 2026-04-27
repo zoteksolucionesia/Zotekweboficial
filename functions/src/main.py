@@ -22,7 +22,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -113,7 +113,7 @@ def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_
         except Exception:
             args = {}
 
-        print(f"🤖 AGENTE EJECUTANDO HERRAMIENTA: {name} con {args}"); sys.stdout.flush()
+        logger.info(f"🤖 AGENTE EJECUTANDO HERRAMIENTA: {name} con {args}")
         
         if name == "activar_demo":
             tipo = args.get('tipo', 'restaurante')
@@ -169,7 +169,7 @@ def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_
         elif name == "capturar_lead":
             interes = args.get('interes', 'Interés general en Zotek')
             nombre = args.get('nombre', 'Desconocido')
-            print(f"💰 NUEVO LEAD DETECTADO: {nombre} ({numero_usuario}) - Interés: {interes}")
+            logger.info(f"💰 NUEVO LEAD DETECTADO: {nombre} ({numero_usuario}) - Interés: {interes}")
             # Guardar lead en historial o enviar email a admin
             try:
                 msg_lead = f"NUEVO LEAD DE ZOTEK\n\nNombre: {nombre}\nTel: {numero_usuario}\nInterés: {interes}"
@@ -189,10 +189,10 @@ def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_
             webhook_url = os.getenv("N8N_WEBHOOK_URL")
             
             if not webhook_url:
-                print("❌ ERROR: N8N_WEBHOOK_URL no configurada en .env")
+                logger.info("❌ ERROR: N8N_WEBHOOK_URL no configurada en .env")
                 continue
                 
-            print(f"🔗 DISPARANDO n8n WEBHOOK: {webhook_url}")
+            logger.info(f"🔗 DISPARANDO n8n WEBHOOK: {webhook_url}")
             try:
                 # Incluir metadatos del usuario
                 datos['phone_number'] = numero_usuario
@@ -202,9 +202,9 @@ def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_
                 # Llamada asíncrona (fire and forget o esperar)
                 import requests
                 response = requests.post(webhook_url, json=datos, timeout=10)
-                print(f"✅ RESPUESTA n8n ({response.status_code}): {response.text[:50]}")
+                logger.info(f"✅ RESPUESTA n8n ({response.status_code}): {response.text[:50]}")
             except Exception as e:
-                print(f"🔥 ERROR AL LLAMAR n8n: {e}")
+                logger.error(f"🔥 ERROR AL LLAMAR n8n: {e}")
 
         elif name == "finalizar_demo":
             database.delete_user_session(numero_usuario, phone_number_id)
@@ -405,9 +405,9 @@ except Exception as e:
 async def verify_webhook(request: Request):
     token = request.query_params.get("hub.verify_token")
     if token == VERIFY_TOKEN:
-        challenge = request.query_params.get("hub.challenge")
-        return int(challenge) if challenge else "Ok"
-    return "Error auth", 403
+        challenge = request.query_params.get("hub.challenge", "")
+        return PlainTextResponse(challenge)
+    return PlainTextResponse("Forbidden", status_code=403)
 
 
 
@@ -421,7 +421,7 @@ async def recibir_mensaje(request: Request):
 
     try:
         data = await request.json()
-        print(f"DEBUG: Webhook data received: {data}"); sys.stdout.flush()
+        logger.debug(f"DEBUG: Webhook data received: {data}")
         
         # Guardar en logs recientes
         timestamp_str = datetime.now().isoformat()
@@ -431,6 +431,14 @@ async def recibir_mensaje(request: Request):
             for entry in data.get('entry', []):
                 for change in entry.get('changes', []):
                     value = change.get('value', {})
+                    if 'statuses' in value:
+                        for st in value['statuses']:
+                            logger.debug(
+                                f"[Webhook] Status update: {st.get('status')} "
+                                f"for msg {st.get('id')} to {st.get('recipient_id')}"
+                            )
+                        continue
+
                     if 'messages' in value:
                         message = value['messages'][0]
                         message_id = message.get('id')
@@ -441,7 +449,7 @@ async def recibir_mensaje(request: Request):
                         texto_usuario = ""
                         
                         if message_id in PROCESSED_MESSAGES:
-                            print(f"DEBUG: Message {message_id} already processed."); sys.stdout.flush()
+                            logger.debug(f"DEBUG: Message {message_id} already processed.")
                             return {"status": "already_processed"}
                         
                         PROCESSED_MESSAGES.append(message_id)
@@ -450,8 +458,8 @@ async def recibir_mensaje(request: Request):
                         numero_usuario = message['from']
                         phone_number_id = value['metadata']['phone_number_id']
 
-                        print(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}"); sys.stdout.flush()
-                        print(f"[DEBUG] texto_usuario inicial: '{texto_usuario}'"); sys.stdout.flush()
+                        logger.info(f"[Webhook] Message from {numero_usuario}, phoneID={phone_number_id}")
+                        logger.debug(f"[DEBUG] texto_usuario inicial: '{texto_usuario}'")
 
                         # --- VERIFICAR SESIÓN DEMO PRIMERO ---
                         session = database.get_user_session(numero_usuario, phone_number_id)
@@ -470,7 +478,7 @@ async def recibir_mensaje(request: Request):
 
                         client_data = None
                         if demo_client_id:
-                            print(f"[Webhook] Sesión Demo activa, cargando cliente: {demo_client_id}"); sys.stdout.flush()
+                            logger.info(f"[Webhook] Sesión Demo activa, cargando cliente: {demo_client_id}")
                             client_data = database.get_client_by_id(demo_client_id)
                             # Heredar token e ID del bot principal para poder responder por WhatsApp
                             if client_data and real_client:
@@ -482,39 +490,42 @@ async def recibir_mensaje(request: Request):
                             client_data = real_client
                             
                         if not client_data:
-                            print(f"❌ ERROR: No client found for phoneID {phone_number_id}"); sys.stdout.flush()
+                            logger.error(f"❌ ERROR: No client found for phoneID {phone_number_id}")
                             return {"status": "error", "message": "Client not found"}
                         
-                        print(f"✅ Client Found: {client_data.get('name')} (ID: {client_data.get('id')})"); sys.stdout.flush()
+                        logger.info(f"✅ Client Found: {client_data.get('name')} (ID: {client_data.get('id')})")
 
                         # ============================================
                         # DETECCIÓN DE INICIO DE DEMO (NUEVO - MOVIDO ARRIBA)
                         # ============================================
                         # 1. Detectar tipo de mensaje
                         message_type = message.get('type')
-                        print(f"[DEBUG] message_type RAW: {message_type}"); sys.stdout.flush()
-                        print(f"[DEBUG] message RAW: {message}"); sys.stdout.flush()
+                        logger.debug(f"[DEBUG] message_type RAW: {message_type}")
+                        logger.debug(f"[DEBUG] message RAW: {message}")
 
                         if message_type == 'text':
                             texto_usuario = message.get('text', {}).get('body', "")
                         elif message_type == 'interactive':
                             interactive = message.get('interactive', {})
-                            print(f"[DEBUG] interactive type: {interactive.get('type')}"); sys.stdout.flush()
-                            print(f"[DEBUG] interactive content: {interactive}"); sys.stdout.flush()
+                            logger.debug(f"[DEBUG] interactive type: {interactive.get('type')}")
+                            logger.debug(f"[DEBUG] interactive content: {interactive}")
 
                             if interactive.get('type') == 'button_reply':
                                 texto_usuario = interactive.get('button_reply', {}).get('title', "")
                             elif interactive.get('type') == 'list_reply':
                                 texto_usuario = interactive.get('list_reply', {}).get('title', "")
+                            elif interactive.get('type') == 'nfm_reply':
+                                nfm = interactive.get('nfm_reply', {})
+                                texto_usuario = nfm.get('body', nfm.get('name', ""))
                             else:
-                                print(f"[DEBUG] interactive type desconocido: {interactive.get('type')}"); sys.stdout.flush()
+                                logger.warning(f"[Webhook] Interactive type not handled: {interactive.get('type')}")
                                 texto_usuario = ""
                         else:
-                            print(f"Unhandled message type '{message_type}': {message}"); sys.stdout.flush()
+                            logger.info(f"Unhandled message type '{message_type}': {message}")
                             texto_usuario = ""
 
-                        print(f"[DEBUG] texto_usuario DESPUES de extraer: '{texto_usuario}'"); sys.stdout.flush()
-                        print(f"[DEBUG] message_type: {message_type}"); sys.stdout.flush()
+                        logger.debug(f"[DEBUG] texto_usuario DESPUES de extraer: '{texto_usuario}'")
+                        logger.debug(f"[DEBUG] message_type: {message_type}")
 
                         # Verificar si el usuario quiere iniciar UNA NUEVA demo (no viene de sesión)
                         if not demo_client_id:
@@ -542,35 +553,35 @@ async def recibir_mensaje(request: Request):
 
                                 if demo_client:
                                     tipo_demo = demo_phone_id.replace("demo_", "")
-                                    print(f"[Demo] Iniciando sesión de demo para {numero_usuario} modo: {tipo_demo}"); sys.stdout.flush()
+                                    logger.info(f"[Demo] Iniciando sesión de demo para {numero_usuario} modo: {tipo_demo}")
                                     database.save_user_session(numero_usuario, phone_number_id, {"demo_mode": tipo_demo, "demo_phone_id": demo_phone_id})
 
                                     # Cargar menú del demo
                                     menu_data_demo = None
-                                    print(f"[DEBUG] demo_client menu_json exists: {bool(demo_client.get('menu_json'))}"); sys.stdout.flush()
-                                    print(f"[DEBUG] demo_client keys: {demo_client.keys() if demo_client else 'NONE'}"); sys.stdout.flush()
+                                    logger.debug(f"[DEBUG] demo_client menu_json exists: {bool(demo_client.get('menu_json'))}")
+                                    logger.debug(f"[DEBUG] demo_client keys: {demo_client.keys() if demo_client else 'NONE'}")
                                     try:
                                         if demo_client.get('menu_json'):
                                             menu_json_str = demo_client.get('menu_json')
-                                            print(f"[DEBUG] menu_json_str type: {type(menu_json_str)}"); sys.stdout.flush()
+                                            logger.debug(f"[DEBUG] menu_json_str type: {type(menu_json_str)}")
                                             if isinstance(menu_json_str, str):
                                                 menu_data_demo = json.loads(menu_json_str)
-                                                print(f"[DEBUG] menu_data loaded from string"); sys.stdout.flush()
+                                                logger.debug(f"[DEBUG] menu_data loaded from string")
                                             elif isinstance(menu_json_str, dict):
                                                 menu_data_demo = menu_json_str
-                                                print(f"[DEBUG] menu_data loaded from dict"); sys.stdout.flush()
+                                                logger.debug(f"[DEBUG] menu_data loaded from dict")
                                     except Exception as e:
-                                        print(f"DEBUG: Error al cargar menú del demo: {e}"); sys.stdout.flush()
+                                        logger.debug(f"DEBUG: Error al cargar menú del demo: {e}")
 
-                                    print(f"[DEBUG] menu_data_demo final: {bool(menu_data_demo)}"); sys.stdout.flush()
+                                    logger.debug(f"[DEBUG] menu_data_demo final: {bool(menu_data_demo)}")
 
                                     if menu_data_demo:
                                         texto_welcome = menu_data_demo.get('text', f"Hola! Bienvenido a {demo_client.get('name', 'la demo')}.")
                                         opciones = [opt.get('title') for opt in menu_data_demo.get('options', [])]
 
-                                        print(f"[Demo] Menu cargado: {len(opciones)} opciones")
-                                        print(f"[DEBUG] real_client exists: {bool(real_client)}")
-                                        print(f"[DEBUG] phone_number_id value: {phone_number_id}")
+                                        logger.info(f"[Demo] Menu cargado: {len(opciones)} opciones")
+                                        logger.debug(f"[DEBUG] real_client exists: {bool(real_client)}")
+                                        logger.debug(f"[DEBUG] phone_number_id value: {phone_number_id}")
 
                                         # FORZAR token de Zotek directamente
                                         FORCE_TOKEN = real_client.get('whatsapp_token') if real_client else None
@@ -585,17 +596,17 @@ async def recibir_mensaje(request: Request):
                                         else:
                                             logger.error("[Demo] Token de WhatsApp no válido o ausente")
                                     else:
-                                        print(f"[Demo] ERROR: No hay menú para {demo_phone_id}")
+                                        logger.info(f"[Demo] ERROR: No hay menú para {demo_phone_id}")
 
                                     return {"status": "demo_started"}
                                 else:
-                                    print(f"[Demo] Bot demo '{demo_phone_id}' no encontrado"); sys.stdout.flush()
+                                    logger.info(f"[Demo] Bot demo '{demo_phone_id}' no encontrado")
 
                             # Si es mensaje de salir de demo
                             if texto_lower in ["salir", "terminar", "terminar demo", "salir demo"]:
                                 if session and session.get("demo_mode"):
                                     database.delete_user_session(numero_usuario, phone_number_id)
-                                    print(f"[Demo] Terminando sesión de demo para {numero_usuario}"); sys.stdout.flush()
+                                    logger.info(f"[Demo] Terminando sesión de demo para {numero_usuario}")
                                     msg_salida = "Has salido del modo demo. Ahora vuelvo a ser el asistente general de Zotek Soluciones IA. En que mas puedo ayudarte?"
                                     whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, client_data['whatsapp_token'], client_data['phone_number_id'])
                                     return {"status": "demo_ended"}
@@ -609,7 +620,7 @@ async def recibir_mensaje(request: Request):
                             flow_state = reservation_session['session_data']['reservation_flow']
                             current_step = flow_state.get('step', 1)
 
-                            print(f"[Reserva] Usuario en paso {current_step} del flujo de reserva"); sys.stdout.flush()
+                            logger.info(f"[Reserva] Usuario en paso {current_step} del flujo de reserva")
 
                             # Manejar cada paso del flujo
                             if current_step == 1:  # Fecha
@@ -703,7 +714,7 @@ async def recibir_mensaje(request: Request):
                         # ============================================
 
                         if not client_data.get('is_active', True):
-                            print(f"[Webhook] Bot is INACTIVE for '{client_data['name']}'. Skipping AI."); sys.stdout.flush()
+                            logger.info(f"[Webhook] Bot is INACTIVE for '{client_data['name']}'. Skipping AI.")
                             # Still send a polite message to the user
                             try:
                                 whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, "Gracias por contactarnos. En este momento el bot está temporalmente no disponible. Por favor intenta más tarde.", client_data.get('whatsapp_token', ''), client_data.get('phone_number_id', ''))
@@ -729,24 +740,24 @@ async def recibir_mensaje(request: Request):
                         session_data_dict = session.get('session_data', {}) if session else {}
                         demo_phone_id_from_session = session_data_dict.get('demo_phone_id') if session_is_demo else None
 
-                        print(f"[DEBUG] session_is_demo: {session_is_demo}"); sys.stdout.flush()
-                        print(f"[DEBUG] demo_phone_id_from_session: {demo_phone_id_from_session}"); sys.stdout.flush()
+                        logger.debug(f"[DEBUG] session_is_demo: {session_is_demo}")
+                        logger.debug(f"[DEBUG] demo_phone_id_from_session: {demo_phone_id_from_session}")
 
                         menu_data = None
                         try:
                             # Si es demo, cargar el menú del demo
                             if session_is_demo and demo_phone_id_from_session:
-                                print(f"[DEBUG] Loading demo menu for: {demo_phone_id_from_session}"); sys.stdout.flush()
+                                logger.debug(f"[DEBUG] Loading demo menu for: {demo_phone_id_from_session}")
                                 demo_client_for_menu = database.get_client_by_phone_id(demo_phone_id_from_session)
-                                print(f"[DEBUG] demo_client_for_menu: {bool(demo_client_for_menu)}"); sys.stdout.flush()
+                                logger.debug(f"[DEBUG] demo_client_for_menu: {bool(demo_client_for_menu)}")
                                 if demo_client_for_menu and demo_client_for_menu.get('menu_json'):
                                     menu_json_str = demo_client_for_menu.get('menu_json')
                                     if isinstance(menu_json_str, str):
                                         menu_data = json.loads(menu_json_str)
-                                        print(f"[DEBUG] menu_data loaded from DEMO string"); sys.stdout.flush()
+                                        logger.debug(f"[DEBUG] menu_data loaded from DEMO string")
                                     elif isinstance(menu_json_str, dict):
                                         menu_data = menu_json_str
-                                        print(f"[DEBUG] menu_data loaded from DEMO dict"); sys.stdout.flush()
+                                        logger.debug(f"[DEBUG] menu_data loaded from DEMO dict")
                             # Si no es demo, cargar el menú del cliente normal
                             elif client_data and client_data.get('menu_json'):
                                 menu_json_str = client_data.get('menu_json')
@@ -755,12 +766,12 @@ async def recibir_mensaje(request: Request):
                                 elif isinstance(menu_json_str, dict):
                                     menu_data = menu_json_str
                         except Exception as e:
-                            print(f"DEBUG: Error al cargar menú desde JSON: {e}"); sys.stdout.flush()
+                            logger.debug(f"DEBUG: Error al cargar menú desde JSON: {e}")
                             import traceback
                             traceback.print_exc()
 
                         if menu_data:
-                            print(f"[DEBUG] menu_data loaded, options count: {len(menu_data.get('options', []))}"); sys.stdout.flush()
+                            logger.debug(f"[DEBUG] menu_data loaded, options count: {len(menu_data.get('options', []))}")
 
                             def clean_string(s):
                                 if not s: return ""
@@ -775,7 +786,7 @@ async def recibir_mensaje(request: Request):
                             def buscar_opcion(opciones, texto):
                                 """Busca una opción en el menú de forma resiliente."""
                                 cleaned_text = clean_string(texto)
-                                print(f"[DEBUG] buscar_opcion: texto='{texto}', cleaned='{cleaned_text}'"); sys.stdout.flush()
+                                logger.debug(f"[DEBUG] buscar_opcion: texto='{texto}', cleaned='{cleaned_text}'")
                                 if not cleaned_text: return None
 
                                 for opt in opciones:
@@ -784,30 +795,30 @@ async def recibir_mensaje(request: Request):
                                     icon = opt.get('icon', '') if is_dict else ''
                                     cleaned_title = clean_string(title)
 
-                                    print(f"[DEBUG]   checking option: title='{title}', cleaned='{cleaned_title}'"); sys.stdout.flush()
+                                    logger.debug(f"[DEBUG]   checking option: title='{title}', cleaned='{cleaned_title}'")
 
                                     # 1. Emparejamiento exacto o por título limpio
                                     if cleaned_title == cleaned_text:
-                                        print(f"[DEBUG]   MATCH 1: exact clean"); sys.stdout.flush()
+                                        logger.debug(f"[DEBUG]   MATCH 1: exact clean")
                                         return opt
 
                                     # 2. Emparejamiento parcial (contiene el texto)
                                     if cleaned_text in cleaned_title:
-                                        print(f"[DEBUG]   MATCH 2: partial"); sys.stdout.flush()
+                                        logger.debug(f"[DEBUG]   MATCH 2: partial")
                                         return opt
 
                                     # 3. Emparejamiento con icono si viene en el texto
                                     full_title = f"{icon} {title}".strip()
                                     if clean_string(full_title) == cleaned_text:
-                                        print(f"[DEBUG]   MATCH 3: with icon exact"); sys.stdout.flush()
+                                        logger.debug(f"[DEBUG]   MATCH 3: with icon exact")
                                         return opt
                                     if cleaned_text in clean_string(full_title):
-                                        print(f"[DEBUG]   MATCH 4: with icon partial"); sys.stdout.flush()
+                                        logger.debug(f"[DEBUG]   MATCH 4: with icon partial")
                                         return opt
 
                                     # 4. Emparejamiento sin icono (por si el usuario no incluye el emoji)
                                     if icon and cleaned_title == cleaned_text:
-                                        print(f"[DEBUG]   MATCH 5: no emoji"); sys.stdout.flush()
+                                        logger.debug(f"[DEBUG]   MATCH 5: no emoji")
                                         return opt
 
                                     # 5. Recursión para submenús
@@ -829,7 +840,7 @@ async def recibir_mensaje(request: Request):
                                 # ============================================
                                 titulo_match = str(match.get('title', '')).lower()
                                 if 'reserva' in titulo_match and 'hacer' in titulo_match:
-                                    print(f"[Reserva] Iniciando flujo de reserva para {numero_usuario}"); sys.stdout.flush()
+                                    logger.info(f"[Reserva] Iniciando flujo de reserva para {numero_usuario}")
 
                                     # Guardar estado inicial del flujo
                                     database.save_user_session(numero_usuario, phone_number_id, {
@@ -885,7 +896,7 @@ async def recibir_mensaje(request: Request):
                                         if "agendar cita" in str(match.get('title')).lower():
                                             if cal_url not in res_text: res_text += f"\n\nLink: {cal_url}"
 
-                                    print(f"DEBUG: Enviando respuesta predefinida para '{match.get('title')}'"); sys.stdout.flush()
+                                    logger.debug(f"DEBUG: Enviando respuesta predefinida para '{match.get('title')}'")
 
                                     # Inline de enviar_respuesta_con_opciones
                                     texto_para_enviar = res_text
@@ -908,7 +919,7 @@ async def recibir_mensaje(request: Request):
 
                                 # Caso: opción de menú sin response ni submenu - usar fallback
                                 elif menu_data and menu_data.get('fallback_text'):
-                                    print(f"DEBUG: Opción '{match.get('title')}' sin response. Usando fallback_text."); sys.stdout.flush()
+                                    logger.debug(f"DEBUG: Opción '{match.get('title')}' sin response. Usando fallback_text.")
                                     if not skip_whatsapp:
                                         whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, menu_data['fallback_text'], client_data['whatsapp_token'], client_data['phone_number_id'])
                                         database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, menu_data['fallback_text'])
@@ -916,12 +927,12 @@ async def recibir_mensaje(request: Request):
 
                                 # Caso: opción de menú sin response - dejar que Gemini responda
                                 else:
-                                    print(f"DEBUG: Opción '{match.get('title')}' sin response. Gemini responderá."); sys.stdout.flush()
+                                    logger.debug(f"DEBUG: Opción '{match.get('title')}' sin response. Gemini responderá.")
                                     # Continuar a Gemini, no retornar aquí
 
                         # Keywords de menú (hola, menu, etc.)
                         if texto_usuario.lower().strip() in ["hola", "menu", "menú", "inicio", "opciones"]:
-                            print(f"[Webhook] ✅ Keyword match: '{texto_usuario}' -> checking for explicit menu options"); sys.stdout.flush()
+                            logger.info(f"[Webhook] ✅ Keyword match: '{texto_usuario}' -> checking for explicit menu options")
                             
                             opciones_raw = []
                             texto_menu_local = ""
@@ -930,7 +941,7 @@ async def recibir_mensaje(request: Request):
                                 texto_menu_local = menu_data.get('text', f"¡Hola! Bienvendu@ a {client_data['name']}. 👋\n\n¿En qué puedo ayudarte?")
                             
                             if len(opciones_raw) > 0:
-                                print(f"[send_menu_followup_inline] Starting for client {client_data.get('name')}"); sys.stdout.flush()
+                                logger.info(f"[send_menu_followup_inline] Starting for client {client_data.get('name')}")
                                 opciones = []
                                 for opt in opciones_raw:
                                     t = opt.get('title', 'Opción') if isinstance(opt, dict) else str(opt)
@@ -940,7 +951,7 @@ async def recibir_mensaje(request: Request):
                                     else:
                                         opciones.append(f"{i} {t}".strip())
 
-                                print(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}"); sys.stdout.flush()
+                                logger.info(f"[send_menu_followup_inline] Sending menu with {len(opciones)} options to {numero_usuario}")
                                 if not skip_whatsapp:
                                     try:
                                         if len(opciones) > 3:
@@ -949,16 +960,16 @@ async def recibir_mensaje(request: Request):
                                             send_result = whatsapp_service.enviar_menu_botones(numero_usuario, texto_menu_local, opciones, client_data['whatsapp_token'], client_data['phone_number_id'])
 
                                         database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Menu enviado: {send_result}]")
-                                        print(f"[Webhook] ✅ Menu flow complete. send_result={send_result}"); sys.stdout.flush()
+                                        logger.info(f"[Webhook] ✅ Menu flow complete. send_result={send_result}")
                                         return {"status": "menu_sent"}
                                     except Exception as e:
-                                        print(f"❌ ERROR enviando menú: {e}\n{traceback.format_exc()}"); sys.stdout.flush()
+                                        logger.error(f"❌ ERROR enviando menú: {e}\n{traceback.format_exc()}")
                                         return {"status": "error_sending_menu"}
                                 else:
-                                    print(f"[Webhook] Would send menu but skip_whatsapp=True"); sys.stdout.flush()
+                                    logger.info(f"[Webhook] Would send menu but skip_whatsapp=True")
                                     return {"status": "menu_skipped"}
                             else:
-                                print(f"[Webhook] Menu has 0 options. Allowing Gemini to handle the greeting."); sys.stdout.flush()
+                                logger.info(f"[Webhook] Menu has 0 options. Allowing Gemini to handle the greeting.")
                                 # Do not return here. Let it fall through to Gemini.
 
                         # Obtenemos si es el maestro Zotek para decidir si saltamos el fallback del menú
@@ -966,7 +977,7 @@ async def recibir_mensaje(request: Request):
 
                         # Fallback text - only if menu_data exists and no match was found (Y NO ES ZOTEK MAESTRO)
                         if menu_data and not match and menu_data.get('fallback_text') and not es_zotek_maestro:
-                            print(f"DEBUG: No menu match found. Sending fallback_text for {client_data['name']}"); sys.stdout.flush()
+                            logger.debug(f"DEBUG: No menu match found. Sending fallback_text for {client_data['name']}")
                             fallback_msg = menu_data['fallback_text']
                             opciones_raw = menu_data.get('options', menu_data.get('opciones', []))
                             opciones = []
@@ -986,7 +997,7 @@ async def recibir_mensaje(request: Request):
                                 database.save_chat_message(client_data['id'], numero_usuario, texto_usuario, f"[Fallback enviado: {fallback_msg}]")
                                 return {"status": "fallback_sent"}
                             elif len(opciones) == 0:
-                                print(f"[Webhook] Fallback has 0 options. Allowing Gemini to handle."); sys.stdout.flush()
+                                logger.info(f"[Webhook] Fallback has 0 options. Allowing Gemini to handle.")
                                 # Let Gemini handle it
 
                         # --- INYECCIÓN DE CONTEXTO DEMO ---
@@ -1001,7 +1012,7 @@ async def recibir_mensaje(request: Request):
                                 if demo_client:
                                     # Reemplazar client_data con el bot demo completo
                                     client_data = demo_client
-                                    print(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos."); sys.stdout.flush()
+                                    logger.info(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos.")
                             else:
                                 # Fallback: intentar encontrar el demo por modo (solo si no hay phone_id)
                                 demo_phone_ids = {
@@ -1015,7 +1026,7 @@ async def recibir_mensaje(request: Request):
                                     demo_client = database.get_client_by_phone_id(demo_phone_ids[demo_mode])
                                     if demo_client:
                                         client_data = demo_client
-                                        print(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos."); sys.stdout.flush()
+                                        logger.info(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos.")
                         
                         prompt = texto_usuario
                         if message.get('type') == 'interactive':
@@ -1049,23 +1060,23 @@ INSTRUCCIONES:
 - Cita la fuente cuando sea posible (nombre del archivo).
 - Sé preciso y específico con la información de los documentos.
 """
-                            print(f"[RAG] Injected {len(contexto_pdf)} chars of knowledge context"); sys.stdout.flush()
+                            logger.info(f"[RAG] Injected {len(contexto_pdf)} chars of knowledge context")
                         else:
-                            print(f"[RAG] No knowledge base found for client {client_data['id']}"); sys.stdout.flush()
+                            logger.info(f"[RAG] No knowledge base found for client {client_data['id']}")
                                # ============================================
                         # LLAMADA AL MOTOR DE IA (AGENTE O LEGACY)
                         # ============================================
-                        print(f"[Webhook] Calling AI Engine for: '{prompt[:50]}...'"); sys.stdout.flush()
+                        logger.info(f"[Webhook] Calling AI Engine for: '{prompt[:50]}...'")
 
                         if gemini is None:
-                            print(f"❌ ERROR: Gemini not initialized."); sys.stdout.flush()
+                            logger.error(f"❌ ERROR: Gemini not initialized.")
                             return {"status": "no_gemini"}
 
                         # Si es el Bot Maestro de Zotek (ID 10), usar flujo de Agente Inteligente
                         es_zotek_maestro = str(client_data.get('id', '')) == '10'
                         
                         if es_zotek_maestro:
-                            print(f"🚀 INICIANDO FLUJO DE AGENTE PARA ZOTEK (ID 10)"); sys.stdout.flush()
+                            logger.info(f"🚀 INICIANDO FLUJO DE AGENTE PARA ZOTEK (ID 10)")
                             agent_output = gemini.generar_respuesta_agente(prompt, client_data, numero_usuario)
                             res_ai = agent_output.get('text', '')
                             tool_calls = agent_output.get('tool_calls', [])
@@ -1083,7 +1094,7 @@ INSTRUCCIONES:
                             # Flujo tradicional para otros clientes
                             res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
 
-                        print(f"[Webhook] AI response: {res_ai[:80]}..."); sys.stdout.flush()
+                        logger.info(f"[Webhook] AI response: {res_ai[:80]}...")
 
                         # Parse dynamic [OPCIONES]: generated by Gemini (Fallback legacy)
                         texto_para_enviar = res_ai
@@ -1105,9 +1116,9 @@ INSTRUCCIONES:
                                 elif len(opciones_dinamicas) > 0:
                                     whatsapp_service.enviar_menu_botones(numero_usuario, "Selecciona una opción:", opciones_dinamicas, client_data['whatsapp_token'], client_data['phone_number_id'])
 
-                            print(f"[Webhook] WhatsApp send result: {success}"); sys.stdout.flush()
+                            logger.info(f"[Webhook] WhatsApp send result: {success}")
                         else:
-                            print(f"[Webhook] Skipping WhatsApp send (no token)"); sys.stdout.flush()
+                            logger.info(f"[Webhook] Skipping WhatsApp send (no token)")
                             success = True  # Mark as success for logging purposes
 
                         if success:
@@ -1116,7 +1127,7 @@ INSTRUCCIONES:
     except Exception as e:
         import traceback
         error_msg = f"❌ WEBHOOK CRITICAL ERROR: {e}\n{traceback.format_exc()}"
-        print(error_msg); sys.stdout.flush()
+        logger.error(error_msg)
 
         # Intentar notificar al usuario sobre el error
         try:
@@ -1128,8 +1139,8 @@ INSTRUCCIONES:
                         client_data.get('whatsapp_token'),
                         client_data.get('phone_number_id', '')
                     )
-        except:
-            pass  # No hacer ruido si falla el envío del error
+        except Exception as notify_err:
+            logger.error(f"[Webhook] Failed to send error notification: {notify_err}")
 
     return {"status": "ok"}
 
@@ -1156,10 +1167,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
 
 def send_security_code(email: str, code: str):
     if not EMAIL_PASSWORD:
-        print("ERROR: EMAIL_APP_PASSWORD no configurada en .env")
+        logger.info("ERROR: EMAIL_APP_PASSWORD no configurada en .env")
         return False
 
-    print(f"Intentando enviar email a {email}...")
+    logger.info(f"Intentando enviar email a {email}...")
 
     try:
         msg = MIMEText(f"Tu codigo de acceso para el panel administrativo es: {code}\nExpira en 10 minutos.")
@@ -1174,7 +1185,7 @@ def send_security_code(email: str, code: str):
         return True
     except Exception as e:
         import traceback
-        print(f"Error enviando email: {e}")
+        logger.info(f"Error enviando email: {e}")
         traceback.print_exc()
         return False
 
@@ -1300,12 +1311,12 @@ async def whatsapp_redirect(text: str = "Hola, quisiera mas informacion"):
     encoded_text = urllib.parse.quote(text)
 
     if target_number:
-        print(f"[Redirect] Redirecting to client number: {target_number}")
+        logger.info(f"[Redirect] Redirecting to client number: {target_number}")
         return RedirectResponse(url=f"https://wa.me/{target_number}?text={encoded_text}")
 
     # Fallback de seguridad (Bot Zotek: 3123775877)
     fallback_url = f"https://wa.me/523123775877?text={encoded_text}"
-    print(f"[Redirect] No numbers found in DB, using fallback: 523123775877")
+    logger.info(f"[Redirect] No numbers found in DB, using fallback: 523123775877")
     return RedirectResponse(url=fallback_url)
 
 
@@ -1350,24 +1361,24 @@ async def get_client(client_id: str, current_user: str = Depends(get_current_use
 @app.delete("/api/clients/{client_id}")
 async def delete_client(client_id: str, current_user: str = Depends(get_current_user)):
     """Elimina permanentemente un cliente de la base de datos PostgreSQL."""
-    print(f"📥 DELETE /api/clients/{client_id} called")
+    logger.info(f"📥 DELETE /api/clients/{client_id} called")
 
     # Prevenir eliminación de demos hardcodeados
     if str(client_id).startswith('demo_'):
-        print(f"⚠️ Attempted to delete demo client {client_id}")
+        logger.warning(f"⚠️ Attempted to delete demo client {client_id}")
         raise HTTPException(status_code=403, detail="No se pueden eliminar clientes de demostración")
 
     try:
         # database.delete_client_db_entry ya maneja la eliminación en cascada
         if database.delete_client_db_entry(client_id):
-            print(f"✅ Cliente {client_id} eliminado exitosamente")
+            logger.info(f"✅ Cliente {client_id} eliminado exitosamente")
             return {"status": "deleted"}
         else:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error eliminando cliente: {e}")
+        logger.error(f"❌ Error eliminando cliente: {e}")
         raise HTTPException(status_code=500, detail=f"Error al eliminar cliente: {str(e)}")
 
 
@@ -1599,75 +1610,75 @@ async def upload_pdf(client_id: str, request: Request, current_user: str = Depen
         try:
             from pypdf import PdfReader as PR
             PdfReader = PR
-            print("[PDF] pypdf imported successfully"); sys.stdout.flush()
+            logger.info("[PDF] pypdf imported successfully")
         except ImportError as e:
-            print(f"[PDF] ImportError: {e}"); sys.stdout.flush()
+            logger.info(f"[PDF] ImportError: {e}")
             raise HTTPException(status_code=500, detail=f"Biblioteca pypdf no instalada. Error: {str(e)}")
 
     try:
-        print(f"[PDF] === START UPLOAD ==="); sys.stdout.flush()
-        print(f"[PDF] Client ID: {client_id}"); sys.stdout.flush()
+        logger.info(f"[PDF] === START UPLOAD ===")
+        logger.info(f"[PDF] Client ID: {client_id}")
 
         form = await request.form()
         file = form.get("file")
-        print(f"[PDF] File received: {bool(file)}"); sys.stdout.flush()
+        logger.info(f"[PDF] File received: {bool(file)}")
 
         if not file or not hasattr(file, 'filename'):
-            print(f"[PDF] No file in request"); sys.stdout.flush()
+            logger.info(f"[PDF] No file in request")
             raise HTTPException(status_code=400, detail="No se recibió ningún archivo.")
 
-        print(f"[PDF] Filename: {file.filename}"); sys.stdout.flush()
+        logger.info(f"[PDF] Filename: {file.filename}")
 
         if not file.filename.lower().endswith(".pdf"):
-            print(f"[PDF] Invalid extension: {file.filename}"); sys.stdout.flush()
+            logger.info(f"[PDF] Invalid extension: {file.filename}")
             raise HTTPException(status_code=400, detail=f"Solo se permiten archivos PDF. Recibido: {file.filename}")
 
-        print(f"[PDF] Reading file content..."); sys.stdout.flush()
+        logger.info(f"[PDF] Reading file content...")
         contents = await file.read()
 
         # Validar MIME type real por magic bytes (no solo extensión)
         PDF_MAGIC = b"%PDF"
         if not contents.startswith(PDF_MAGIC):
             raise HTTPException(status_code=400, detail="El archivo no es un PDF válido (magic bytes incorrectos)")
-        print(f"[PDF] File size: {len(contents)} bytes ({len(contents)/1024:.1f} KB)"); sys.stdout.flush()
+        logger.info(f"[PDF] File size: {len(contents)} bytes ({len(contents)/1024:.1f} KB)")
 
         f = io.BytesIO(contents)
 
-        print(f"[PDF] Initializing PdfReader..."); sys.stdout.flush()
+        logger.info(f"[PDF] Initializing PdfReader...")
         try:
             reader = PdfReader(f)
-            print(f"[PDF] Pages count: {len(reader.pages)}"); sys.stdout.flush()
+            logger.info(f"[PDF] Pages count: {len(reader.pages)}")
         except Exception as e:
-            print(f"[PDF] PdfReader error: {e}"); sys.stdout.flush()
+            logger.info(f"[PDF] PdfReader error: {e}")
             raise HTTPException(status_code=400, detail=f"Error leyendo PDF: {str(e)}. El archivo podría estar corrupto o protegido con contraseña.")
 
         text_content = ""
 
         for i, page in enumerate(reader.pages):
-            print(f"[PDF] Extracting page {i+1}/{len(reader.pages)}..."); sys.stdout.flush()
+            logger.info(f"[PDF] Extracting page {i+1}/{len(reader.pages)}...")
             try:
                 extracted = page.extract_text()
                 if extracted:
                     text_content += extracted + "\n"
-                    print(f"[PDF] Page {i+1}: {len(extracted)} chars"); sys.stdout.flush()
+                    logger.info(f"[PDF] Page {i+1}: {len(extracted)} chars")
                 else:
-                    print(f"[PDF] Page {i+1}: NO TEXT (might be image)"); sys.stdout.flush()
+                    logger.info(f"[PDF] Page {i+1}: NO TEXT (might be image)")
             except Exception as page_error:
-                print(f"[PDF] Page {i+1} error: {page_error}"); sys.stdout.flush()
+                logger.info(f"[PDF] Page {i+1} error: {page_error}")
                 # Continue with next page
 
-        print(f"[PDF] Total extracted: {len(text_content)} characters"); sys.stdout.flush()
+        logger.info(f"[PDF] Total extracted: {len(text_content)} characters")
 
         if not text_content.strip():
-            print(f"[PDF] No text extracted - PDF is image-only"); sys.stdout.flush()
+            logger.info(f"[PDF] No text extracted - PDF is image-only")
             raise HTTPException(status_code=400, detail="No se pudo extraer texto del PDF. El archivo parece contener solo imágenes. Usa un PDF con texto seleccionable.")
 
         # Save to database
-        print(f"[PDF] Saving to knowledge_base..."); sys.stdout.flush()
+        logger.info(f"[PDF] Saving to knowledge_base...")
         result = database.add_knowledge_entry(client_id, text_content, source_file=file.filename)
 
         if result:
-            print(f"[PDF] SUCCESS!"); sys.stdout.flush()
+            logger.info(f"[PDF] SUCCESS!")
             return {
                 "status": "success",
                 "message": f"PDF '{file.filename}' procesado correctamente.",
@@ -1675,7 +1686,7 @@ async def upload_pdf(client_id: str, request: Request, current_user: str = Depen
                 "pages": len(reader.pages)
             }
         else:
-            print(f"[PDF] Database save returned False"); sys.stdout.flush()
+            logger.info(f"[PDF] Database save returned False")
             raise HTTPException(status_code=500, detail="Error guardando en la base de datos.")
 
     except HTTPException:
@@ -1683,7 +1694,7 @@ async def upload_pdf(client_id: str, request: Request, current_user: str = Depen
     except Exception as e:
         import traceback
         error_msg = f"[PDF] CRITICAL ERROR: {e}\n{traceback.format_exc()}"
-        print(error_msg); sys.stdout.flush()
+        logger.error(error_msg)
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
@@ -1919,7 +1930,7 @@ async def widget_chat(request: Request):
         # Procesamos las tool calls para que surtan efecto en la base de datos
         tool_calls = respuesta_json.get("tool_calls", [])
         if tool_calls:
-            print(f"[{session_id}] Widget chat detectó {len(tool_calls)} herramientas")
+            logger.info(f"[{session_id}] Widget chat detectó {len(tool_calls)} herramientas")
             # Reutilizamos ejecutar_herramientas_agente adaptado para web
             confirmation_msg = ""
             for tool in tool_calls:
@@ -1930,7 +1941,7 @@ async def widget_chat(request: Request):
                 except Exception:
                     args = {}
                 
-                print(f"[{session_id}] Web Widget tool call: {name} con {args}")
+                logger.info(f"[{session_id}] Web Widget tool call: {name} con {args}")
                 if name == "registrar_cita":
                     from .services.appointment_service import appointment_service
                     appointment_date = args.get("fecha_cita")
@@ -1968,7 +1979,7 @@ async def widget_chat(request: Request):
             else:
                 res_text = res_text or "Lo siento, no pude generar una respuesta clara."
         
-        print(f"[{session_id}] Respuesta enviada: {res_text[:50]}...")
+        logger.info(f"[{session_id}] Respuesta enviada: {res_text[:50]}...")
         return {
             "type": "text", 
             "text": res_text
@@ -2038,7 +2049,7 @@ async def create_appointment_api(client_id: str, request: Request):
         else:
             raise ValueError("Falta fecha de cita")
     except Exception as e:
-        print(f"Error parsing date: {e}")
+        logger.info(f"Error parsing date: {e}")
         raise HTTPException(status_code=400, detail="Fecha inválida. Usa formato YYYY-MM-DD e incluye appointment_time.")
 
     appointment_id = appointment_service.create_appointment(
@@ -2081,6 +2092,6 @@ async def cancel_appointment(client_id: str, appointment_id: int,
 # los montamos para poder probar localmente (http://127.0.0.1:8000/portal/index.html)
 REPO_ROOT = os.path.dirname(BASE_DIR) # Sube de functions/ a ZotekSolucionesIA/
 WWW_DIR = os.path.join(REPO_ROOT, "www")
-print(f"Mounting static files from: {WWW_DIR}")
+logger.info(f"Mounting static files from: {WWW_DIR}")
 if os.path.isdir(WWW_DIR):
     app.mount("/", StaticFiles(directory=WWW_DIR, html=True), name="static")
