@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const API        = '';
 const TOKEN_KEY  = 'zotek_portal_token';
@@ -262,8 +262,8 @@ function updateCitasKPIs() {
   const today = new Date().toISOString().slice(0, 10);
   const wStart = getWeekStart();
   const wEnd   = new Date(wStart); wEnd.setDate(wEnd.getDate() + 7);
-  const hoy    = allCitas.filter(c => (c.fecha_hora || c.appointment_date || '').startsWith(today)).length;
-  const semana = allCitas.filter(c => { const d = new Date(c.fecha_hora || c.appointment_date || ''); return d >= wStart && d < wEnd; }).length;
+  const hoy    = allCitas.filter(c => (c.date_time || c.fecha_hora || c.appointment_date || '').slice(0,10) === today).length;
+  const semana = allCitas.filter(c => { const d = new Date(c.date_time || c.fecha_hora || c.appointment_date || ''); return d >= wStart && d < wEnd; }).length;
   document.getElementById('kpi-hoy').textContent    = hoy;
   document.getElementById('kpi-semana').textContent = semana;
 }
@@ -295,9 +295,9 @@ function renderProximasCitas() {
   }
   container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Fecha y hora</th><th>Estado</th></tr></thead><tbody>
     ${proximas.map(c => `<tr>
-      <td>${escHtml(c.paciente_nombre || c.customer_name || '—')}</td>
-      <td>${escHtml(c.fecha_hora || c.appointment_date || '—')}</td>
-      <td>${statusBadge(c.status || 'pendiente')}</td>
+      <td>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</td>
+      <td>${escHtml(formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '—')}</td>
+      <td>${statusBadge(c.status || 'pending')}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
@@ -334,11 +334,11 @@ function renderCitasTable() {
   }
   container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Teléfono</th><th>Fecha y hora</th><th>Motivo</th><th>Estado</th></tr></thead><tbody>
     ${citas.map(c => `<tr>
-      <td>${escHtml(c.paciente_nombre || c.customer_name || '—')}</td>
-      <td class="text-muted">${escHtml(c.cliente_telefono || c.phone_number || '—')}</td>
-      <td>${escHtml(c.fecha_hora || c.appointment_date || '—')}</td>
+      <td>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</td>
+      <td class="text-muted">${escHtml(c.phone || c.cliente_telefono || c.phone_number || '—')}</td>
+      <td>${escHtml(formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '—')}</td>
       <td class="text-muted">${escHtml(c.motivo || c.notes || '—')}</td>
-      <td>${statusBadge(c.status || 'pendiente')}</td>
+      <td>${statusBadge(c.status || 'pending')}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 document.getElementById('filter-citas-status').addEventListener('change', renderCitasTable);
@@ -656,7 +656,7 @@ function formatDateTime(str) {
   } catch { return String(str); }
 }
 function statusBadge(s) {
-  const m = { pendiente:['badge-yellow','Pendiente'], confirmed:['badge-green','Confirmada'], cancelled:['badge-red','Cancelada'], completed:['badge-blue','Completada'] };
+  const m = { pending:['badge-yellow','Pendiente'], pendiente:['badge-yellow','Pendiente'], confirmed:['badge-green','Confirmada'], cancelled:['badge-red','Cancelada'], completed:['badge-blue','Completada'] };
   const [cls, lbl] = m[s] || ['badge-gray', s];
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
