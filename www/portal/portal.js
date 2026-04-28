@@ -332,14 +332,13 @@ function renderCitasTable() {
   if (!citas.length) {
     container.innerHTML = '<div class="empty-state"><i class="fas fa-calendar-xmark"></i><p>No hay citas</p></div>'; return;
   }
-  container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Teléfono</th><th>Fecha y hora</th><th>Motivo</th><th>Estado</th></tr></thead><tbody>
+  container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Teléfono</th><th>Fecha y hora</th><th>Estado</th></tr></thead><tbody>
     ${citas.map(c => {
       const st = c.status || 'pending';
       return `<tr>
       <td>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</td>
       <td class="text-muted">${escHtml(c.phone || c.cliente_telefono || c.phone_number || '—')}</td>
       <td>${escHtml(formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '—')}</td>
-      <td class="text-muted">${escHtml(c.motivo || c.notes || '—')}</td>
       <td>
         <select class="status-select status-${st}" data-id="${c.id}" onchange="changeAppointmentStatus(${c.id}, this.value, this)">
           <option value="pending"${st === 'pending' ? ' selected' : ''}>⏳ Pendiente</option>

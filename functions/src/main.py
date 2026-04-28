@@ -1898,7 +1898,18 @@ async def get_client_appointments(client_id: str, status: str = None,
             raise HTTPException(status_code=500, detail=str(err))
     else:
         try:
-            appointments = apt_service.get_pending_appointments(client_id_value)
+            conn = apt_service.get_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT a.*, c.name as client_name
+                FROM appointments a
+                LEFT JOIN clients c ON a.client_id = c.id
+                WHERE a.client_id = %s
+                ORDER BY a.date_time DESC
+            """, (client_id_value,))
+            appointments = [dict(apt) for apt in cursor.fetchall()]
+            cursor.close()
+            conn.close()
         except Exception as e:
             import traceback
             err = traceback.format_exc()
