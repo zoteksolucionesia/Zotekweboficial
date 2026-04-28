@@ -1,7 +1,7 @@
 """
 Firebase Functions entry point.
 Bridges Firebase Functions WSGI-style requests to FastAPI ASGI app.
-# Trigger redeploy: Update for NameError fix in src/main.py.
+# Trigger redeploy: Remove init_db() from startup to fix Cloud Run healthcheck timeout.
 """
 import sys
 import os

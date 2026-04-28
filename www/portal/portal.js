@@ -102,7 +102,7 @@ async function requestCode() {
   document.getElementById('btn-send-text').textContent = 'Enviando...';
 
   try {
-    const res  = await fetch(`${API}/api/portal/auth/request-code`, {
+    const res  = await fetch(`${API}/api/auth/request-code`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }),
     });
     const data = await res.json();
@@ -133,7 +133,7 @@ async function verifyCode() {
   document.getElementById('btn-verify-text').textContent = 'Verificando...';
 
   try {
-    const res  = await fetch(`${API}/api/portal/auth/verify-code`, {
+    const res  = await fetch(`${API}/api/auth/verify-code`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }),
     });
     const data = await res.json();
@@ -718,7 +718,8 @@ async function loadSchedules() {
     });
     const data = await res.json();
     scheduleState = {};
-    (Array.isArray(data) ? data : []).forEach(s => {
+    const list = Array.isArray(data) ? data : (data.schedules || []);
+    list.forEach(s => {
       const key = s.schedule_date;
       if (!scheduleState[key]) scheduleState[key] = [];
       scheduleState[key].push({ start: s.start_time, end: s.end_time });
@@ -787,9 +788,16 @@ function renderScheduleEditor() {
             style="width:16px;height:16px;accent-color:var(--accent,#6C63FF);">
           ${day.label}
         </label>
-        ${isActive ? `<button onclick="addScheduleFranja('${day.date}')"
-          style="background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);color:var(--accent,#6C63FF);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
-          + Franja</button>` : ''}
+        ${isActive ? `
+          <div style="display:flex;gap:6px;">
+            <button onclick="addScheduleFranja('${day.date}')"
+              style="background:rgba(108,99,255,0.15);border:1px solid rgba(108,99,255,0.3);color:var(--accent,#6C63FF);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
+              + Franja</button>
+            <button onclick="copyDaySchedule('${day.date}')"
+              title="Copiar este día a otro"
+              style="background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.25);color:var(--accent,#6C63FF);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.8rem;">
+              📋</button>
+          </div>` : ''}
       </div>
       ${isActive ? franjasHtml : '<span style="color:var(--text-muted,#888);font-size:0.8rem;margin-left:24px;">Día no laborable</span>'}
     </div>`;
@@ -826,8 +834,52 @@ function updateScheduleFranja(dateKey, fi, field, value) {
   }
 }
 
-function copyWeekSchedule() {
+function copyDaySchedule(sourceDateKey) {
   const weekDates = getWeekDates(currentWeekStart);
+  const otherDays = weekDates.filter(d => d.date !== sourceDateKey);
+
+  const optionsHtml = otherDays.map(d =>
+    `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;border:1px solid var(--border,rgba(255,255,255,0.1));">
+      <input type="checkbox" value="${d.date}" style="accent-color:var(--accent,#6C63FF);">
+      <span style="font-size:0.9rem;">${d.label}</span>
+    </label>`
+  ).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'copyDayModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--card-bg,#1a1a2e);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:16px;padding:24px;width:300px;">
+      <h4 style="margin:0 0 4px;color:var(--accent,#6C63FF);">Copiar día</h4>
+      <p style="color:var(--text-muted,#888);font-size:0.8rem;margin-bottom:12px;">Selecciona los días destino:</p>
+      <div style="display:flex;flex-direction:column;gap:6px;">${optionsHtml}</div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button onclick="document.getElementById('copyDayModal').remove()" class="btn-secondary" style="flex:1;padding:8px;">Cancelar</button>
+        <button onclick="applyCopyDaySchedule('${sourceDateKey}')" class="btn-primary" style="flex:1;padding:8px;">Copiar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function applyCopyDaySchedule(sourceDateKey) {
+  const franjas = scheduleState[sourceDateKey];
+  if (!franjas || franjas.length === 0) {
+    document.getElementById('copyDayModal')?.remove();
+    return showToast('El día origen no tiene franjas', 'error');
+  }
+  const checked = [...document.querySelectorAll('#copyDayModal input[type=checkbox]:checked')].map(el => el.value);
+  if (checked.length === 0) {
+    return showToast('Selecciona al menos un día destino', 'error');
+  }
+  checked.forEach(targetDate => {
+    scheduleState[targetDate] = franjas.map(f => ({ start: f.start, end: f.end }));
+  });
+  document.getElementById('copyDayModal')?.remove();
+  renderScheduleEditor();
+  showToast(`Horario copiado a ${checked.length} día(s)`, 'success');
+}
+
+function copyWeekSchedule() {
   const nextMonday = new Date(currentWeekStart + 'T12:00:00');
   nextMonday.setDate(nextMonday.getDate() + 7);
   const defaultTarget = toLocalDateStr(nextMonday);

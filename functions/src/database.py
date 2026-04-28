@@ -380,8 +380,8 @@ def add_client(data):
         cursor.execute('''
             INSERT INTO clients (
                 name, whatsapp_token, phone_number_id, verify_token,
-                system_instruction, email, calendly_url, menu_json, is_active
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                system_instruction, email, calendly_url, menu_json
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', (
             data.get('name', ''),
@@ -392,7 +392,6 @@ def add_client(data):
             data.get('email', ''),
             data.get('calendly_url', ''),
             menu_json,
-            data.get('is_active', True)
         ))
         
         new_id = cursor.fetchone()['id']
@@ -490,8 +489,8 @@ def duplicate_client(original_id):
         cursor.execute('''
             INSERT INTO clients (
                 name, whatsapp_token, phone_number_id, verify_token,
-                system_instruction, email, calendly_url, menu_json, is_active
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                system_instruction, email, calendly_url, menu_json
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', (
             new_name,
@@ -502,7 +501,6 @@ def duplicate_client(original_id):
             "",
             original.get('calendly_url', ''),
             menu_json,
-            original.get('is_active', True)
         ))
 
         new_client_id = cursor.fetchone()['id']
@@ -573,14 +571,17 @@ def delete_knowledge_entry(client_id, doc_id):
 
 
 def save_chat_message(client_id, user_number, message, response):
-    """Guarda un mensaje de chat en la base de datos."""
+    """Registra un intercambio de mensajes en client_chats.
+    El parámetro `message` (input del usuario) se descarta porque el schema
+    actual no lo modela; se conserva la `response` como `last_message`.
+    """
     try:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO client_chats (client_id, user_number, message, response)
+            INSERT INTO client_chats (client_id, user_number, phone_number, last_message)
             VALUES (%s, %s, %s, %s)
-        ''', (client_id, user_number, message, response))
+        ''', (client_id, user_number, user_number, response))
         conn.commit()
         cursor.close()
         conn.close()
@@ -591,29 +592,33 @@ def save_chat_message(client_id, user_number, message, response):
 
 
 def get_client_chats(client_id, limit=50):
-    """Obtiene los últimos mensajes de chat de un cliente."""
+    """Obtiene las últimas conversaciones de un cliente.
+    Mantiene el contrato {id, user_number, message, response, timestamp}
+    aunque el schema solo guarda `last_message` (mapeado a `response`).
+    """
     try:
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute('''
-            SELECT id, user_number, message, response, timestamp
+            SELECT id, user_number, phone_number, last_message, created_at, updated_at
             FROM client_chats
             WHERE client_id = %s
-            ORDER BY timestamp DESC
+            ORDER BY COALESCE(updated_at, created_at) DESC
             LIMIT %s
         ''', (client_id, limit))
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
-        
+
         chats = []
         for row in rows:
+            ts = row['updated_at'] or row['created_at']
             chats.append({
                 'id': row['id'],
-                'user_number': row['user_number'],
-                'message': row['message'],
-                'response': row['response'],
-                'timestamp': str(row['timestamp']) if row['timestamp'] else ''
+                'user_number': row['user_number'] or row['phone_number'] or '',
+                'message': '',
+                'response': row['last_message'] or '',
+                'timestamp': str(ts) if ts else ''
             })
         return chats
     except Exception as e:
@@ -735,22 +740,36 @@ def get_client_schedules(client_id):
         print(f"❌ ERROR get_client_schedules: {e}")
         return []
 
-def save_client_schedules(client_id, schedules):
-    """Guarda una lista de horarios para un cliente (reemplaza los anteriores)."""
+def save_client_schedules(client_id, schedules, week_start=None):
+    """Guarda horarios para un cliente, scoped a la semana indicada (no borra otras semanas)."""
     try:
+        client_id = int(client_id)
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Primero eliminamos los existentes para ese cliente
-        cursor.execute("DELETE FROM client_schedules WHERE client_id = %s", (client_id,))
-        
-        # Insertamos los nuevos
+
+        if week_start:
+            from datetime import datetime, timedelta
+            monday = datetime.strptime(week_start, '%Y-%m-%d').date()
+            sunday = monday + timedelta(days=6)
+            cursor.execute(
+                "DELETE FROM client_schedules WHERE client_id = %s AND schedule_date >= %s AND schedule_date <= %s",
+                (client_id, str(monday), str(sunday))
+            )
+        else:
+            dates = list({s.get('schedule_date') for s in schedules if s.get('schedule_date')})
+            if dates:
+                for d in dates:
+                    cursor.execute(
+                        "DELETE FROM client_schedules WHERE client_id = %s AND schedule_date = %s",
+                        (client_id, d)
+                    )
+
         for sch in schedules:
             cursor.execute('''
                 INSERT INTO client_schedules (client_id, schedule_date, start_time, end_time)
                 VALUES (%s, %s, %s, %s)
             ''', (client_id, sch.get('schedule_date'), sch.get('start_time'), sch.get('end_time')))
-            
+
         conn.commit()
         cursor.close()
         conn.close()

@@ -589,12 +589,12 @@ def add_to_conversation_history(phone_number: str, user_message: str, assistant_
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO conversation_history (phone_number, content, is_user)
-            VALUES (%s, %s, 1)
+            INSERT INTO conversation_history (phone_number, content, role)
+            VALUES (%s, %s, 'user')
         """, (phone_number, user_message))
         cursor.execute("""
-            INSERT INTO conversation_history (phone_number, content, is_user)
-            VALUES (%s, %s, 0)
+            INSERT INTO conversation_history (phone_number, content, role)
+            VALUES (%s, %s, 'assistant')
         """, (phone_number, assistant_response))
         conn.commit()
         cursor.close()
@@ -607,8 +607,8 @@ def get_conversation_history(phone_number: str, limit: int = 10) -> List[Dict[st
         conn = get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
-            SELECT content, is_user, created_at 
-            FROM conversation_history 
+            SELECT content, role, created_at
+            FROM conversation_history
             WHERE phone_number = %s
             ORDER BY created_at DESC
             LIMIT %s

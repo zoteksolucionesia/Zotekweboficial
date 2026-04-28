@@ -43,12 +43,14 @@ class AppointmentService:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
+            # Nota: el schema actual de `appointments` no tiene columnas `email`/`notes`;
+            # los parámetros se conservan por compatibilidad con los callers pero se ignoran.
             cursor.execute("""
-                INSERT INTO appointments 
-                (client_id, phone, date_time, name, email, notes)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO appointments
+                (client_id, phone, date_time, name)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id
-            """, (client_id, phone, date_time, name, email, notes))
+            """, (client_id, phone, date_time, name))
             
             appointment_id = cursor.fetchone()['id']
             conn.commit()
@@ -77,9 +79,8 @@ class AppointmentService:
             cursor = conn.cursor()
             
             cursor.execute("""
-                UPDATE appointments 
-                SET status = 'confirmed',
-                    updated_at = CURRENT_TIMESTAMP
+                UPDATE appointments
+                SET status = 'confirmed'
                 WHERE id = %s
             """, (appointment_id,))
             
@@ -109,9 +110,8 @@ class AppointmentService:
             cursor = conn.cursor()
             
             cursor.execute("""
-                UPDATE appointments 
-                SET status = 'cancelled',
-                    updated_at = CURRENT_TIMESTAMP
+                UPDATE appointments
+                SET status = 'cancelled'
                 WHERE id = %s
             """, (appointment_id,))
             

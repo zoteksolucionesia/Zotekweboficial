@@ -386,8 +386,8 @@ PROCESSED_MESSAGES = deque(maxlen=100)
 # Memory log for debugging
 RECENT_LOGS = deque(maxlen=50)
 
-# Initialize DB at module level
-database.init_db()
+# Las tablas ya existen en producción; init_db() solo se corre en migraciones manuales.
+# Llamarlo aquí causaba timeout en el healthcheck de Cloud Run por la conexión SSL a Supabase.
 
 # Initialize Gemini at module level
 gemini = None
@@ -1220,7 +1220,8 @@ async def request_code(request: Request):
             return JSONResponse(status_code=403, content={"detail": f"Acceso restringido: Email {email} no registrado"})
 
     code = f"{random.randint(100000, 999999)}"
-    database.save_verification_code(email, code, expires_minutes=10)
+    if not database.save_verification_code(email, code, expires_minutes=10):
+        raise HTTPException(status_code=500, detail="Error guardando el código")
 
     if send_security_code(email, code):
         return {"status": "code_sent"}
@@ -1885,7 +1886,7 @@ async def get_client_appointments(client_id: str, status: str = None,
             cursor.execute("""
                 SELECT * FROM appointments
                 WHERE client_id = %s AND status = %s
-                ORDER BY appointment_date ASC
+                ORDER BY date_time ASC
             """, (client_id_value, status))
             appointments = cursor.fetchall()
             cursor.close()
@@ -2019,8 +2020,9 @@ async def post_schedules(client_id: str, request: Request, current_user: str = D
         schedules = data.get("schedules", [])
         if not schedules and isinstance(data, list):
             schedules = data
-            
-        success = database.save_client_schedules(client_id, schedules)
+        week_start = data.get("week_start") if isinstance(data, dict) else None
+
+        success = database.save_client_schedules(client_id, schedules, week_start=week_start)
         if success:
             return {"status": "success", "message": "Horarios guardados en base de datos"}
         else:
