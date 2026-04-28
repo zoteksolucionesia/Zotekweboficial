@@ -273,6 +273,17 @@ html, body {
 }
 .select-filter:focus { border-color: var(--primary); }
 
+/* —— Status select (citas) ———————————————— */
+.status-select {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px 10px; color: var(--text); font-size: 12px; font-weight: 600;
+  font-family: inherit; outline: none; cursor: pointer; transition: all .2s;
+}
+.status-select:disabled { opacity: .5; cursor: not-allowed; }
+.status-select.status-pending   { background: rgba(255,149,0,.12);  color: #ff9500; border-color: rgba(255,149,0,.3); }
+.status-select.status-confirmed { background: rgba(52,199,89,.12);  color: #34c759; border-color: rgba(52,199,89,.3); }
+.status-select.status-cancelled { background: rgba(255,59,48,.12);  color: #ff3b30; border-color: rgba(255,59,48,.3); }
+
 /* —— Empty states ———————————————————————— */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; color: var(--text-muted); gap: 10px; }
 .empty-state i { font-size: 32px; opacity: .35; }

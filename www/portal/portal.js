@@ -326,22 +326,62 @@ function renderCitasTable() {
   const container    = document.getElementById('citas-table-wrap');
   const filterStatus = document.getElementById('filter-citas-status').value;
   let citas = [...allCitas];
-  if (filterStatus) citas = citas.filter(c => (c.status || 'pendiente') === filterStatus);
+  if (filterStatus) citas = citas.filter(c => (c.status || 'pending') === filterStatus);
   citas.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
   if (!citas.length) {
     container.innerHTML = '<div class="empty-state"><i class="fas fa-calendar-xmark"></i><p>No hay citas</p></div>'; return;
   }
   container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Teléfono</th><th>Fecha y hora</th><th>Motivo</th><th>Estado</th></tr></thead><tbody>
-    ${citas.map(c => `<tr>
+    ${citas.map(c => {
+      const st = c.status || 'pending';
+      return `<tr>
       <td>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</td>
       <td class="text-muted">${escHtml(c.phone || c.cliente_telefono || c.phone_number || '—')}</td>
       <td>${escHtml(formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '—')}</td>
       <td class="text-muted">${escHtml(c.motivo || c.notes || '—')}</td>
-      <td>${statusBadge(c.status || 'pending')}</td>
-    </tr>`).join('')}</tbody></table>`;
+      <td>
+        <select class="status-select status-${st}" data-id="${c.id}" onchange="changeAppointmentStatus(${c.id}, this.value, this)">
+          <option value="pending"${st === 'pending' ? ' selected' : ''}>⏳ Pendiente</option>
+          <option value="confirmed"${st === 'confirmed' ? ' selected' : ''}>✅ Confirmada</option>
+          <option value="cancelled"${st === 'cancelled' ? ' selected' : ''}>❌ Cancelada</option>
+        </select>
+      </td>
+    </tr>`;
+    }).join('')}</tbody></table>`;
 }
 document.getElementById('filter-citas-status').addEventListener('change', renderCitasTable);
+
+async function changeAppointmentStatus(appointmentId, newStatus, selectEl) {
+  if (!clientData?.id) return;
+  const action = newStatus === 'confirmed' ? 'confirm' : newStatus === 'cancelled' ? 'cancel' : null;
+  if (!action) { showToast('Solo puedes confirmar o cancelar', 'error'); const cita = allCitas.find(c => c.id === appointmentId); selectEl.value = cita?.status || 'pending'; return; }
+
+  selectEl.disabled = true;
+  try {
+    const res = await fetch(`${API}/api/clients/${clientData.id}/appointments/${appointmentId}/${action}`, {
+      method: 'POST', headers: authHeader()
+    });
+    if (res.ok) {
+      const cita = allCitas.find(c => c.id === appointmentId);
+      if (cita) cita.status = newStatus;
+      selectEl.className = `status-select status-${newStatus}`;
+      showToast(`Cita ${newStatus === 'confirmed' ? 'confirmada' : 'cancelada'}`, 'success');
+      updateCitasKPIs();
+      renderProximasCitas();
+    } else {
+      showToast('Error al cambiar estado', 'error');
+      const cita = allCitas.find(c => c.id === appointmentId);
+      selectEl.value = cita?.status || 'pending';
+    }
+  } catch (e) {
+    showToast('Error de conexión', 'error');
+    const cita = allCitas.find(c => c.id === appointmentId);
+    selectEl.value = cita?.status || 'pending';
+  } finally {
+    selectEl.disabled = false;
+  }
+}
 
 // ===========================================
 // TABLA LEADS
