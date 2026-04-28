@@ -1742,7 +1742,7 @@ async def update_email_config(client_id: str, request: Request, current_user: st
 @app.post("/api/clients/{client_id}/email-test")
 async def test_email_config(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     """Prueba la configuración de email enviando un email de prueba"""
-    from functions.src.services.email_service import EmailService
+    from .services.email_service import EmailService
 
     data = await request.json()
     test_email = data.get('email', '')
@@ -1781,7 +1781,7 @@ async def test_email_config(client_id: str, request: Request, current_user: str 
 async def get_client_leads(client_id: str, status: str = None, limit: int = 50,
                           current_user: str = Depends(get_current_user)):
     """Obtiene los leads de un cliente"""
-    from functions.src.services.lead_service import LeadService
+    from .services.lead_service import LeadService
     lead_service = LeadService()
 
     client_id_value = int(client_id) if client_id.isdigit() else client_id
@@ -1819,7 +1819,7 @@ async def get_client_leads(client_id: str, status: str = None, limit: int = 50,
 async def get_cold_leads(client_id: str, hours: int = 24,
                          current_user: str = Depends(get_current_user)):
     """Obtiene leads fríos (no han respondido en X horas)"""
-    from functions.src.services.lead_service import LeadService
+    from .services.lead_service import LeadService
     lead_service = LeadService()
 
     client_id_value = int(client_id) if client_id.isdigit() else client_id
@@ -1831,8 +1831,8 @@ async def get_cold_leads(client_id: str, hours: int = 24,
 async def send_lead_followup(client_id: str, lead_id: int, request: Request,
                             current_user: str = Depends(get_current_user)):
     """Envía follow-up manual a un lead"""
-    from functions.src.services.lead_service import LeadService
-    from functions.src.services.email_service import get_email_service_for_client
+    from .services.lead_service import LeadService
+    from .services.email_service import get_email_service_for_client
 
     data = await request.json()
     message = data.get('message', '')
@@ -1871,7 +1871,7 @@ async def send_lead_followup(client_id: str, lead_id: int, request: Request,
 async def get_client_appointments(client_id: str, status: str = None,
                                   current_user: str = Depends(get_current_user)):
     """Obtiene las citas de un cliente"""
-    from functions.src.services.appointment_service import AppointmentService
+    from .services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
     client_id_value = int(client_id) if client_id.isdigit() else client_id
@@ -2071,7 +2071,7 @@ async def create_appointment_api(client_id: str, request: Request):
 async def confirm_appointment(client_id: str, appointment_id: int,
                              current_user: str = Depends(get_current_user)):
     """Confirma una cita"""
-    from functions.src.services.appointment_service import AppointmentService
+    from .services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
     if apt_service.confirm_appointment(appointment_id):
@@ -2082,7 +2082,7 @@ async def confirm_appointment(client_id: str, appointment_id: int,
 async def cancel_appointment(client_id: str, appointment_id: int,
                             current_user: str = Depends(get_current_user)):
     """Cancela una cita"""
-    from functions.src.services.appointment_service import AppointmentService
+    from .services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
     if apt_service.cancel_appointment(appointment_id):
