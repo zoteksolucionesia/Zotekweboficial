@@ -43,14 +43,12 @@ class AppointmentService:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Nota: el schema actual de `appointments` no tiene columnas `email`/`notes`;
-            # los parámetros se conservan por compatibilidad con los callers pero se ignoran.
             cursor.execute("""
                 INSERT INTO appointments
-                (client_id, phone, date_time, name)
-                VALUES (%s, %s, %s, %s)
+                (client_id, phone, date_time, name, email, notes)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (client_id, phone, date_time, name))
+            """, (client_id, phone, date_time, name, email or '', notes or ''))
             
             appointment_id = cursor.fetchone()['id']
             conn.commit()

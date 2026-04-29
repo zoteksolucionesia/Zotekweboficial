@@ -306,7 +306,10 @@ function renderProximasCitas() {
   }
   container.innerHTML = `<table class="data-table"><thead><tr><th>Paciente</th><th>Fecha y hora</th><th>Estado</th></tr></thead><tbody>
     ${proximas.map(c => `<tr>
-      <td>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</td>
+      <td>
+        <div>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</div>
+        ${c.notes ? `<div class="text-muted" style="font-size:0.78rem;margin-top:2px;">${escHtml(c.notes)}</div>` : ''}
+      </td>
       <td>${escHtml(formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '—')}</td>
       <td>${statusBadge(c.status || 'pending')}</td>
     </tr>`).join('')}</tbody></table>`;
@@ -347,7 +350,10 @@ function renderCitasTable() {
     ${citas.map(c => {
       const st = c.status || 'pending';
       return `<tr>
-      <td>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</td>
+      <td>
+        <div>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</div>
+        ${c.notes ? `<div class="text-muted" style="font-size:0.78rem;margin-top:2px;">${escHtml(c.notes)}</div>` : ''}
+      </td>
       <td class="text-muted">${escHtml(c.phone || c.cliente_telefono || c.phone_number || '—')}</td>
       <td>${escHtml(formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '—')}</td>
       <td>
