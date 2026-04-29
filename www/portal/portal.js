@@ -233,26 +233,37 @@ async function loadDashboardData() {
       fetch(`${API}/api/clients/${cid}/appointments`, { headers: authHeader() }),
       fetch(`${API}/api/clients/${cid}/leads?limit=200`,  { headers: authHeader() }),
     ]);
-    console.log('[PORTAL] citasRes status:', citasRes.status, 'leadsRes status:', leadsRes.status);
+
+    // Sesión expirada — forzar re-login
+    if (citasRes.status === 401 || leadsRes.status === 401) {
+      showToast('Sesión expirada. Inicia sesión nuevamente.', 'error');
+      logout();
+      return;
+    }
+
     if (citasRes.ok) {
       const data = await citasRes.json();
-      console.log('[PORTAL] citas raw:', JSON.stringify(data).substring(0, 300));
       allCitas = Array.isArray(data) ? data : (data.appointments || data.citas || []);
-      console.log('[PORTAL] allCitas count:', allCitas.length);
       updateCitasKPIs(); renderProximasCitas();
     } else {
-      console.error('[PORTAL] citas error:', await citasRes.text());
+      document.getElementById('proximas-citas-list').innerHTML =
+        '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error al cargar citas</p></div>';
     }
     if (leadsRes.ok) {
       const data = await leadsRes.json();
-      console.log('[PORTAL] leads raw:', JSON.stringify(data).substring(0, 300));
       allLeads = data.leads || [];
-      console.log('[PORTAL] allLeads count:', allLeads.length);
       updateLeadsKPIs(); renderLeadsRecientes();
     } else {
-      console.error('[PORTAL] leads error:', await leadsRes.text());
+      document.getElementById('leads-recientes-list').innerHTML =
+        '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error al cargar leads</p></div>';
     }
-  } catch (e) { console.error('Error cargando dashboard:', e); }
+  } catch (e) {
+    console.error('Error cargando dashboard:', e);
+    document.getElementById('proximas-citas-list').innerHTML =
+      '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error de conexión</p></div>';
+    document.getElementById('leads-recientes-list').innerHTML =
+      '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error de conexión</p></div>';
+  }
 }
 
 // ===========================================
@@ -715,6 +726,46 @@ function sourceBadge(source) {
 let scheduleState = {};
 let currentWeekStart = null;
 let horariosLoaded = false;
+let sessionDuration = parseInt(localStorage.getItem('zotek_session_duration') || '60');
+
+const DURATION_OPTIONS = [30, 45, 60, 90];
+
+function generateSlotsPortal(start, end, duration) {
+  const slots = [];
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  let cur = sh * 60 + sm;
+  const endMins = eh * 60 + em;
+  while (cur + duration <= endMins) {
+    const h = String(Math.floor(cur / 60)).padStart(2, '0');
+    const m = String(cur % 60).padStart(2, '0');
+    slots.push(`${h}:${m}`);
+    cur += duration;
+  }
+  return slots;
+}
+
+function renderDurationSelector() {
+  const container = document.getElementById('durationSelector');
+  if (!container) return;
+  container.innerHTML = DURATION_OPTIONS.map(d => `
+    <button
+      onclick="setSessionDuration(${d})"
+      style="padding:5px 14px;border-radius:20px;border:1px solid ${d === sessionDuration ? 'var(--accent,#6C63FF)' : 'rgba(108,99,255,0.3)'};
+             background:${d === sessionDuration ? 'var(--accent,#6C63FF)' : 'transparent'};
+             color:${d === sessionDuration ? '#fff' : 'var(--text,#fff)'};
+             cursor:pointer;font-size:0.85rem;font-weight:${d === sessionDuration ? '600' : '400'};">
+      ${d} min
+    </button>
+  `).join('');
+}
+
+function setSessionDuration(minutes) {
+  sessionDuration = minutes;
+  localStorage.setItem('zotek_session_duration', String(minutes));
+  renderDurationSelector();
+  renderScheduleEditor();
+}
 
 function toLocalDateStr(d) {
   const y = d.getFullYear();
@@ -746,6 +797,7 @@ function getWeekDates(mondayStr) {
 
 async function initHorariosSection() {
   if (!currentWeekStart) currentWeekStart = getMonday(toLocalDateStr(new Date()));
+  renderDurationSelector();
   await loadSchedules();
 }
 
@@ -763,6 +815,11 @@ async function loadSchedules() {
       if (!scheduleState[key]) scheduleState[key] = [];
       scheduleState[key].push({ start: s.start_time, end: s.end_time });
     });
+    // Sincronizar duración desde la API (sin pisar preferencia local si ya fue cambiada)
+    if (data.session_duration && !localStorage.getItem('zotek_session_duration')) {
+      sessionDuration = data.session_duration;
+    }
+    renderDurationSelector();
     renderScheduleEditor();
   } catch (e) {
     console.error('Error cargando horarios:', e);
@@ -806,17 +863,27 @@ function renderScheduleEditor() {
     const franjas = scheduleState[day.date] || [];
     const isActive = franjas.length > 0;
 
-    const franjasHtml = franjas.map((f, fi) => `
-      <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-        <input type="time" value="${f.start}" style="${inputStyle}width:110px;"
-          onchange="updateScheduleFranja('${day.date}',${fi},'start',this.value)">
-        <span style="color:var(--text-muted,#888)">→</span>
-        <input type="time" value="${f.end}" style="${inputStyle}width:110px;"
-          onchange="updateScheduleFranja('${day.date}',${fi},'end',this.value)">
-        <button onclick="removeScheduleFranja('${day.date}',${fi})"
-          style="background:rgba(255,80,80,0.15);border:none;color:#ff5050;border-radius:6px;padding:4px 8px;cursor:pointer;">✖</button>
-      </div>
-    `).join('');
+    const franjasHtml = franjas.map((f, fi) => {
+      const slots = generateSlotsPortal(f.start, f.end, sessionDuration);
+      const slotsPreview = slots.length
+        ? `<div style="margin-top:4px;margin-left:24px;display:flex;flex-wrap:wrap;gap:4px;">
+            ${slots.map(s => `<span style="background:rgba(108,99,255,0.12);border:1px solid rgba(108,99,255,0.25);border-radius:12px;padding:2px 8px;font-size:0.75rem;color:var(--accent,#6C63FF);">${s}</span>`).join('')}
+           </div>`
+        : '';
+      return `
+      <div style="margin-top:6px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="time" value="${f.start}" style="${inputStyle}width:110px;"
+            onchange="updateScheduleFranja('${day.date}',${fi},'start',this.value)">
+          <span style="color:var(--text-muted,#888)">→</span>
+          <input type="time" value="${f.end}" style="${inputStyle}width:110px;"
+            onchange="updateScheduleFranja('${day.date}',${fi},'end',this.value)">
+          <button onclick="removeScheduleFranja('${day.date}',${fi})"
+            style="background:rgba(255,80,80,0.15);border:none;color:#ff5050;border-radius:6px;padding:4px 8px;cursor:pointer;">✖</button>
+        </div>
+        ${slotsPreview}
+      </div>`;
+    }).join('');
 
     return `
     <div style="background:var(--card-bg,rgba(255,255,255,0.04));border-radius:10px;padding:10px 14px;">
@@ -991,7 +1058,7 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
   try {
     const res = await fetch(`${API}/api/clients/${clientData.id}/schedules`, {
       method: 'POST', headers: authHeader(),
-      body: JSON.stringify({ schedules, week_start: currentWeekStart })
+      body: JSON.stringify({ schedules, week_start: currentWeekStart, session_duration: sessionDuration })
     });
     if (res.ok) {
       showToast('Horarios guardados', 'success');

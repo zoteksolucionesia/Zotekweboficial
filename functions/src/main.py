@@ -2006,22 +2006,25 @@ import os
 
 @app.get("/api/clients/{client_id}/schedules")
 async def get_schedules(client_id: str, week_start: str = None):
-    # Ya no requiere auth para que la landing page pueda consultarlo
+    # No requiere auth — lo consultan la landing page y el BookingModal público
     from .services.appointment_service import appointment_service
+    from datetime import datetime as _dt
     schedules = database.get_client_schedules(client_id)
     booked = appointment_service.get_pending_appointments(client_id)
-    
-    # Formatear booked para que sea fácil de procesar
+    client_id_int = int(client_id) if str(client_id).isdigit() else client_id
+    session_duration = database.get_client_session_duration(client_id_int)
+
     booked_list = []
     for b in booked:
-        booked_list.append({
-            "date": b['date_time'].strftime('%Y-%m-%d'),
-            "time": b['date_time'].strftime('%H:%M')
-        })
-        
+        dt = b['date_time']
+        if not hasattr(dt, 'strftime'):
+            dt = _dt.fromisoformat(str(dt))
+        booked_list.append({"date": dt.strftime('%Y-%m-%d'), "time": dt.strftime('%H:%M')})
+
     return {
         "schedules": schedules,
-        "booked": booked_list
+        "booked": booked_list,
+        "session_duration": session_duration,
     }
 
 @app.post("/api/clients/{client_id}/schedules")
@@ -2032,6 +2035,10 @@ async def post_schedules(client_id: str, request: Request, current_user: str = D
         if not schedules and isinstance(data, list):
             schedules = data
         week_start = data.get("week_start") if isinstance(data, dict) else None
+        session_duration = data.get("session_duration") if isinstance(data, dict) else None
+
+        if session_duration:
+            database.set_client_session_duration(client_id, int(session_duration))
 
         success = database.save_client_schedules(client_id, schedules, week_start=week_start)
         if success:

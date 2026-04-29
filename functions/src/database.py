@@ -740,6 +740,42 @@ def get_client_schedules(client_id):
         print(f"❌ ERROR get_client_schedules: {e}")
         return []
 
+def get_client_session_duration(client_id):
+    """Obtiene la duración de sesión (minutos) guardada en menu_json del cliente."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT menu_json FROM clients WHERE id = %s", (int(client_id),))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if row and row.get('menu_json'):
+            menu = row['menu_json']
+            if isinstance(menu, str):
+                menu = json.loads(menu)
+            return int(menu.get('session_duration', 60))
+    except Exception as e:
+        print(f"❌ ERROR get_client_session_duration: {e}")
+    return 60
+
+def set_client_session_duration(client_id, duration_minutes):
+    """Guarda la duración de sesión en menu_json del cliente sin pisar otros campos."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE clients
+            SET menu_json = COALESCE(menu_json, '{}'::jsonb) || %s::jsonb
+            WHERE id = %s
+        """, (json.dumps({"session_duration": int(duration_minutes)}), int(client_id)))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ ERROR set_client_session_duration: {e}")
+        return False
+
 def save_client_schedules(client_id, schedules, week_start=None):
     """Guarda horarios para un cliente, scoped a la semana indicada (no borra otras semanas)."""
     try:
