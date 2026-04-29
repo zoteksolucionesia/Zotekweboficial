@@ -354,7 +354,10 @@ function renderCitasTable() {
         <div>${escHtml(c.name || c.paciente_nombre || c.customer_name || '—')}</div>
         ${c.notes ? `<div class="text-muted" style="font-size:0.78rem;margin-top:2px;">${escHtml(c.notes)}</div>` : ''}
       </td>
-      <td class="text-muted">${escHtml(c.phone || c.cliente_telefono || c.phone_number || '—')}</td>
+      <td>
+        <div class="text-muted">${escHtml(c.phone || c.cliente_telefono || c.phone_number || '—')}</div>
+        ${c.email ? `<div class="text-muted" style="font-size:0.78rem;margin-top:2px;">${escHtml(c.email)}</div>` : ''}
+      </td>
       <td>${escHtml(formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '—')}</td>
       <td>
         <select class="status-select status-${st}" data-id="${c.id}" onchange="changeAppointmentStatus(${c.id}, this.value, this)">
