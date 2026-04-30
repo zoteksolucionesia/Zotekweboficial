@@ -215,8 +215,9 @@ class GeminiEngine:
             }
 
         except Exception as e:
-            print(f"ERROR GEMINI AGENT: {e}\n{traceback.format_exc()}")
-            return {"text": "Lo siento, tuve un problema procesando tu solicitud.", "tool_calls": []}
+            err_detail = f"{type(e).__name__}: {e}"
+            print(f"ERROR GEMINI AGENT: {err_detail}\n{traceback.format_exc()}")
+            return {"text": f"[DEBUG] {err_detail}", "tool_calls": []}
 
     def generar_respuesta(self, mensaje_usuario, client_data, numero_telefono):
         """Mantiene compatibilidad con el flujo legacy."""
