@@ -215,9 +215,13 @@ class GeminiEngine:
             }
 
         except Exception as e:
-            err_detail = f"{type(e).__name__}: {e}"
-            print(f"ERROR GEMINI AGENT: {err_detail}\n{traceback.format_exc()}")
-            return {"text": f"[DEBUG] {err_detail}", "tool_calls": []}
+            err_str = str(e)
+            print(f"ERROR GEMINI AGENT: {type(e).__name__}: {err_str}\n{traceback.format_exc()}")
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                msg = "El asistente está temporalmente saturado por límite de cuota. Intenta de nuevo en unos minutos."
+            else:
+                msg = "Lo siento, tuve un problema procesando tu solicitud."
+            return {"text": msg, "tool_calls": []}
 
     def generar_respuesta(self, mensaje_usuario, client_data, numero_telefono):
         """Mantiene compatibilidad con el flujo legacy."""
