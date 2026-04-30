@@ -124,11 +124,15 @@ class GeminiEngine:
         
         # 1.5 Obtener citas ya agendadas para bloquearlas
         from .appointment_service import appointment_service
+        from datetime import datetime as _dt
         booked = appointment_service.get_pending_appointments(client_id)
         booked_str = "--- CITAS YA RESERVADAS (NO DISPONIBLES) ---\n"
         if booked:
             for b in booked:
-                booked_str += f"- {b['date_time'].strftime('%Y-%m-%d %H:%M')}\n"
+                dt = b['date_time']
+                if not hasattr(dt, 'strftime'):
+                    dt = _dt.fromisoformat(str(dt))
+                booked_str += f"- {dt.strftime('%Y-%m-%d %H:%M')}\n"
         else:
             booked_str += "No hay citas reservadas aún.\n"
         
