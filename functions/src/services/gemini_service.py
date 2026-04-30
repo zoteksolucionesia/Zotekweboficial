@@ -146,6 +146,8 @@ class GeminiEngine:
         instrucciones_base = client_data.get('system_instruction') or \
             f"Eres el agente inteligente de {nombre_bot}. Ayuda al usuario usando tus herramientas."
 
+        duracion = database.get_client_session_duration(client_id)
+
         # 2. System Instruction (Cerebro del Agente)
         prompt_sistema = f"""
         {instrucciones_base}

@@ -1941,10 +1941,10 @@ async def widget_chat(request: Request):
         
         # Procesamos las tool calls para que surtan efecto en la base de datos
         tool_calls = respuesta_json.get("tool_calls", [])
+        confirmation_msg = ""
         if tool_calls:
             logger.info(f"[{session_id}] Widget chat detectó {len(tool_calls)} herramientas")
             # Reutilizamos ejecutar_herramientas_agente adaptado para web
-            confirmation_msg = ""
             for tool in tool_calls:
                 name = tool.get('name')
                 args_raw = tool.get('args')
