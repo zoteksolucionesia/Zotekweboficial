@@ -13,7 +13,7 @@ class GeminiEngine:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         self.client = genai.Client(api_key=self.api_key)
-        self.model_id = "gemini-2.0-flash"
+        self.model_id = "gemini-2.5-flash"
         
         # Herramientas disponibles para el agente (Function Calling)
         self.tools = [
@@ -218,7 +218,7 @@ class GeminiEngine:
             err_str = str(e)
             print(f"ERROR GEMINI AGENT: {type(e).__name__}: {err_str}\n{traceback.format_exc()}")
             if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
-                msg = "El asistente está temporalmente saturado por límite de cuota. Intenta de nuevo en unos minutos."
+                msg = "El asistente está temporalmente saturado. Intenta de nuevo en unos segundos."
             else:
                 msg = "Lo siento, tuve un problema procesando tu solicitud."
             return {"text": msg, "tool_calls": []}
