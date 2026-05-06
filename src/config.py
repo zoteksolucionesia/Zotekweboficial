@@ -53,7 +53,7 @@ class Config:
     # ============================================
     # CONFIGURACIÓN DE GEMINI
     # ============================================
-    GEMINI_MODEL_ID = "gemini-2.0-flash"
+    GEMINI_MODEL_ID = "gemini-2.5-flash"
     GEMINI_TEMPERATURE = 0.5
     GEMINI_MAX_RETRIES = 3
     GEMINI_RETRY_DELAY_SECONDS = 2
