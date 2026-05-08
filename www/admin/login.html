@@ -1,49 +1,54 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zotek Admin | Login</title>
-    <style>
-        :root {
-            --bg: #0d1117;
-            --card-bg: #161b22;
-            --border: #30363d;
-            --primary: #58a6ff;
-            --text: #c9d1d9;
-            --text-muted: #8b949e;
-        }
+    <title>Zotek Admin | Ingresar</title>
 
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Link to the main stylesheet for the awesome background effects and base styles -->
+    <link rel="stylesheet" href="/style.css">
+    
+    <style>
+        /* Specific overrides for the login form */
         body {
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             min-height: 100vh;
-            background: var(--bg);
             margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            color: var(--text);
+            overflow: hidden; /* Hide scrollbars from background blobs */
+        }
+        
+        .login-wrapper {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 440px;
+            padding: 2rem;
         }
 
         .login-card {
-            background: var(--card-bg);
-            padding: 3rem;
-            border-radius: 16px;
-            border: 1px solid var(--border);
-            width: 100%;
-            max-width: 420px;
+            background: rgba(10, 10, 10, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 3rem 2.5rem;
             text-align: center;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-            animation: fadeIn 0.6s ease-out;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 
+                        0 0 0 1px rgba(255, 255, 255, 0.05);
+            animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+            transform: translateY(20px);
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -51,52 +56,67 @@
         }
 
         .logo-login {
-            height: 80px;
+            margin-bottom: 2rem;
+            display: inline-block;
+        }
+        
+        .login-title {
+            margin-bottom: 0.5rem;
+            font-size: 1.5rem;
+        }
+        
+        .login-subtitle {
+            color: #8892b0;
             margin-bottom: 2.5rem;
-            filter: drop-shadow(0 0 15px rgba(88, 166, 255, 0.3));
+            font-size: 0.95rem;
         }
 
         .form-group {
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #ccd6f6;
+            font-size: 0.9rem;
+            font-weight: 500;
         }
 
         .form-control {
             width: 100%;
-            padding: 1rem;
-            background: #0d1117;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-size: 1.1rem;
+            padding: 1rem 1.25rem;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
             box-sizing: border-box;
-            transition: all 0.3s;
-            text-align: center;
+            transition: all 0.3s ease;
         }
 
         .form-control:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
+            background: rgba(0, 229, 255, 0.05);
+            box-shadow: 0 0 0 4px rgba(0, 229, 255, 0.1);
         }
 
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 1rem;
-            border-radius: 8px;
+        .form-control::placeholder {
+            color: #64748b;
+        }
+
+        .btn-submit {
             width: 100%;
-            font-weight: 700;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .btn-primary:hover {
-            filter: brightness(1.1);
-            transform: translateY(-2px);
+            padding: 1.25rem;
+            margin-top: 1rem;
+            font-size: 1.05rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .btn-primary:active {
@@ -130,94 +150,39 @@
 </head>
 
 <body>
-    <div class="login-card">
-        <svg width="160" height="60" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg" class="logo-login"
-            aria-label="Zotek Logo">
-            <style>
-                /* Animación para el círculo principal */
-                @keyframes pulse {
-                    0% {
-                        transform: scale(1);
-                    }
+    <!-- Background Animated Blobs (from style.css) -->
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
 
-                    50% {
-                        transform: scale(1.1);
-                    }
+    <div class="login-wrapper">
+        <div class="login-card">
+            
+            <a href="/" style="text-decoration: none;">
+                <img src="/Logo-zotek_animado.svg" alt="Zotek Logo" class="logo-login" style="height: 60px;">
+            </a>
 
-                    100% {
-                        transform: scale(1);
-                    }
-                }
+            <h1 class="login-title font-display text-gradient">Bienvenido</h1>
+            <p class="login-subtitle">Ingresa tus credenciales para administrar tus agentes.</p>
 
-                .circle-main {
-                    animation: pulse 2s infinite ease-in-out;
-                }
+            <div id="feedback" class="hidden"></div>
 
-                /* Animación para los puntos */
-                @keyframes rotateDots {
-                    0% {
-                        transform: rotate(0deg);
-                    }
-
-                    100% {
-                        transform: rotate(360deg);
-                    }
-                }
-
-                .dot-group {
-                    animation: rotateDots 5s linear infinite;
-                }
-            </style>
-
-            <!-- Icono IA / Chip tecnológico (centrado) -->
-            <g transform="translate(35, 30)">
-                <!-- Círculo principal -->
-                <circle r="14" cx="0" cy="0" fill="#00bcd4" class="circle-main" />
-
-                <!-- Grupo de puntos rotatorios -->
-                <g class="dot-group">
-                    <circle r="4" cx="-18" cy="-18" fill="#ff0066" fill-opacity="0.7" />
-                    <circle r="4" cx="18" cy="-18" fill="#ff0066" fill-opacity="0.7" />
-                    <circle r="4" cx="-18" cy="18" fill="#ff0066" fill-opacity="0.7" />
-                    <circle r="4" cx="18" cy="18" fill="#ff0066" fill-opacity="0.7" />
-                </g>
-
-                <!-- Líneas conectando puntos -->
-                <line x1="-18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-                <line x1="18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-                <line x1="-18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-                <line x1="18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5" />
-            </g>
-
-            <!-- Texto "Zotek" en azul (visible en ambos modos) -->
-            <text x="65" y="38" fill="#1565C0" font-family="'Space Grotesk', 'Segoe UI', sans-serif" font-size="28"
-                font-weight="600" dominant-baseline="middle" text-anchor="start">Zotek</text>
-        </svg>
-        <h2 style="margin-bottom: 0.5rem; font-weight: 800; color: white;">Zotek Acceso Seguro</h2>
-        <div id="feedback" class="hidden"></div>
-
-        <div id="step-1">
-            <p style="color: var(--text-muted); margin-bottom: 2rem;">Ingresa el correo administrativo para recibir tu
-                llave de acceso.</p>
-            <div class="form-group">
-                <input type="email" id="email" placeholder="tu@correo.com" class="form-control"
-                    style="background: transparent; border-color: transparent; border-bottom: 1px solid var(--border); border-radius: 0; font-weight: bold;">
+            <div id="step-1">
+                <div class="form-group">
+                    <label class="form-label" for="email">Correo Institucional</label>
+                    <input type="email" id="email" class="form-control" placeholder="admin@zotek.ai" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="password">Contraseña Segura</label>
+                    <input type="password" id="password" class="form-control" placeholder="••••••••" required onkeypress="handleEnter(event)">
+                </div>
+                <!-- Remove verification step, use direct login -->
+                <button class="btn-primary btn-submit" id="btnContinue" onclick="login(this)">
+                    Ingresar al Panel
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                </button>
             </div>
-            <button class="btn-primary" onclick="requestCode(this)">Enviar Código</button>
-        </div>
-
-        <div id="step-2" class="hidden">
-            <p style="color: var(--text-muted); margin-bottom: 2rem;">Código de segurdad enviado. Revisa tu bandeja de
-                entrada.</p>
-            <div class="form-group">
-                <input type="text" id="code" placeholder="------" class="form-control" maxlength="6"
-                    style="font-size: 2rem; letter-spacing: 0.8rem; font-family: 'Courier New', Courier, monospace;">
-            </div>
-            <button class="btn-primary" onclick="verifyCode(this)">Verificar Acceso</button>
-            <p style="margin-top: 2rem;">
-                <a href="#" onclick="location.reload()"
-                    style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">← Volver a intentar</a>
-            </p>
         </div>
     </div>
 
@@ -229,57 +194,48 @@
             el.classList.remove('hidden');
         }
 
-        async function requestCode(btn) {
-            const email = document.getElementById('email').value;
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = 'Procesando...';
-
-            try {
-                const res = await fetch('/api/auth/request-code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-
-                if (res.ok) {
-                    document.getElementById('step-1').classList.add('hidden');
-                    document.getElementById('step-2').classList.remove('hidden');
-                    showFeedback('Código enviado exitosamente.', false);
-                } else {
-                    const data = await res.json();
-                    showFeedback(data.detail || 'Error en la configuración del servidor.');
-                }
-            } catch (e) {
-                showFeedback('Error de conexión. ¿El servidor está corriendo?');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = originalText;
+        function handleEnter(e) {
+            if (e.key === 'Enter') {
+                login(document.querySelector('.btn-primary'));
             }
         }
 
-        async function verifyCode(btn) {
+        async function login(btn) {
             const email = document.getElementById('email').value;
-            const code = document.getElementById('code').value;
+            const password = document.getElementById('password').value;
+            
+            if (!email || !password) {
+                showFeedback('Ingresa tu correo y contraseña.', true);
+                return;
+            }
+
+            const originalText = btn.textContent;
             btn.disabled = true;
+            btn.textContent = 'Verificando...';
 
             try {
-                const res = await fetch('/api/auth/verify-code', {
+                const res = await fetch('/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, code })
+                    body: JSON.stringify({ email, password })
                 });
+
                 const data = await res.json();
+                
                 if (res.ok) {
+                    showFeedback('Acceso concedido. Redirigiendo...', false);
                     localStorage.setItem('zotek_token', data.access_token);
-                    window.location.href = '/admin-control';
+                    setTimeout(() => {
+                        window.location.href = '/admin-control';
+                    }, 500);
                 } else {
-                    showFeedback(data.detail || 'Código incorrecto o expirado.');
+                    showFeedback(data.detail || 'Credenciales incorrectas.', true);
                 }
             } catch (e) {
-                showFeedback('Error de conexión.');
+                showFeedback('Error de conexión. ¿El servidor está corriendo?', true);
             } finally {
                 btn.disabled = false;
+                btn.textContent = originalText;
             }
         }
     </script>

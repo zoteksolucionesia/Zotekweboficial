@@ -25,3 +25,54 @@ Thumbs.db
 # Secrets
 service-account-key*.json
 migration_data.json
+
+# Large files / binaries
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# AI assistant memory
+.claude/
+.qwen/
+
+# Node
+node_modules/
+
+# Firebase local cache
+.firebase/
+
+# Skills directory (herramientas locales)
+skills/
+
+# Documentación de análisis generada (no va al repo)
+/AGENTES_VS_BOTS.md
+/AUDIT_REPORT*.md
+/AUTOMATIZACION_CONFIG.md
+/CODE_REVIEW_*.md
+/CORRECCIONES_REALIZADAS.md
+/DEMO_BOTS_CONFIG.md
+/EXECUTION_PLAN_*.md
+/implementacion_*.md
+/MIGRACION_POSTGRESQL.md
+/SAAS_IMPROVEMENTS.md
+/SECURITY_AUDIT_*.md
+/SEMANA_*.md
+/TODO.md
+/VAPI_CONFIG_GUIDE.md
+
+# Scripts one-off en raíz (diagnóstico, migración, pruebas manuales)
+/check_*.py
+/compare_*.py
+/fix_supabase_structure.py
+/migrate_insforge_to_supabase.py
+/secure_supabase.py
+/test.py
+/test_schedules_debug.py
+
+# Scripts de migración en subdirectorios
+functions/src/migration_v3.py
+scripts/migrate_encrypt_fields.py
+
+# Exports de datos temporales
+/schedules_*.json

@@ -1,5 +1,7 @@
 const token = localStorage.getItem('zotek_token');
 let currentUser = null;
+let currentClientData = null;
+let currentClientId = null;
 
 /* Toast Notifications System */
 function showToast(message, type = 'info') {
@@ -161,16 +163,16 @@ async function fetchClients() {
     allClients.forEach(client => {
         // En la tabla general (Admin), mostrar el email de login si existe
         const isDemo = String(client.phone_number_id || '').startsWith('demo_');
-        
-        // Los demos solo pueden ser restablecidos o duplicados, no editados directamente
+
+        // Los demos solo pueden ser visualizados o duplicados, no editados directamente
         let actionsHtml = '';
         if (isDemo) {
             actionsHtml = `
-                <button class="btn btn-outline-primary" onclick="duplicateDemoClient('${client.id}')" title="Crear cliente basado en este demo">
-                    <i class="fas fa-copy"></i> Duplicar
+                <button class="btn btn-outline-info" onclick="viewClient('${client.id}')" title="Ver configuración del demo">
+                    <i class="fas fa-eye"></i> Visualizar
                 </button>
-                <button class="btn btn-outline-danger" style="margin-left: 5px;" onclick="resetDemoClient('${client.id}')" title="Restaurar a configuración original">
-                    <i class="fas fa-undo"></i> Restablecer
+                <button class="btn btn-outline-primary" style="margin-left: 5px;" onclick="duplicateDemoClient('${client.id}')" title="Crear cliente basado en este demo">
+                    <i class="fas fa-copy"></i> Duplicar
                 </button>
             `;
         } else {
@@ -234,6 +236,15 @@ function populateClientSelector() {
     }
 }
 
+function switchClientTab(tabId) {
+    document.querySelectorAll('.client-tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.client-tab-btn').forEach(btn => btn.classList.remove('active'));
+    const tab = document.getElementById(tabId);
+    if (tab) tab.style.display = 'block';
+    const btn = document.querySelector(`.client-tab-btn[data-tab="${tabId}"]`);
+    if (btn) btn.classList.add('active');
+}
+
 function openModal(isEdit = false) {
     document.getElementById('modalTitle').innerText = isEdit ? 'Editar Cliente' : 'Agregar Nuevo Cliente';
     if (!isEdit) {
@@ -243,16 +254,21 @@ function openModal(isEdit = false) {
         currentMenu = { options: [] };
         renderMenuEditor();
     }
+    switchClientTab('tab-general');
     showSection('edit-client');
-    // Asegurar que el scroll empiece arriba
-    const modalGrid = document.querySelector('.modal-grid');
-    if (modalGrid) modalGrid.scrollTop = 0;
-
 }
 
 function closeModal() {
+    // Si venimos de viewClient, restaurar estado normal
+    if (window.viewClientCleanup) {
+        window.viewClientCleanup();
+    }
+
     showSection('clients');
     document.getElementById('clientForm').reset();
+
+    // Restaurar título del modal
+    document.getElementById('modalTitle').textContent = 'Agregar Nuevo Cliente';
 }
 
 async function resetDemoClient(id) {
@@ -271,13 +287,13 @@ async function resetDemoClient(id) {
                 const rawText = await response.text();
                 if (response.ok) {
                     showToast(`Cliente '${id}' restablecido correctamente.`, 'success');
-                    
+
                     // Recargar lista de clientes
                     await fetchClients();
-                    
+
                     // Pequeña pausa para asegurar que la lista se actualizó
                     await new Promise(resolve => setTimeout(resolve, 300));
-                    
+
                     // Abrir automáticamente el formulario de edición para este cliente
                     editClient(id);
                 } else {
@@ -295,82 +311,83 @@ async function resetDemoClient(id) {
 }
 
 async function duplicateDemoClient(demoId) {
-    try {
-        // 1. Obtener datos del demo
-        const response = await fetch(`/api/clients/${demoId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) {
-            showToast('Error al cargar datos del demo', 'error');
-            return;
-        }
-
-        const demoClient = await response.json();
-        console.log("Demo client loaded:", demoClient);
-
-        // 2. Crear nuevo cliente basado en el demo
-        const timestamp = Date.now();
-        
-        // Parsear menu_json si es string (viene del backend como JSON string)
-        let menuData = { options: [] };
-        if (demoClient.menu_json) {
+    // Usar modal personalizado en lugar de confirm() nativo
+    showConfirmDuplicate({
+        demoId: demoId,
+        title: '💎 Duplicar Agente Inteligente',
+        message: '¿Deseas crear una copia exacta de este bot? Clonaremos sus instrucciones de Gemini, toda su base de conocimientos (PDFs) y su menú interactivo de forma instantánea.',
+        onConfirm: async () => {
             try {
-                menuData = typeof demoClient.menu_json === 'string' 
-                    ? JSON.parse(demoClient.menu_json) 
-                    : demoClient.menu_json;
-            } catch (e) {
-                console.error("Error parsing menu_json:", e);
+                showToast('🚀 Clonando cerebro del bot. Esto puede tomar unos segundos...', 'info');
+
+                const response = await fetch(`/api/clients/${demoId}/duplicate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showToast('✅ Bot clonado exitosamente con todos sus manuales.', 'success');
+
+                    // Recargar lista y abrir el nuevo cliente
+                    await fetchClients();
+
+                    if (data.new_client_id) {
+                        setTimeout(() => {
+                            editClient(data.new_client_id);
+                        }, 800);
+                    }
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    showToast('❌ Error al duplicar: ' + (errorData.detail || 'Error del servidor'), 'error');
+                }
+            } catch (error) {
+                console.error("Error duplicando demo:", error);
+                showToast('⚠️ Error de conexión: ' + error.message, 'error');
             }
         }
-        
-        const newClient = {
-            name: `${demoClient.name} (Copia ${new Date().toLocaleDateString()})`,
-            whatsapp_token: '',  // Limpiar tokens sensibles
-            phone_number_id: `client_${timestamp}`,
-            verify_token: `verify_${timestamp}`,
-            system_instruction: demoClient.system_instruction || '',
-            email: '',  // El usuario debe poner su propio email
-            calendly_url: demoClient.calendly_url || '',
-            menu: menuData  // Copiar menú completo con opciones
-        };
+    });
+}
 
-        console.log("Creating new client from demo:", newClient);
+function showConfirmDuplicate(options) {
+    const overlay = document.getElementById('confirmDeleteOverlay');
+    const titleEl = document.getElementById('confirmDeleteTitle');
+    const messageEl = document.getElementById('confirmDeleteMessage');
+    const cancelBtn = document.getElementById('confirmDeleteCancel');
+    const okBtn = document.getElementById('confirmDeleteOk');
 
-        // 3. Guardar nuevo cliente
-        const createResponse = await fetch('/api/clients', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(newClient)
-        });
+    titleEl.innerHTML = `<i class="fas fa-copy" style="color: var(--primary);"></i> ${options.title || 'Duplicar'}`;
+    messageEl.textContent = options.message || '';
 
-        if (createResponse.ok) {
-            showToast('Cliente creado exitosamente. Ahora puedes editarlo.', 'success');
+    // Cambiar estilo del botón temporalmente para que sea azul (primario) en lugar de rojo (danger)
+    okBtn.textContent = 'Sí, Duplicar';
+    okBtn.className = 'btn btn-primary';
+    cancelBtn.textContent = 'Ahora no';
 
-            // Recargar lista y abrir el nuevo cliente para editar
-            await fetchClients();
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Obtener el ID del nuevo cliente (último creado)
-            const allClients = await fetch('/api/clients', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            }).then(r => r.json());
-
-            const newClientData = allClients.find(c => c.phone_number_id === newClient.phone_number_id);
-            if (newClientData) {
-                editClient(newClientData.id);
-            }
-        } else {
-            const errorText = await createResponse.text();
-            showToast('Error al crear cliente: ' + errorText, 'error');
-        }
-    } catch (error) {
-        console.error("Error duplicando demo:", error);
-        showToast('Error de conexión: ' + error.message, 'error');
+    function close() {
+        overlay.classList.remove('active');
+        overlay.setAttribute('aria-hidden', 'true');
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+        // Restaurar botón original
+        setTimeout(() => {
+            okBtn.className = 'btn btn-danger';
+        }, 300);
     }
+
+    okBtn.onclick = () => {
+        close();
+        options.onConfirm();
+    };
+    cancelBtn.onclick = () => {
+        close();
+    };
+
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
 }
 
 function showConfirmReset(options) {
@@ -439,7 +456,6 @@ async function deleteClient(id, name) {
         });
 
         if (response.ok) {
-            showToast(`Cliente "${name}" eliminado correctamente.`, 'success');
             await fetchClients();
         } else {
             const errorText = await response.text();
@@ -465,6 +481,7 @@ async function editClient(id) {
         }
 
         const client = await response.json();
+        currentClientData = client;
         console.log("Client loaded:", client);
 
         document.getElementById('clientId').value = client.id;
@@ -472,22 +489,122 @@ async function editClient(id) {
         document.getElementById('whatsappToken').value = client.whatsapp_token || '';
         document.getElementById('phoneNumberId').value = client.phone_number_id || '';
         document.getElementById('verifyToken').value = client.verify_token || '';
-        document.getElementById('systemInstruction').value = client.system_instruction || '';
 
         // SaaS Phase 3 fields
         document.getElementById('clientEmail').value = client.email || '';
         document.getElementById('calendlyUrl').value = client.calendly_url || '';
 
+        // VAPI & Calendar configs
+        document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
+        document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
+        document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
+
+        // System instruction in Tab 2
+        document.getElementById('systemInstruction').value = client.system_instruction || '';
+
         // Clean UI state before loading menu
         currentEditingPath = null;
+        currentClientId = id;
 
         // Load Menu
         await loadClientMenu(id);
+
+        // Load Schedules
+        await initHorariosSection(id);
+
+        // Load Appointments
+        await initCitasSection(id);
 
         openModal(true);
     } catch (e) {
         console.error("Error in editClient:", e);
         showToast('Error interno al editar: ' + e.message, 'error');
+    }
+}
+
+/**
+ * Visualiza un cliente en modo solo lectura (usando el modal de edición con campos deshabilitados)
+ */
+async function viewClient(id) {
+    try {
+        console.log("View client called for id:", id);
+        const response = await fetch(`/api/clients/${id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            console.error("HTTP error:", response.status);
+            showToast('Error de servidor al cargar cliente', 'error');
+            return;
+        }
+
+        const client = await response.json();
+        currentClientData = client;
+        console.log("Client loaded (view mode):", client);
+
+        // Llenar el formulario con los datos del cliente
+        document.getElementById('clientId').value = client.id;
+        document.getElementById('clientName').value = client.name;
+        document.getElementById('whatsappToken').value = client.whatsapp_token || '';
+        document.getElementById('phoneNumberId').value = client.phone_number_id || '';
+        document.getElementById('verifyToken').value = client.verify_token || '';
+
+        // SaaS Phase 3 fields
+        document.getElementById('clientEmail').value = client.email || '';
+        document.getElementById('calendlyUrl').value = client.calendly_url || '';
+        document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
+        document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
+        document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
+        document.getElementById('systemInstruction').value = client.system_instruction || '';
+
+        // Cargar menú
+        currentClientId = id;
+        await loadClientMenu(id);
+
+        // Load Schedules
+        await initHorariosSection(id);
+
+        // Load Appointments
+        await initCitasSection(id);
+
+        // Deshabilitar TODOS los campos del formulario (excepto selects de estado de citas)
+        const form = document.getElementById('clientForm');
+        const inputs = form.querySelectorAll('input, textarea, select');
+        inputs.forEach(input => {
+            if (!input.classList.contains('status-select') && !input.classList.contains('select-filter')) {
+                input.disabled = true;
+            }
+        });
+
+        // Ocultar botones de guardar y cancelar
+        const saveBtn = document.querySelector('button[type="submit"]');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        if (saveBtn) saveBtn.style.display = 'none';
+        if (cancelBtn) cancelBtn.textContent = 'Cerrar';
+
+        // Cambiar título del modal
+        document.getElementById('modalTitle').textContent = `👁️ Visualizando: ${client.name}`;
+
+        // Mostrar el modal de edición
+        openModal(true);
+
+        // Guardar referencia para restaurar después
+        window.viewClientCleanup = () => {
+            // Re-habilitar campos
+            inputs.forEach(input => {
+                input.disabled = false;
+            });
+            // Restaurar botones
+            if (saveBtn) saveBtn.style.display = 'inline-block';
+            if (cancelBtn) cancelBtn.textContent = 'Cancelar';
+            // Limpiar referencia
+            delete window.viewClientCleanup;
+        };
+
+    } catch (e) {
+        console.error("Error in viewClient:", e);
+        showToast('Error interno al visualizar: ' + e.message, 'error');
     }
 }
 
@@ -502,20 +619,27 @@ async function saveClient(event) {
     }
 
     const id = document.getElementById('clientId').value;
-    
+
+    // Recuperar instrucción del sistema desde el DOM si está visible, o desde la variable global
+    const sysInstEl = document.getElementById('systemInstruction');
+    const finalSystemInstruction = sysInstEl ? sysInstEl.value : (currentClientData ? currentClientData.system_instruction : '');
+
     // Debug: Log del menú actual
     console.log("=== SAVE CLIENT DEBUG ===");
     console.log("Client ID:", id);
     console.log("Current Menu:", JSON.stringify(currentMenu, null, 2));
-    
+
     const data = {
         name: nameInput.value,
         whatsapp_token: document.getElementById('whatsappToken').value,
         phone_number_id: document.getElementById('phoneNumberId').value,
         verify_token: document.getElementById('verifyToken').value,
-        system_instruction: document.getElementById('systemInstruction').value,
+        system_instruction: finalSystemInstruction,
         email: document.getElementById('clientEmail').value,
         calendly_url: document.getElementById('calendlyUrl').value,
+        vapi_target: document.getElementById('vapiTarget').value,
+        vapi_professional_phone: document.getElementById('vapiProfessionalPhone').value,
+        google_calendar_id: document.getElementById('googleCalendarId').value,
         menu: {
             ...currentMenu
         }
@@ -541,6 +665,10 @@ async function saveClient(event) {
         console.log("Response text:", responseText);
 
         if (response.ok) {
+            // Save schedules if there are any
+            if (currentClientSchedules && currentClientSchedules.length > 0) {
+                await saveClientSchedules(id);
+            }
             closeModal();
             fetchClients();
             showToast('Cambios guardados con éxito', 'success');
@@ -799,13 +927,13 @@ function showBotHome() {
         
         <div class="form-group welcome-msg-box">
             <div class="editor-section-title"><i class="fas fa-comment-dots"></i> Mensaje de Bienvenida</div>
-            <textarea id="menuWelcomeText" class="menu-field-input" rows="2" placeholder="Ej: Hola, bienvenido a..." style="margin-top: 5px; width: 100%; font-size: 0.9rem;">${escapeHtml(currentMenu.text || '')}</textarea>
+            <textarea id="menuWelcomeText" class="menu-field-input" rows="4" placeholder="Ej: Hola, bienvenido a..." style="margin-top: 5px; width: 100%; font-size: 0.9rem;">${escapeHtml(currentMenu.text || '')}</textarea>
             <div class="editor-help-text">Este es el primer mensaje que envía el bot junto con el menú principal.</div>
         </div>
 
         <div class="fallback-box">
             <h5><i class="fas fa-redo-alt"></i> Respuesta de Navegación (Fallback)</h5>
-            <textarea id="menuFallbackText" class="menu-field-input" rows="2" placeholder="Ej: No entendí eso. Aquí tienes el menú de nuevo:" style="margin-top: 8px; width: 100%; font-size: 0.85rem;">${escapeHtml(currentMenu.fallback_text || '')}</textarea>
+            <textarea id="menuFallbackText" class="menu-field-input" rows="3" placeholder="Ej: No entendí eso. Aquí tienes el menú de nuevo:" style="margin-top: 8px; width: 100%; font-size: 0.85rem;">${escapeHtml(currentMenu.fallback_text || '')}</textarea>
             <div class="editor-help-text">Mensaje que se envía cuando el usuario escribe algo que el bot no reconoce, para guiarlo de vuelta al menú.</div>
         </div>
 
@@ -836,6 +964,7 @@ function showBotHome() {
             currentMenu.fallback_text = e.target.value;
         };
     }
+
 }
 
 function renderEditorForm(path) {
@@ -1213,6 +1342,78 @@ async function loadChats() {
     }
 }
 
+async function exportChats() {
+    const clientId = document.getElementById('chat-client-selector').value;
+    const limit = document.getElementById('chat-limit').value || '50';
+
+    if (!clientId) {
+        showToast('Selecciona un cliente primero', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/clients/${clientId}/chats?limit=${limit}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const chats = await res.json();
+
+        if (!chats || chats.length === 0) {
+            showToast('No hay chats para exportar', 'info');
+            return;
+        }
+
+        let csv = 'Usuario,Mensaje,Respuesta,Timestamp\n';
+        chats.forEach(chat => {
+            const message = (chat.message || '').replace(/"/g, '""');
+            const response = (chat.response || '').replace(/"/g, '""');
+            csv += `"${chat.user_number}","${message}","${response}","${chat.timestamp || ''}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `chats_${clientId}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+        showToast(`${chats.length} chats exportados correctamente`, 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Error al exportar: ' + e.message, 'error');
+    }
+}
+
+async function clearChats() {
+    const clientId = document.getElementById('chat-client-selector').value;
+
+    if (!clientId) {
+        showToast('Selecciona un cliente primero', 'warning');
+        return;
+    }
+
+    if (!confirm('¿Estás seguro de que deseas vaciar TODOS los chats de este cliente? Esta acción no se puede deshacer.')) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/clients/${clientId}/clear-chats`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        if (data.status === 'cleared') {
+            showToast(`${data.deleted_count || 'Todos los'} chats eliminados correctamente`, 'success');
+            loadChats();
+        } else {
+            showToast('Error: ' + (data.detail || 'Error desconocido'), 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        showToast('Error al vaciar chats: ' + e.message, 'error');
+    }
+}
+
 async function loadDocuments() {
     const clientId = document.getElementById('doc-client-selector').value;
     if (!clientId) return;
@@ -1528,6 +1729,492 @@ function copyWebhook() {
             setTimeout(() => { btn.textContent = '📋'; }, 2000);
         });
     }
+}
+
+// ============= Schedules Management (Portal-style UI) =============
+let scheduleState = {};
+let currentWeekStart = null;
+let sessionDuration = 60;
+const DURATION_OPTIONS = [30, 45, 60, 90];
+
+function toLocalDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+}
+
+function getMonday(dateStr) {
+    const date = new Date(dateStr + 'T12:00:00');
+    const day = date.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    date.setDate(date.getDate() + diff);
+    return toLocalDateStr(date);
+}
+
+function getWeekDates(mondayStr) {
+    const days = [];
+    const dayLabels = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    const monthNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(mondayStr + 'T12:00:00');
+        d.setDate(d.getDate() + i);
+        const dateStr = toLocalDateStr(d);
+        days.push({ date: dateStr, label: `${dayLabels[i]} ${d.getDate()} ${monthNames[d.getMonth()]}` });
+    }
+    return days;
+}
+
+function generateSlotsAdmin(start, end, duration) {
+    const slots = [];
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    let cur = sh * 60 + sm;
+    const endMins = eh * 60 + em;
+    while (cur + duration <= endMins) {
+        const h = String(Math.floor(cur / 60)).padStart(2, '0');
+        const m = String(cur % 60).padStart(2, '0');
+        slots.push(`${h}:${m}`);
+        cur += duration;
+    }
+    return slots;
+}
+
+function renderDurationSelector() {
+    const container = document.getElementById('durationSelector');
+    if (!container) return;
+    container.innerHTML = DURATION_OPTIONS.map(d => `
+        <button type="button" onclick="setSessionDuration(${d})"
+                style="padding:5px 14px;border-radius:20px;border:1px solid ${d === sessionDuration ? 'var(--primary)' : 'rgba(88,166,255,0.3)'};
+                       background:${d === sessionDuration ? 'var(--primary)' : 'transparent'};
+                       color:${d === sessionDuration ? '#fff' : 'var(--text)'};
+                       cursor:pointer;font-size:0.85rem;font-weight:${d === sessionDuration ? '600' : '400'};">
+            ${d} min
+        </button>
+    `).join('');
+}
+
+function setSessionDuration(minutes) {
+    sessionDuration = minutes;
+    renderDurationSelector();
+    renderScheduleEditor();
+}
+
+function renderWeekSelector() {
+    const container = document.getElementById('weekSelector');
+    if (!container) return;
+    const weekDates = getWeekDates(currentWeekStart);
+    container.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <button type="button" class="btn btn-secondary" style="padding:6px 14px;" onclick="changeScheduleWeek(-1)">← Anterior</button>
+            <span style="font-weight:600;color:var(--primary);">${weekDates[0].label} — ${weekDates[6].label}</span>
+            <button type="button" class="btn btn-secondary" style="padding:6px 14px;" onclick="changeScheduleWeek(1)">Siguiente →</button>
+        </div>
+        <div style="margin-top:8px;">
+            <button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem;" onclick="copyWeekScheduleAdmin()">📋 Copiar semana</button>
+        </div>
+    `;
+}
+
+function changeScheduleWeek(offset) {
+    const d = new Date(currentWeekStart + 'T12:00:00');
+    d.setDate(d.getDate() + (offset * 7));
+    currentWeekStart = toLocalDateStr(d);
+    loadSchedulesAdmin();
+}
+
+function renderScheduleEditor() {
+    const container = document.getElementById('scheduleEditor');
+    if (!container) return;
+    renderWeekSelector();
+
+    const weekDates = getWeekDates(currentWeekStart);
+    const inputStyle = 'padding:6px 8px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text);font-size:0.85rem;';
+
+    let html = weekDates.map(day => {
+        const franjas = scheduleState[day.date] || [];
+        const isActive = franjas.length > 0;
+
+        const franjasHtml = franjas.map((f, fi) => {
+            const slots = generateSlotsAdmin(f.start, f.end, sessionDuration);
+            const slotsPreview = slots.length
+                ? `<div style="margin-top:4px;margin-left:24px;display:flex;flex-wrap:wrap;gap:4px;">
+                    ${slots.map(s => `<span style="background:rgba(88,166,255,0.12);border:1px solid rgba(88,166,255,0.25);border-radius:12px;padding:2px 8px;font-size:0.75rem;color:var(--primary);">${s}</span>`).join('')}
+                   </div>`
+                : '';
+            return `
+            <div style="margin-top:6px;">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="time" value="${f.start}" style="${inputStyle}width:110px;"
+                        onchange="updateScheduleFranja('${day.date}',${fi},'start',this.value)">
+                    <span style="color:var(--text-muted)">→</span>
+                    <input type="time" value="${f.end}" style="${inputStyle}width:110px;"
+                        onchange="updateScheduleFranja('${day.date}',${fi},'end',this.value)">
+                    <button type="button" onclick="removeScheduleFranja('${day.date}',${fi})"
+                        style="background:rgba(255,80,80,0.15);border:none;color:#ff5050;border-radius:6px;padding:4px 8px;cursor:pointer;">✖</button>
+                </div>
+                ${slotsPreview}
+            </div>`;
+        }).join('');
+
+        return `
+        <div style="background:var(--surface-color);border-radius:10px;padding:10px 14px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+                    <input type="checkbox" ${isActive ? 'checked' : ''}
+                        onchange="toggleScheduleDay('${day.date}',this.checked)"
+                        style="width:16px;height:16px;accent-color:var(--primary);">
+                    ${day.label}
+                </label>
+                ${isActive ? `
+                    <div style="display:flex;gap:6px;">
+                        <button type="button" onclick="addScheduleFranja('${day.date}')"
+                            style="background:rgba(88,166,255,0.15);border:1px solid rgba(88,166,255,0.3);color:var(--primary);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
+                            + Franja</button>
+                        <button type="button" onclick="copyDayScheduleAdmin('${day.date}')"
+                            title="Copiar este día a otro"
+                            style="background:rgba(88,166,255,0.1);border:1px solid rgba(88,166,255,0.25);color:var(--primary);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.8rem;">
+                            📋</button>
+                    </div>` : ''}
+            </div>
+            ${isActive ? franjasHtml : '<span style="color:var(--text-muted);font-size:0.8rem;margin-left:24px;">Día no laborable</span>'}
+        </div>`;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+function toggleScheduleDay(dateKey, active) {
+    if (active) {
+        scheduleState[dateKey] = [{ start: '09:00', end: '18:00' }];
+    } else {
+        delete scheduleState[dateKey];
+    }
+    renderScheduleEditor();
+}
+
+function addScheduleFranja(dateKey) {
+    if (!scheduleState[dateKey]) scheduleState[dateKey] = [];
+    const last = scheduleState[dateKey].slice(-1)[0];
+    scheduleState[dateKey].push({ start: last ? last.end : '09:00', end: '20:00' });
+    renderScheduleEditor();
+}
+
+function removeScheduleFranja(dateKey, fi) {
+    scheduleState[dateKey].splice(fi, 1);
+    if (scheduleState[dateKey].length === 0) delete scheduleState[dateKey];
+    renderScheduleEditor();
+}
+
+function updateScheduleFranja(dateKey, fi, field, value) {
+    if (scheduleState[dateKey] && scheduleState[dateKey][fi]) {
+        scheduleState[dateKey][fi][field] = value;
+    }
+}
+
+function copyDayScheduleAdmin(sourceDateKey) {
+    const weekDates = getWeekDates(currentWeekStart);
+    const otherDays = weekDates.filter(d => d.date !== sourceDateKey);
+
+    const optionsHtml = otherDays.map(d =>
+        `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;border:1px solid var(--border-color);">
+            <input type="checkbox" value="${d.date}" style="accent-color:var(--primary);">
+            <span style="font-size:0.9rem;">${d.label}</span>
+        </label>`
+    ).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'copyDayModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+        <div style="background:var(--surface-color);border:1px solid var(--border-color);border-radius:16px;padding:24px;width:300px;">
+            <h4 style="margin:0 0 4px;color:var(--primary);">Copiar día</h4>
+            <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:12px;">Selecciona los días destino:</p>
+            <div style="display:flex;flex-direction:column;gap:6px;">${optionsHtml}</div>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button type="button" onclick="document.getElementById('copyDayModal').remove()" class="btn btn-secondary" style="flex:1;padding:8px;">Cancelar</button>
+                <button type="button" onclick="applyCopyDaySchedule('${sourceDateKey}')" class="btn btn-primary" style="flex:1;padding:8px;">Copiar</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+function applyCopyDaySchedule(sourceDateKey) {
+    const franjas = scheduleState[sourceDateKey];
+    if (!franjas || franjas.length === 0) {
+        document.getElementById('copyDayModal')?.remove();
+        return showToast('El día origen no tiene franjas', 'error');
+    }
+    const checked = [...document.querySelectorAll('#copyDayModal input[type=checkbox]:checked')].map(el => el.value);
+    if (checked.length === 0) {
+        return showToast('Selecciona al menos un día destino', 'error');
+    }
+    checked.forEach(targetDate => {
+        scheduleState[targetDate] = franjas.map(f => ({ start: f.start, end: f.end }));
+    });
+    document.getElementById('copyDayModal')?.remove();
+    renderScheduleEditor();
+    showToast(`Horario copiado a ${checked.length} día(s)`, 'success');
+}
+
+function copyWeekScheduleAdmin() {
+    const nextMonday = new Date(currentWeekStart + 'T12:00:00');
+    nextMonday.setDate(nextMonday.getDate() + 7);
+    const defaultTarget = toLocalDateStr(nextMonday);
+
+    const modal = document.createElement('div');
+    modal.id = 'copyWeekModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+        <div style="background:var(--surface-color);border:1px solid var(--border-color);border-radius:16px;padding:24px;width:320px;">
+            <h4 style="margin:0 0 12px;color:var(--primary);">Copiar semana completa</h4>
+            <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:12px;">Selecciona el lunes de la semana destino:</p>
+            <input type="date" id="copyWeekTarget" value="${defaultTarget}"
+                style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-color);color:var(--text);font-size:0.9rem;">
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button type="button" onclick="document.getElementById('copyWeekModal').remove()" class="btn btn-secondary" style="flex:1;padding:8px;">Cancelar</button>
+                <button type="button" onclick="applyCopyWeekSchedule()" class="btn btn-primary" style="flex:1;padding:8px;">Copiar</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+async function applyCopyWeekSchedule() {
+    const targetDate = document.getElementById('copyWeekTarget').value;
+    if (!targetDate) return showToast('Selecciona una fecha', 'error');
+    const targetMonday = getMonday(targetDate);
+
+    const sourceDates = getWeekDates(currentWeekStart);
+    const targetDates = getWeekDates(targetMonday);
+    const newSchedules = [];
+
+    sourceDates.forEach((src, i) => {
+        const franjas = scheduleState[src.date];
+        if (franjas) {
+            franjas.forEach(f => {
+                newSchedules.push({ schedule_date: targetDates[i].date, start_time: f.start, end_time: f.end });
+            });
+        }
+    });
+
+    if (newSchedules.length === 0) {
+        document.getElementById('copyWeekModal')?.remove();
+        return showToast('No hay horarios en esta semana para copiar', 'error');
+    }
+
+    try {
+        const res = await fetch(`/api/clients/${currentClientId}/schedules`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ schedules: newSchedules, week_start: targetMonday })
+        });
+        document.getElementById('copyWeekModal')?.remove();
+        if (res.ok) {
+            showToast(`Semana copiada a ${targetDates[0].label} — ${targetDates[6].label}`, 'success');
+        } else { showToast('Error copiando semana', 'error'); }
+    } catch { document.getElementById('copyWeekModal')?.remove(); showToast('Error de conexión', 'error'); }
+}
+
+async function loadSchedulesAdmin(clientId = currentClientId) {
+    if (!clientId) return;
+    try {
+        const res = await fetch(`/api/clients/${clientId}/schedules?week_start=${currentWeekStart}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        scheduleState = {};
+        const list = Array.isArray(data) ? data : (data.schedules || []);
+        list.forEach(s => {
+            const key = s.schedule_date;
+            if (!scheduleState[key]) scheduleState[key] = [];
+            scheduleState[key].push({ start: s.start_time, end: s.end_time });
+        });
+        if (data.session_duration) {
+            sessionDuration = data.session_duration;
+        }
+        renderDurationSelector();
+        renderScheduleEditor();
+    } catch (e) {
+        console.error('Error cargando horarios:', e);
+        scheduleState = {};
+        renderScheduleEditor();
+    }
+}
+
+async function initHorariosSection(clientId = currentClientId) {
+    if (!currentWeekStart) currentWeekStart = getMonday(toLocalDateStr(new Date()));
+    renderDurationSelector();
+    await loadSchedulesAdmin(clientId);
+}
+
+document.getElementById('btn-save-schedule')?.addEventListener('click', async () => {
+    if (!currentClientId) return;
+    const btn = document.getElementById('btn-save-schedule');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+
+    const schedules = [];
+    Object.entries(scheduleState).forEach(([dateKey, franjas]) => {
+        franjas.forEach(f => {
+            schedules.push({ schedule_date: dateKey, start_time: f.start, end_time: f.end });
+        });
+    });
+
+    try {
+        const res = await fetch(`/api/clients/${currentClientId}/schedules`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ schedules, week_start: currentWeekStart, session_duration: sessionDuration })
+        });
+        if (res.ok) {
+            showToast('Horarios guardados', 'success');
+        } else { showToast('Error guardando horarios', 'error'); }
+    } catch { showToast('Error de conexión', 'error'); }
+    finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Horarios';
+    }
+});
+
+// ===========================================
+// CITAS — ADMIN
+// ===========================================
+let allCitasAdmin = [];
+
+function escHtmlAdmin(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDateTimeAdmin(dt) {
+    if (!dt) return '—';
+    const d = new Date(dt);
+    if (isNaN(d)) return dt;
+    return d.toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function renderCitasTableAdmin() {
+    const container = document.getElementById('admin-citas-table-wrap');
+    if (!container) return;
+    const filterStatus = (document.getElementById('admin-filter-citas-status')?.value) || '';
+    let citas = [...allCitasAdmin];
+    if (filterStatus) citas = citas.filter(c => (c.status || 'pending') === filterStatus);
+    citas.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    if (!citas.length) {
+        container.innerHTML = '<div class="empty-state"><i class="fas fa-calendar-xmark"></i><p>No hay citas' + (filterStatus ? ' con ese filtro' : '') + '</p></div>';
+        return;
+    }
+
+    container.innerHTML = `<table class="data-table">
+        <thead><tr>
+            <th>Paciente</th>
+            <th>Teléfono</th>
+            <th>Fecha y hora</th>
+            <th>Estado</th>
+        </tr></thead>
+        <tbody>
+        ${citas.map(c => {
+            const st = c.status || 'pending';
+            const nombre = escHtmlAdmin(c.name || c.paciente_nombre || c.customer_name || '—');
+            const telefono = escHtmlAdmin(c.phone || c.cliente_telefono || c.phone_number || '—');
+            const email = c.email ? `<div class="text-muted text-sm" style="margin-top:2px;">${escHtmlAdmin(c.email)}</div>` : '';
+            const notas = c.notes ? `<div class="text-muted text-sm" style="margin-top:2px;">${escHtmlAdmin(c.notes)}</div>` : '';
+            const fechaHora = escHtmlAdmin(formatDateTimeAdmin(c.date_time || c.fecha_hora || c.appointment_date) || '—');
+            return `<tr>
+                <td>
+                    <div>${nombre}</div>${notas}
+                </td>
+                <td>
+                    <div class="text-muted">${telefono}</div>${email}
+                </td>
+                <td>${fechaHora}</td>
+                <td>
+                    <select class="status-select status-${st}" data-id="${c.id}"
+                            onchange="changeAppointmentStatusAdmin(${c.id}, this.value, this)">
+                        <option value="pending"${st === 'pending' ? ' selected' : ''}>⏳ Pendiente</option>
+                        <option value="confirmed"${st === 'confirmed' ? ' selected' : ''}>✅ Confirmada</option>
+                        <option value="cancelled"${st === 'cancelled' ? ' selected' : ''}>❌ Cancelada</option>
+                    </select>
+                </td>
+            </tr>`;
+        }).join('')}
+        </tbody>
+    </table>`;
+}
+
+async function changeAppointmentStatusAdmin(appointmentId, newStatus, selectEl) {
+    if (!currentClientId) return;
+    const action = newStatus === 'confirmed' ? 'confirm' : newStatus === 'cancelled' ? 'cancel' : null;
+    if (!action) {
+        showToast('Solo puedes confirmar o cancelar', 'error');
+        const cita = allCitasAdmin.find(c => c.id === appointmentId);
+        if (selectEl) selectEl.value = cita?.status || 'pending';
+        return;
+    }
+
+    if (selectEl) selectEl.disabled = true;
+    try {
+        const res = await fetch(`/api/clients/${currentClientId}/appointments/${appointmentId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const cita = allCitasAdmin.find(c => c.id === appointmentId);
+            if (cita) cita.status = newStatus;
+            if (selectEl) {
+                selectEl.className = `status-select status-${newStatus}`;
+                selectEl.disabled = false;
+            }
+            showToast(`Cita ${newStatus === 'confirmed' ? 'confirmada' : 'cancelada'}`, 'success');
+        } else {
+            showToast('Error al cambiar estado', 'error');
+            const cita = allCitasAdmin.find(c => c.id === appointmentId);
+            if (selectEl) selectEl.value = cita?.status || 'pending';
+        }
+    } catch {
+        showToast('Error de conexión', 'error');
+        const cita = allCitasAdmin.find(c => c.id === appointmentId);
+        if (selectEl) selectEl.value = cita?.status || 'pending';
+    } finally {
+        if (selectEl) selectEl.disabled = false;
+    }
+}
+
+async function loadAppointmentsAdmin(clientId = currentClientId) {
+    const container = document.getElementById('admin-citas-table-wrap');
+    if (!container) return;
+    container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando citas...</p></div>';
+    if (!clientId) {
+        container.innerHTML = '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Sin cliente seleccionado</p></div>';
+        return;
+    }
+    try {
+        const res = await fetch(`/api/clients/${clientId}/appointments`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error al cargar citas</p></div>';
+            return;
+        }
+        const data = await res.json();
+        allCitasAdmin = Array.isArray(data) ? data : (data.appointments || data.citas || []);
+        renderCitasTableAdmin();
+    } catch {
+        container.innerHTML = '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error de conexión</p></div>';
+    }
+}
+
+async function initCitasSection(clientId = currentClientId) {
+    allCitasAdmin = [];
+    const filterEl = document.getElementById('admin-filter-citas-status');
+    if (filterEl) filterEl.value = '';
+    await loadAppointmentsAdmin(clientId);
 }
 
 // Initial load

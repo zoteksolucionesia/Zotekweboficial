@@ -1,12 +1,25 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="dark">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zotek IA | Panel de Control</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+        rel="stylesheet">
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.12">
+
+    <!-- Link the main stylesheet -->
+    <link rel="stylesheet" href="/style.css">
+    <!-- Admin-specific styles -->
+    <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.24">
+
     <script>
         // Force theme immediately to prevent flashing/overrides
         const savedTheme = localStorage.getItem('theme');
@@ -21,6 +34,12 @@
 </head>
 
 <body>
+    <!-- Background Animated Blobs (from style.css) -->
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
     <div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 9999;"></div>
     <div class="sidebar" id="sidebar">
         <div class="logo-container"
@@ -108,6 +127,18 @@
                     <span class="nav-text" style="font-weight: 500;">Chats</span>
                     <i class="fas fa-comment-dots" style="font-size: 1.1rem; opacity: 0.8;"></i>
                 </li>
+                <li id="nav-email-leads"
+                    style="padding: 1rem 1.2rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; transition: all 0.2s ease; margin-bottom: 5px;"
+                    onclick="showSection('email-leads')">
+                    <span class="nav-text" style="font-weight: 500;">Email & Leads</span>
+                    <i class="fas fa-envelope-open-text" style="font-size: 1.1rem; opacity: 0.8;"></i>
+                </li>
+                <li id="nav-automations"
+                    style="padding: 1rem 1.2rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; transition: all 0.2s ease; margin-bottom: 5px;"
+                    onclick="showSection('automations')">
+                    <span class="nav-text" style="font-weight: 500;">Automatizaciones</span>
+                    <i class="fas fa-robot" style="font-size: 1.1rem; opacity: 0.8;"></i>
+                </li>
                 <li id="nav-settings"
                     style="padding: 1rem 1.2rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; transition: all 0.2s ease; margin-bottom: 5px;"
                     onclick="showSection('settings')">
@@ -186,13 +217,213 @@
         <section id="section-chats" class="hidden">
             <div class="header">
                 <h1>💬 Historial de conversaciones</h1>
-                <select id="chat-client-selector" class="btn" onchange="loadChats()">
-                    <option value="">Selecciona un cliente...</option>
-                </select>
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <select id="chat-client-selector" class="btn" onchange="loadChats()">
+                        <option value="">Selecciona un cliente...</option>
+                    </select>
+                    <input type="number" id="chat-limit" value="50" min="10" max="500" placeholder="Límite"
+                        style="width: 80px; padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                    <button class="btn" onclick="loadChats()">🔄 Actualizar</button>
+                    <button class="btn btn-warning" onclick="exportChats()">📤 Exportar CSV</button>
+                    <button class="btn btn-danger" onclick="clearChats()">🗑️ Vaciar Chats</button>
+                </div>
             </div>
             <div id="chat-history-list" class="chat-history-list">
                 <p class="chat-placeholder">Selecciona un cliente para ver el historial de conversaciones con el bot.
                 </p>
+            </div>
+        </section>
+
+        <!-- Email & Leads Section -->
+        <section id="section-email-leads" class="hidden">
+            <div class="header">
+                <h1>📧 Email & Leads</h1>
+            </div>
+
+            <div class="settings-grid">
+                <!-- Email Configuration Card -->
+                <div class="settings-card" style="grid-column: span 2;">
+                    <div class="settings-card-header">
+                        <h3>⚙️ Configuración de Email</h3>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="form-group">
+                            <label>Cliente</label>
+                            <select id="email-client-selector" class="btn" onchange="loadEmailConfig()">
+                                <option value="">Selecciona un cliente...</option>
+                            </select>
+                        </div>
+
+                        <div id="email-config-form" style="display: none;">
+                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div class="form-group">
+                                    <label>SMTP Server</label>
+                                    <input type="text" id="smtp-server" value="smtp.gmail.com"
+                                        placeholder="smtp.gmail.com">
+                                </div>
+                                <div class="form-group">
+                                    <label>SMTP Port</label>
+                                    <input type="number" id="smtp-port" value="587" placeholder="587">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Email de la cuenta</label>
+                                <input type="email" id="email-user" placeholder="tu@email.com">
+                                <small style="color: var(--text-muted);">Usa una App Password, no tu contraseña
+                                    normal</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Contraseña de aplicación</label>
+                                <input type="password" id="email-password" placeholder="••••••••••••••••">
+                                <small style="color: var(--text-muted);">
+                                    <a href="https://myaccount.google.com/apppasswords" target="_blank"
+                                        style="color: var(--primary);">Generar en Gmail</a>
+                                </small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Nombre del remitente</label>
+                                <input type="text" id="email-from-name" placeholder="Tu Negocio">
+                            </div>
+
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 10px;">
+                                    <input type="checkbox" id="email-notifications-enabled">
+                                    Activar notificaciones por email
+                                </label>
+                            </div>
+
+                            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                                <button class="btn btn-primary" onclick="saveEmailConfig()">💾 Guardar
+                                    Configuración</button>
+                                <button class="btn btn-secondary" onclick="testEmailConfig()">📧 Enviar Email de
+                                    Prueba</button>
+                            </div>
+
+                            <div id="email-test-result" style="margin-top: 15px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cold Leads Card -->
+                <div class="settings-card" style="grid-column: span 2;">
+                    <div class="settings-card-header">
+                        <h3>🥶 Leads Fríos</h3>
+                        <small style="color: var(--text-muted);">Leads que no responden en las últimas 24 horas</small>
+                    </div>
+                    <div class="settings-card-body">
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                            <select id="leads-client-selector" class="btn" onchange="loadColdLeads()">
+                                <option value="">Selecciona un cliente...</option>
+                            </select>
+                            <select id="leads-hours" class="btn" onchange="loadColdLeads()">
+                                <option value="24">Últimas 24 horas</option>
+                                <option value="48">Últimas 48 horas</option>
+                                <option value="72">Últimas 72 horas</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="loadColdLeads()">🔄 Actualizar</button>
+                        </div>
+
+                        <div id="cold-leads-list">
+                            <p class="chat-placeholder">Selecciona un cliente para ver leads fríos</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Appointments Card -->
+                <div class="settings-card" style="grid-column: span 2;">
+                    <div class="settings-card-header">
+                        <h3>📅 Citas de Mañana</h3>
+                        <small style="color: var(--text-muted);">Recordatorios automáticos</small>
+                    </div>
+                    <div class="settings-card-body">
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                            <select id="appointments-client-selector" class="btn" onchange="loadAppointments()">
+                                <option value="">Selecciona un cliente...</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="loadAppointments()">🔄 Actualizar</button>
+                        </div>
+
+                        <div id="appointments-list">
+                            <p class="chat-placeholder">Selecciona un cliente para ver citas</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Automations Section -->
+        <section id="section-automations" class="hidden">
+            <div class="header">
+                <h1>🤖 Automatizaciones</h1>
+                <small style="color: var(--text-muted);">Follow-ups y recordatorios automáticos</small>
+            </div>
+
+            <div class="settings-grid">
+                <div class="settings-card" style="grid-column: span 2;">
+                    <div class="settings-card-header">
+                        <h3>📊 Estado de Automatizaciones</h3>
+                    </div>
+                    <div class="settings-card-body">
+                        <div id="automation-status-list">
+                            <p class="chat-placeholder">Cargando automatizaciones...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-card" style="grid-column: span 2;">
+                    <div class="settings-card-header">
+                        <h3>ℹ️ ¿Cómo funciona?</h3>
+                    </div>
+                    <div class="settings-card-body">
+                        <div style="display: grid; gap: 15px;">
+                            <div style="display: flex; gap: 15px; align-items: start;">
+                                <div
+                                    style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">
+                                    1</div>
+                                <div>
+                                    <h4 style="margin-bottom: 5px;">Follow-up de Leads Fríos</h4>
+                                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                                        Se ejecuta cada hora para detectar leads que no han respondido en 24/48/72
+                                        horas.
+                                        Envía emails automáticos de seguimiento para recuperar ventas perdidas.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 15px; align-items: start;">
+                                <div
+                                    style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">
+                                    2</div>
+                                <div>
+                                    <h4 style="margin-bottom: 5px;">Recordatorio de Citas</h4>
+                                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                                        Se ejecuta todos los días a las 10 AM para enviar recordatorios de citas del día
+                                        siguiente.
+                                        Reduce los no-shows en 60% y mejora la experiencia del cliente.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 15px; align-items: start;">
+                                <div
+                                    style="background: var(--primary); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">
+                                    3</div>
+                                <div>
+                                    <h4 style="margin-bottom: 5px;">Configuración en Cloud Scheduler</h4>
+                                    <p style="color: var(--text-muted); font-size: 0.9rem;">
+                                        Las automatizaciones se ejecutan en Google Cloud Scheduler.
+                                        Puedes configurar horarios, ver logs y ejecutar manualmente desde la consola.
+                                        <a href="https://console.cloud.google.com/cloudscheduler?project=zotek-ia"
+                                            target="_blank" style="color: var(--primary);">Abrir Cloud Scheduler →</a>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -308,83 +539,196 @@
             </div>
         </div>
 
+        <!-- Navegación de Pestañas -->
+        <div class="client-tab-nav">
+            <button type="button" class="client-tab-btn active" data-tab="tab-general" onclick="switchClientTab('tab-general')">
+                <i class="fas fa-sliders-h"></i> Configuración General
+            </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-bot" onclick="switchClientTab('tab-bot')">
+                <i class="fas fa-brain"></i> Configuración del Bot
+            </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-menu" onclick="switchClientTab('tab-menu')">
+                <i class="fas fa-project-diagram"></i> Menú Interactivo
+            </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-hours" onclick="switchClientTab('tab-hours')">
+                <i class="fas fa-clock"></i> Horarios
+            </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-appointments" onclick="switchClientTab('tab-appointments')">
+                <i class="fas fa-calendar-check"></i> Citas
+            </button>
+        </div>
+
         <form id="clientForm" onsubmit="saveClient(event)">
             <input type="hidden" id="clientId">
 
-            <div class="editor-grid">
-                <div class="editor-left">
-                    <!-- Configuración General -->
-                    <div class="settings-card" style="margin-bottom: 20px;">
+            <!-- Pestaña 1: Configuración General -->
+            <div id="tab-general" class="client-tab-content">
+                <div class="general-config-grid">
+                    <!-- Bloque A: Conexión Meta -->
+                    <div class="settings-card">
                         <div class="settings-card-header">
-                            <h3><i class="fas fa-sliders-h"></i> Configuración General</h3>
+                            <h3><i class="fab fa-whatsapp"></i> Conexión Meta</h3>
                         </div>
                         <div class="settings-card-body" style="padding: 1.5rem;">
-                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div class="form-group">
-                                    <label>Nombre del Negocio</label>
-                                    <input type="text" id="clientName">
-                                </div>
-                                <div class="form-group">
-                                    <label>Phone Number ID</label>
-                                    <input type="text" id="phoneNumberId">
-                                </div>
+                            <div class="form-group">
+                                <label>Nombre del Negocio</label>
+                                <input type="text" id="clientName">
                             </div>
-                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div class="form-group">
-                                    <label>WhatsApp Token (Meta)</label>
-                                    <input type="text" id="whatsappToken">
-                                </div>
-                                <div class="form-group">
-                                    <label>Verify Token (Webhook)</label>
-                                    <input type="text" id="verifyToken">
-                                </div>
+                            <div class="form-group">
+                                <label>Phone Number ID</label>
+                                <input type="text" id="phoneNumberId">
                             </div>
+                            <div class="form-group">
+                                <label>WhatsApp Token (Meta)</label>
+                                <input type="text" id="whatsappToken">
+                            </div>
+                            <div class="form-group">
+                                <label>Verify Token (Webhook)</label>
+                                <input type="text" id="verifyToken">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bloque B: Datos de Cliente y Citas -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <h3><i class="fas fa-user-cog"></i> Datos de Cliente y Citas</h3>
+                        </div>
+                        <div class="settings-card-body" style="padding: 1.5rem;">
+                            <div class="form-group">
+                                <label>Email de Login (Cliente)</label>
+                                <input type="email" id="clientEmail" placeholder="ejemplo@correo.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Calendly URL</label>
+                                <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
+                            </div>
+                            <h4 style="color: var(--primary); margin: 20px 0 12px 0; font-size: 1rem;">VAPI y Calendario</h4>
                             <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div class="form-group">
-                                    <label>Email del Cliente (Login)</label>
-                                    <input type="email" id="clientEmail" placeholder="ejemplo@correo.com">
+                                    <label>A quién llamar (VAPI)</label>
+                                    <select id="vapiTarget"
+                                        style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+                                        <option value="paciente">Al Paciente (Cliente final)</option>
+                                        <option value="profesional">Al Profesional (Especialista)</option>
+                                    </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>Calendly URL</label>
-                                    <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
+                                    <label>Teléfono del Profesional</label>
+                                    <input type="text" id="vapiProfessionalPhone" placeholder="+52...">
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>Instrucciones del Sistema (Contexto Bot)</label>
-                                <textarea id="systemInstruction" rows="4"></textarea>
+                                <label>Google Calendar ID (o Correo)</label>
+                                <input type="email" id="googleCalendarId" placeholder="usuario@gmail.com">
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="editor-right">
-                    <div class="settings-card" style="height: 100%; display: flex; flex-direction: column;">
-                        <div class="settings-card-header"
-                            style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 style="margin: 0;"><i class="fas fa-project-diagram"></i> Editor de Menú Interactivo
-                            </h3>
-                            <button type="button" onclick="showBotHome()" class="btn btn-secondary btn-sm"
-                                style="padding: 5px 10px; font-size: 0.8rem; height: auto; min-width: auto;">
-                                <i class="fas fa-home"></i> Inicio Central
+            <!-- Pestaña 2: Configuración del Bot -->
+            <div id="tab-bot" class="client-tab-content" style="display: none;">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3><i class="fas fa-brain"></i> Instrucciones del Sistema (Cerebro del Bot)</h3>
+                    </div>
+                    <div class="settings-card-body" style="padding: 1.5rem;">
+                        <textarea id="systemInstruction" class="menu-field-input" rows="22"
+                            placeholder="Tu principal objetivo no es solo chatear, sino actuar como un consultor proactivo que guía a los pacientes..."
+                            style="width: 100%; font-size: 0.95rem; min-height: 480px; resize: vertical; line-height: 1.6;"></textarea>
+                        <div class="editor-help-text" style="margin-top: 10px;">
+                            Define la personalidad, objetivos y el comportamiento general del Asistente de IA (Gemini / VAPI).
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña 3: Menú Interactivo -->
+            <div id="tab-menu" class="client-tab-content" style="display: none; height: calc(85vh - 100px);">
+                <div class="settings-card" style="height: 100%; display: flex; flex-direction: column;">
+                    <div class="settings-card-header"
+                        style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0;"><i class="fas fa-project-diagram"></i> Editor de Menú Interactivo</h3>
+                        <button type="button" onclick="showBotHome()" class="btn btn-secondary btn-sm"
+                            style="padding: 5px 10px; font-size: 0.8rem; height: auto; min-width: auto;">
+                            <i class="fas fa-home"></i> Inicio Central
+                        </button>
+                    </div>
+                    <div class="settings-card-body"
+                        style="padding: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                        <div class="bot-editor-layout"
+                            style="flex: 1; display: flex; height: 100%; min-height: 500px;">
+                            <!-- Sidebar Tree (Estructura) -->
+                            <div class="bot-tree-sidebar"
+                                style="flex: 0 0 220px; border-right: 1px solid var(--border-color); overflow-y: auto;">
+                                <ul id="menu-tree" class="menu-tree-list">
+                                    <!-- El árbol se renderizará aquí -->
+                                </ul>
+                            </div>
+
+                            <!-- Panel de Edición / Tarjetas -->
+                            <div class="bot-editor-panel" id="bot-editor-panel"
+                                style="flex: 1; padding: 20px; overflow-y: auto; background: var(--bg-color);">
+                                <!-- El contenido dinámico (Tarjetas o Formulario) irá aquí -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña 5: Citas -->
+            <div id="tab-appointments" class="client-tab-content" style="display: none;">
+                <div class="settings-card">
+                    <div class="settings-card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <h3><i class="fas fa-calendar-check"></i> Citas</h3>
+                        <div class="section-actions">
+                            <select id="admin-filter-citas-status" class="select-filter" onchange="renderCitasTableAdmin()">
+                                <option value="">Todos los estados</option>
+                                <option value="pending">Pendientes</option>
+                                <option value="confirmed">Confirmadas</option>
+                                <option value="cancelled">Canceladas</option>
+                            </select>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="loadAppointmentsAdmin()">
+                                <i class="fas fa-rotate"></i> Actualizar
                             </button>
                         </div>
-                        <div class="settings-card-body"
-                            style="padding: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-                            <div class="bot-editor-layout"
-                                style="flex: 1; display: flex; height: 100%; min-height: 500px;">
-                                <!-- Sidebar Tree (Estructura) -->
-                                <div class="bot-tree-sidebar"
-                                    style="flex: 0 0 220px; border-right: 1px solid var(--border-color); overflow-y: auto;">
-                                    <ul id="menu-tree" class="menu-tree-list">
-                                        <!-- El árbol se renderizará aquí -->
-                                    </ul>
-                                </div>
+                    </div>
+                    <div class="settings-card-body" style="padding: 0;">
+                        <div id="admin-citas-table-wrap" class="table-wrap">
+                            <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando...</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                                <!-- Panel de Edición / Tarjetas -->
-                                <div class="bot-editor-panel" id="bot-editor-panel"
-                                    style="flex: 1; padding: 20px; overflow-y: auto; background: var(--bg-color);">
-                                    <!-- El contenido dinámico (Tarjetas o Formulario) irá aquí -->
-                                </div>
+            <!-- Pestaña 4: Horarios -->
+            <div id="tab-hours" class="client-tab-content" style="display: none;">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3><i class="fas fa-clock"></i> Horarios de Atención</h3>
+                    </div>
+                    <div class="settings-card-body" style="padding: 1.5rem;">
+                        <p class="section-sub" style="margin-bottom: 1.5rem; color: var(--text-muted); font-size: 0.9rem;">Configura los días y horarios en que el agente podrá agendar citas.</p>
+
+                        <div style="margin-bottom: 12px;">
+                            <div style="padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                <span style="font-weight: 600; font-size: 0.9rem;">Duración de sesión:</span>
+                                <div id="durationSelector" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="padding: 16px;">
+                                <div id="weekSelector" style="margin-bottom: 16px;"></div>
+                            </div>
+                            <div id="scheduleEditor" style="display: flex; flex-direction: column; gap: 8px; padding: 0 16px;">
+                                <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando...</p></div>
+                            </div>
+                            <div style="padding: 0 16px 16px;">
+                                <button type="button" class="btn btn-primary" id="btn-save-schedule" style="width: 100%;">
+                                    <i class="fas fa-floppy-disk"></i> Guardar Horarios
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -427,7 +771,9 @@
         </div>
     </div>
 
-    <script src="/admin/zotek_v9.js?v=2.12"></script>
+    <script src="/admin/zotek_v9.js?v=2.24"></script>
+    <script src="/admin/email-leads.js?v=1.0"></script>
+    <script src="/admin/automations.js?v=1.0"></script>
 </body>
 
 </html>

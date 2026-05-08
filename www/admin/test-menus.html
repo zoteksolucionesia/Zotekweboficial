@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Menús Demo - Zotek IA</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a2e; color: #fff; }
+        .card { background: #16213e; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .option { background: #0f3460; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        button { background: #e94560; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #ff6b6b; }
+        pre { background: #0f3460; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Menús de Bots Demo</h1>
+    <p>Esta página verifica que los menús de los bots demo se puedan obtener desde la API</p>
+
+    <div>
+        <button onclick="loadAllDemos()">Cargar Todos los Demos</button>
+        <button onclick="testMenu('demo_restaurant')">Test Restaurante</button>
+        <button onclick="testMenu('demo_dental')">Test Dental</button>
+        <button onclick="testMenu('demo_psychology')">Test Psicólogo</button>
+        <button onclick="testMenu('demo_salon')">Test Salón</button>
+        <button onclick="testMenu('demo_retail')">Test Tienda</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = '/api';
+        let authToken = localStorage.getItem('zotek_token');
+
+        async function testMenu(phoneId) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `<div class="card"><h3>Cargando ${phoneId}...</h3></div>`;
+
+            try {
+                // Primero obtener el client ID
+                const clientsRes = await fetch(`${API_BASE}/clients`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const clients = await clientsRes.json();
+                
+                const client = clients.find(c => c.phone_number_id === phoneId);
+                if (!client) {
+                    resultsDiv.innerHTML = `<div class="card error">❌ No se encontró el cliente ${phoneId}</div>`;
+                    return;
+                }
+
+                // Obtener menú
+                const menuRes = await fetch(`${API_BASE}/clients/${phoneId}/menu`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
+                if (!menuRes.ok) {
+                    throw new Error(`HTTP ${menuRes.status}`);
+                }
+
+                const menu = await menuRes.json();
+                
+                let html = `
+                    <div class="card success">
+                        <h3>✅ ${phoneId}</h3>
+                        <p><strong>Cliente ID:</strong> ${client.id}</p>
+                        <p><strong>Nombre:</strong> ${client.name}</p>
+                        <h4>Menú:</h4>
+                        <pre>${JSON.stringify(menu, null, 2)}</pre>
+                        
+                        ${menu.text ? `<p><strong>Texto de Bienvenida:</strong></p><p>${menu.text}</p>` : ''}
+                        
+                        ${menu.options && menu.options.length > 0 ? `
+                            <h4>Opciones (${menu.options.length}):</h4>
+                            ${menu.options.map((opt, i) => `
+                                <div class="option">
+                                    <strong>${i + 1}. ${opt.title || opt}</strong>
+                                    ${opt.response ? `<p>Respuesta: ${opt.response}</p>` : ''}
+                                    ${opt.icon ? `<p>Ícono: ${opt.icon}</p>` : ''}
+                                </div>
+                            `).join('')}
+                        ` : '<p>No hay opciones</p>'}
+                    </div>
+                `;
+                
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="card error">❌ Error: ${error.message}<br><pre>${error.stack}</pre></div>`;
+            }
+        }
+
+        async function loadAllDemos() {
+            const demos = ['demo_restaurant', 'demo_dental', 'demo_psychology', 'demo_salon', 'demo_retail'];
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            for (const demo of demos) {
+                await testMenu(demo);
+            }
+        }
+
+        // Auto-load on start
+        window.onload = () => {
+            if (!authToken) {
+                document.getElementById('results').innerHTML = '<div class="card error">❌ No hay token de autenticación. Por favor inicia sesión en el admin panel.</div>';
+            }
+        };
+    </script>
+</body>
+</html>
