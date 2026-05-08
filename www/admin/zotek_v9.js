@@ -512,6 +512,9 @@ async function editClient(id) {
         // Load Schedules
         await initHorariosSection(id);
 
+        // Load Appointments
+        await initCitasSection(id);
+
         openModal(true);
     } catch (e) {
         console.error("Error in editClient:", e);
@@ -561,11 +564,16 @@ async function viewClient(id) {
         // Load Schedules
         await initHorariosSection(id);
 
-        // Deshabilitar TODOS los campos del formulario
+        // Load Appointments
+        await initCitasSection(id);
+
+        // Deshabilitar TODOS los campos del formulario (excepto selects de estado de citas)
         const form = document.getElementById('clientForm');
         const inputs = form.querySelectorAll('input, textarea, select');
         inputs.forEach(input => {
-            input.disabled = true;
+            if (!input.classList.contains('status-select') && !input.classList.contains('select-filter')) {
+                input.disabled = true;
+            }
         });
 
         // Ocultar botones de guardar y cancelar
@@ -2073,6 +2081,141 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
         btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Horarios';
     }
 });
+
+// ===========================================
+// CITAS — ADMIN
+// ===========================================
+let allCitasAdmin = [];
+
+function escHtmlAdmin(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDateTimeAdmin(dt) {
+    if (!dt) return '—';
+    const d = new Date(dt);
+    if (isNaN(d)) return dt;
+    return d.toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function renderCitasTableAdmin() {
+    const container = document.getElementById('admin-citas-table-wrap');
+    if (!container) return;
+    const filterStatus = (document.getElementById('admin-filter-citas-status')?.value) || '';
+    let citas = [...allCitasAdmin];
+    if (filterStatus) citas = citas.filter(c => (c.status || 'pending') === filterStatus);
+    citas.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    if (!citas.length) {
+        container.innerHTML = '<div class="empty-state"><i class="fas fa-calendar-xmark"></i><p>No hay citas' + (filterStatus ? ' con ese filtro' : '') + '</p></div>';
+        return;
+    }
+
+    container.innerHTML = `<table class="data-table">
+        <thead><tr>
+            <th>Paciente</th>
+            <th>Teléfono</th>
+            <th>Fecha y hora</th>
+            <th>Estado</th>
+        </tr></thead>
+        <tbody>
+        ${citas.map(c => {
+            const st = c.status || 'pending';
+            const nombre = escHtmlAdmin(c.name || c.paciente_nombre || c.customer_name || '—');
+            const telefono = escHtmlAdmin(c.phone || c.cliente_telefono || c.phone_number || '—');
+            const email = c.email ? `<div class="text-muted text-sm" style="margin-top:2px;">${escHtmlAdmin(c.email)}</div>` : '';
+            const notas = c.notes ? `<div class="text-muted text-sm" style="margin-top:2px;">${escHtmlAdmin(c.notes)}</div>` : '';
+            const fechaHora = escHtmlAdmin(formatDateTimeAdmin(c.date_time || c.fecha_hora || c.appointment_date) || '—');
+            return `<tr>
+                <td>
+                    <div>${nombre}</div>${notas}
+                </td>
+                <td>
+                    <div class="text-muted">${telefono}</div>${email}
+                </td>
+                <td>${fechaHora}</td>
+                <td>
+                    <select class="status-select status-${st}" data-id="${c.id}"
+                            onchange="changeAppointmentStatusAdmin(${c.id}, this.value, this)">
+                        <option value="pending"${st === 'pending' ? ' selected' : ''}>⏳ Pendiente</option>
+                        <option value="confirmed"${st === 'confirmed' ? ' selected' : ''}>✅ Confirmada</option>
+                        <option value="cancelled"${st === 'cancelled' ? ' selected' : ''}>❌ Cancelada</option>
+                    </select>
+                </td>
+            </tr>`;
+        }).join('')}
+        </tbody>
+    </table>`;
+}
+
+async function changeAppointmentStatusAdmin(appointmentId, newStatus, selectEl) {
+    if (!currentClientId) return;
+    const action = newStatus === 'confirmed' ? 'confirm' : newStatus === 'cancelled' ? 'cancel' : null;
+    if (!action) {
+        showToast('Solo puedes confirmar o cancelar', 'error');
+        const cita = allCitasAdmin.find(c => c.id === appointmentId);
+        if (selectEl) selectEl.value = cita?.status || 'pending';
+        return;
+    }
+
+    if (selectEl) selectEl.disabled = true;
+    try {
+        const res = await fetch(`/api/clients/${currentClientId}/appointments/${appointmentId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const cita = allCitasAdmin.find(c => c.id === appointmentId);
+            if (cita) cita.status = newStatus;
+            if (selectEl) {
+                selectEl.className = `status-select status-${newStatus}`;
+                selectEl.disabled = false;
+            }
+            showToast(`Cita ${newStatus === 'confirmed' ? 'confirmada' : 'cancelada'}`, 'success');
+        } else {
+            showToast('Error al cambiar estado', 'error');
+            const cita = allCitasAdmin.find(c => c.id === appointmentId);
+            if (selectEl) selectEl.value = cita?.status || 'pending';
+        }
+    } catch {
+        showToast('Error de conexión', 'error');
+        const cita = allCitasAdmin.find(c => c.id === appointmentId);
+        if (selectEl) selectEl.value = cita?.status || 'pending';
+    } finally {
+        if (selectEl) selectEl.disabled = false;
+    }
+}
+
+async function loadAppointmentsAdmin(clientId = currentClientId) {
+    const container = document.getElementById('admin-citas-table-wrap');
+    if (!container) return;
+    container.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando citas...</p></div>';
+    if (!clientId) {
+        container.innerHTML = '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Sin cliente seleccionado</p></div>';
+        return;
+    }
+    try {
+        const res = await fetch(`/api/clients/${clientId}/appointments`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error al cargar citas</p></div>';
+            return;
+        }
+        const data = await res.json();
+        allCitasAdmin = Array.isArray(data) ? data : (data.appointments || data.citas || []);
+        renderCitasTableAdmin();
+    } catch {
+        container.innerHTML = '<div class="empty-state"><i class="fas fa-circle-exclamation"></i><p>Error de conexión</p></div>';
+    }
+}
+
+async function initCitasSection(clientId = currentClientId) {
+    allCitasAdmin = [];
+    const filterEl = document.getElementById('admin-filter-citas-status');
+    if (filterEl) filterEl.value = '';
+    await loadAppointmentsAdmin(clientId);
+}
 
 // Initial load
 document.addEventListener('DOMContentLoaded', async () => {

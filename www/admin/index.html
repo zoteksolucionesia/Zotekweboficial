@@ -18,7 +18,7 @@
     <!-- Link the main stylesheet -->
     <link rel="stylesheet" href="/style.css">
     <!-- Admin-specific styles -->
-    <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.23">
+    <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.24">
 
     <script>
         // Force theme immediately to prevent flashing/overrides
@@ -553,6 +553,9 @@
             <button type="button" class="client-tab-btn" data-tab="tab-hours" onclick="switchClientTab('tab-hours')">
                 <i class="fas fa-clock"></i> Horarios
             </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-appointments" onclick="switchClientTab('tab-appointments')">
+                <i class="fas fa-calendar-check"></i> Citas
+            </button>
         </div>
 
         <form id="clientForm" onsubmit="saveClient(event)">
@@ -674,6 +677,31 @@
                 </div>
             </div>
 
+            <!-- Pestaña 5: Citas -->
+            <div id="tab-appointments" class="client-tab-content" style="display: none;">
+                <div class="settings-card">
+                    <div class="settings-card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <h3><i class="fas fa-calendar-check"></i> Citas</h3>
+                        <div class="section-actions">
+                            <select id="admin-filter-citas-status" class="select-filter" onchange="renderCitasTableAdmin()">
+                                <option value="">Todos los estados</option>
+                                <option value="pending">Pendientes</option>
+                                <option value="confirmed">Confirmadas</option>
+                                <option value="cancelled">Canceladas</option>
+                            </select>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="loadAppointmentsAdmin()">
+                                <i class="fas fa-rotate"></i> Actualizar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="settings-card-body" style="padding: 0;">
+                        <div id="admin-citas-table-wrap" class="table-wrap">
+                            <div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Cargando...</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Pestaña 4: Horarios -->
             <div id="tab-hours" class="client-tab-content" style="display: none;">
                 <div class="settings-card">
@@ -743,7 +771,7 @@
         </div>
     </div>
 
-    <script src="/admin/zotek_v9.js?v=2.23"></script>
+    <script src="/admin/zotek_v9.js?v=2.24"></script>
     <script src="/admin/email-leads.js?v=1.0"></script>
     <script src="/admin/automations.js?v=1.0"></script>
 </body>
