@@ -18,7 +18,7 @@
     <!-- Link the main stylesheet -->
     <link rel="stylesheet" href="/style.css">
     <!-- Admin-specific styles -->
-    <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.12">
+    <link rel="stylesheet" href="/admin/zotek_v9.css?v=2.14">
 
     <script>
         // Force theme immediately to prevent flashing/overrides
@@ -539,54 +539,71 @@
             </div>
         </div>
 
+        <!-- Navegación de Pestañas -->
+        <div class="client-tab-nav">
+            <button type="button" class="client-tab-btn active" data-tab="tab-general" onclick="switchClientTab('tab-general')">
+                <i class="fas fa-sliders-h"></i> Configuración General
+            </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-bot" onclick="switchClientTab('tab-bot')">
+                <i class="fas fa-brain"></i> Configuración del Bot
+            </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-menu" onclick="switchClientTab('tab-menu')">
+                <i class="fas fa-project-diagram"></i> Menú Interactivo
+            </button>
+            <button type="button" class="client-tab-btn" data-tab="tab-hours" onclick="switchClientTab('tab-hours')">
+                <i class="fas fa-clock"></i> Horarios
+            </button>
+        </div>
+
         <form id="clientForm" onsubmit="saveClient(event)">
             <input type="hidden" id="clientId">
 
-            <div class="editor-grid" style="min-height: 85vh; padding-bottom: 20px;">
-                <div class="editor-left"
-                    style="overflow-y: auto; max-height: 85vh; padding-right: 8px; display: block;">
-                    <!-- Configuración General -->
-                    <div class="settings-card" style="margin-bottom: 20px; flex-shrink: 0; min-height: max-content;">
+            <!-- Pestaña 1: Configuración General -->
+            <div id="tab-general" class="client-tab-content">
+                <div class="general-config-grid">
+                    <!-- Bloque A: Conexión Meta -->
+                    <div class="settings-card">
                         <div class="settings-card-header">
-                            <h3><i class="fas fa-sliders-h"></i> Configuración General</h3>
+                            <h3><i class="fab fa-whatsapp"></i> Conexión Meta</h3>
                         </div>
                         <div class="settings-card-body" style="padding: 1.5rem;">
-                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div class="form-group">
-                                    <label>Nombre del Negocio</label>
-                                    <input type="text" id="clientName">
-                                </div>
-                                <div class="form-group">
-                                    <label>Phone Number ID</label>
-                                    <input type="text" id="phoneNumberId">
-                                </div>
+                            <div class="form-group">
+                                <label>Nombre del Negocio</label>
+                                <input type="text" id="clientName">
                             </div>
-                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div class="form-group">
-                                    <label>WhatsApp Token (Meta)</label>
-                                    <input type="text" id="whatsappToken">
-                                </div>
-                                <div class="form-group">
-                                    <label>Verify Token (Webhook)</label>
-                                    <input type="text" id="verifyToken">
-                                </div>
+                            <div class="form-group">
+                                <label>Phone Number ID</label>
+                                <input type="text" id="phoneNumberId">
                             </div>
-                            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div class="form-group">
-                                    <label>Email del Cliente (Login)</label>
-                                    <input type="email" id="clientEmail" placeholder="ejemplo@correo.com">
-                                </div>
-                                <div class="form-group">
-                                    <label>Calendly URL</label>
-                                    <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
-                                </div>
+                            <div class="form-group">
+                                <label>WhatsApp Token (Meta)</label>
+                                <input type="text" id="whatsappToken">
                             </div>
+                            <div class="form-group">
+                                <label>Verify Token (Webhook)</label>
+                                <input type="text" id="verifyToken">
+                            </div>
+                        </div>
+                    </div>
 
-                            <h4 style="color: var(--primary); margin: 15px 0 10px 0; font-size: 1rem;">VAPI y Calendario
-                            </h4>
+                    <!-- Bloque B: Datos de Cliente y Citas -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <h3><i class="fas fa-user-cog"></i> Datos de Cliente y Citas</h3>
+                        </div>
+                        <div class="settings-card-body" style="padding: 1.5rem;">
+                            <div class="form-group">
+                                <label>Email de Login (Cliente)</label>
+                                <input type="email" id="clientEmail" placeholder="ejemplo@correo.com">
+                            </div>
+                            <div class="form-group">
+                                <label>Calendly URL</label>
+                                <input type="url" id="calendlyUrl" placeholder="https://calendly.com/...">
+                            </div>
+                            <h4 style="color: var(--primary); margin: 20px 0 12px 0; font-size: 1rem;">VAPI y Calendario</h4>
                             <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div class="form-group">
-                                    <label>A quién llamar (Objetivo VAPI)</label>
+                                    <label>A quién llamar (VAPI)</label>
                                     <select id="vapiTarget"
                                         style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
                                         <option value="paciente">Al Paciente (Cliente final)</option>
@@ -605,35 +622,90 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="editor-right">
-                    <div class="settings-card" style="height: 100%; display: flex; flex-direction: column;">
-                        <div class="settings-card-header"
-                            style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 style="margin: 0;"><i class="fas fa-project-diagram"></i> Editor de Menú Interactivo
-                            </h3>
-                            <button type="button" onclick="showBotHome()" class="btn btn-secondary btn-sm"
-                                style="padding: 5px 10px; font-size: 0.8rem; height: auto; min-width: auto;">
-                                <i class="fas fa-home"></i> Inicio Central
-                            </button>
+            <!-- Pestaña 2: Configuración del Bot -->
+            <div id="tab-bot" class="client-tab-content" style="display: none;">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3><i class="fas fa-brain"></i> Instrucciones del Sistema (Cerebro del Bot)</h3>
+                    </div>
+                    <div class="settings-card-body" style="padding: 1.5rem;">
+                        <textarea id="systemInstruction" class="menu-field-input" rows="22"
+                            placeholder="Tu principal objetivo no es solo chatear, sino actuar como un consultor proactivo que guía a los pacientes..."
+                            style="width: 100%; font-size: 0.95rem; min-height: 480px; resize: vertical; line-height: 1.6;"></textarea>
+                        <div class="editor-help-text" style="margin-top: 10px;">
+                            Define la personalidad, objetivos y el comportamiento general del Asistente de IA (Gemini / VAPI).
                         </div>
-                        <div class="settings-card-body"
-                            style="padding: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-                            <div class="bot-editor-layout"
-                                style="flex: 1; display: flex; height: 100%; min-height: 500px;">
-                                <!-- Sidebar Tree (Estructura) -->
-                                <div class="bot-tree-sidebar"
-                                    style="flex: 0 0 220px; border-right: 1px solid var(--border-color); overflow-y: auto;">
-                                    <ul id="menu-tree" class="menu-tree-list">
-                                        <!-- El árbol se renderizará aquí -->
-                                    </ul>
-                                </div>
+                    </div>
+                </div>
+            </div>
 
-                                <!-- Panel de Edición / Tarjetas -->
-                                <div class="bot-editor-panel" id="bot-editor-panel"
-                                    style="flex: 1; padding: 20px; overflow-y: auto; background: var(--bg-color);">
-                                    <!-- El contenido dinámico (Tarjetas o Formulario) irá aquí -->
+            <!-- Pestaña 3: Menú Interactivo -->
+            <div id="tab-menu" class="client-tab-content" style="display: none; height: calc(85vh - 100px);">
+                <div class="settings-card" style="height: 100%; display: flex; flex-direction: column;">
+                    <div class="settings-card-header"
+                        style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0;"><i class="fas fa-project-diagram"></i> Editor de Menú Interactivo</h3>
+                        <button type="button" onclick="showBotHome()" class="btn btn-secondary btn-sm"
+                            style="padding: 5px 10px; font-size: 0.8rem; height: auto; min-width: auto;">
+                            <i class="fas fa-home"></i> Inicio Central
+                        </button>
+                    </div>
+                    <div class="settings-card-body"
+                        style="padding: 0; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                        <div class="bot-editor-layout"
+                            style="flex: 1; display: flex; height: 100%; min-height: 500px;">
+                            <!-- Sidebar Tree (Estructura) -->
+                            <div class="bot-tree-sidebar"
+                                style="flex: 0 0 220px; border-right: 1px solid var(--border-color); overflow-y: auto;">
+                                <ul id="menu-tree" class="menu-tree-list">
+                                    <!-- El árbol se renderizará aquí -->
+                                </ul>
+                            </div>
+
+                            <!-- Panel de Edición / Tarjetas -->
+                            <div class="bot-editor-panel" id="bot-editor-panel"
+                                style="flex: 1; padding: 20px; overflow-y: auto; background: var(--bg-color);">
+                                <!-- El contenido dinámico (Tarjetas o Formulario) irá aquí -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña 4: Horarios -->
+            <div id="tab-hours" class="client-tab-content" style="display: none;">
+                <div class="settings-card">
+                    <div class="settings-card-header">
+                        <h3><i class="fas fa-clock"></i> Gestión de Horarios</h3>
+                    </div>
+                    <div class="settings-card-body" style="padding: 1.5rem;">
+                        <div style="margin-bottom: 30px;">
+                            <h4 style="margin: 0 0 15px 0; color: var(--primary);">Agregar Horario</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: end;">
+                                <div class="form-group" style="margin: 0;">
+                                    <label style="font-size: 0.85rem;">Fecha (YYYY-MM-DD)</label>
+                                    <input type="date" id="scheduleDate" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
                                 </div>
+                                <div class="form-group" style="margin: 0;">
+                                    <label style="font-size: 0.85rem;">Hora Inicio</label>
+                                    <input type="time" id="scheduleStartTime" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+                                </div>
+                                <div class="form-group" style="margin: 0;">
+                                    <label style="font-size: 0.85rem;">Hora Fin</label>
+                                    <input type="time" id="scheduleEndTime" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+                                </div>
+                                <button type="button" onclick="addScheduleRow()" class="btn btn-primary" style="padding: 10px 20px; height: 40px;">
+                                    <i class="fas fa-plus"></i> Agregar
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 style="margin: 0 0 15px 0; color: var(--primary);">Horarios Configurados</h4>
+                            <div id="schedulesList" style="display: flex; flex-direction: column; gap: 10px;">
+                                <!-- Los horarios se cargarán aquí -->
                             </div>
                         </div>
                     </div>
@@ -676,7 +748,7 @@
         </div>
     </div>
 
-    <script src="/admin/zotek_v9.js?v=2.20"></script>
+    <script src="/admin/zotek_v9.js?v=2.22"></script>
     <script src="/admin/email-leads.js?v=1.0"></script>
     <script src="/admin/automations.js?v=1.0"></script>
 </body>

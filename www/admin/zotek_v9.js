@@ -235,6 +235,15 @@ function populateClientSelector() {
     }
 }
 
+function switchClientTab(tabId) {
+    document.querySelectorAll('.client-tab-content').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.client-tab-btn').forEach(btn => btn.classList.remove('active'));
+    const tab = document.getElementById(tabId);
+    if (tab) tab.style.display = 'block';
+    const btn = document.querySelector(`.client-tab-btn[data-tab="${tabId}"]`);
+    if (btn) btn.classList.add('active');
+}
+
 function openModal(isEdit = false) {
     document.getElementById('modalTitle').innerText = isEdit ? 'Editar Cliente' : 'Agregar Nuevo Cliente';
     if (!isEdit) {
@@ -244,11 +253,8 @@ function openModal(isEdit = false) {
         currentMenu = { options: [] };
         renderMenuEditor();
     }
+    switchClientTab('tab-general');
     showSection('edit-client');
-    // Asegurar que el scroll empiece arriba
-    const modalGrid = document.querySelector('.modal-grid');
-    if (modalGrid) modalGrid.scrollTop = 0;
-
 }
 
 function closeModal() {
@@ -492,11 +498,17 @@ async function editClient(id) {
         document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
 
+        // System instruction in Tab 2
+        document.getElementById('systemInstruction').value = client.system_instruction || '';
+
         // Clean UI state before loading menu
         currentEditingPath = null;
 
         // Load Menu
         await loadClientMenu(id);
+
+        // Load Schedules
+        await loadClientSchedules(id);
 
         openModal(true);
     } catch (e) {
@@ -538,9 +550,13 @@ async function viewClient(id) {
         document.getElementById('vapiTarget').value = client.vapi_target || 'paciente';
         document.getElementById('vapiProfessionalPhone').value = client.vapi_professional_phone || '';
         document.getElementById('googleCalendarId').value = client.google_calendar_id || '';
+        document.getElementById('systemInstruction').value = client.system_instruction || '';
 
         // Cargar menú
         await loadClientMenu(id);
+
+        // Load Schedules
+        await loadClientSchedules(id);
 
         // Deshabilitar TODOS los campos del formulario
         const form = document.getElementById('clientForm');
@@ -638,6 +654,10 @@ async function saveClient(event) {
         console.log("Response text:", responseText);
 
         if (response.ok) {
+            // Save schedules if there are any
+            if (currentClientSchedules && currentClientSchedules.length > 0) {
+                await saveClientSchedules(id);
+            }
             closeModal();
             fetchClients();
             showToast('Cambios guardados con éxito', 'success');
@@ -918,12 +938,6 @@ function showBotHome() {
                 <p>Gestiona los documentos PDF del bot.</p>
             </div>
         </div>
-
-        <div class="form-group" style="margin-top: 30px; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; border: 1px solid rgba(0, 210, 255, 0.2); box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-            <div class="editor-section-title" style="color: var(--primary); margin-bottom: 10px; font-size: 1.1rem; font-weight: 600;"><i class="fas fa-brain"></i> Instrucciones del Sistema (Contexto Bot / VAPI)</div>
-            <textarea id="systemInstruction" class="menu-field-input" rows="8" placeholder="Tu principal objetivo no es solo chatear, sino actuar como un consultor proactivo que guía a los pacientes..." style="width: 100%; font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.5);">${escapeHtml(currentClientData && currentClientData.system_instruction ? currentClientData.system_instruction : '')}</textarea>
-            <div class="editor-help-text" style="margin-top: 8px; color: #aaa;">Define la personalidad, objetivos y el comportamiento general del Asistente de IA (Gemini / VAPI).</div>
-        </div>
     `;
 
     const welcomeInput = document.getElementById('menuWelcomeText');
@@ -940,14 +954,6 @@ function showBotHome() {
         };
     }
 
-    const sysInstInput = document.getElementById('systemInstruction');
-    if (sysInstInput) {
-        sysInstInput.oninput = (e) => {
-            if (currentClientData) {
-                currentClientData.system_instruction = e.target.value;
-            }
-        };
-    }
 }
 
 function renderEditorForm(path) {
@@ -1711,6 +1717,128 @@ function copyWebhook() {
             btn.textContent = '✓';
             setTimeout(() => { btn.textContent = '📋'; }, 2000);
         });
+    }
+}
+
+// Schedules Management
+let currentClientSchedules = [];
+
+async function loadClientSchedules(clientId) {
+    try {
+        const response = await fetch(`/api/clients/${clientId}/schedules`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            currentClientSchedules = data.schedules || [];
+            renderSchedulesList();
+        } else {
+            console.error('Error loading schedules:', response.status);
+            currentClientSchedules = [];
+            renderSchedulesList();
+        }
+    } catch (e) {
+        console.error('Error in loadClientSchedules:', e);
+        currentClientSchedules = [];
+        renderSchedulesList();
+    }
+}
+
+function renderSchedulesList() {
+    const container = document.getElementById('schedulesList');
+    if (!container) return;
+
+    if (currentClientSchedules.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem;">No hay horarios configurados aún.</p>';
+        return;
+    }
+
+    container.innerHTML = currentClientSchedules.map((schedule, idx) => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(88, 166, 255, 0.05); border-radius: 6px; border-left: 3px solid var(--primary);">
+            <div style="flex: 1;">
+                <span style="font-weight: 500; color: var(--text);">${schedule.schedule_date}</span>
+                <span style="margin: 0 12px; color: var(--text-muted);">→</span>
+                <span style="color: var(--text-muted);">${schedule.start_time} - ${schedule.end_time}</span>
+            </div>
+            <button type="button" onclick="deleteScheduleRow(${idx})" class="btn btn-outline-danger" style="padding: 6px 12px; font-size: 0.85rem; height: auto;">
+                <i class="fas fa-trash"></i> Eliminar
+            </button>
+        </div>
+    `).join('');
+}
+
+function addScheduleRow() {
+    const dateInput = document.getElementById('scheduleDate');
+    const startInput = document.getElementById('scheduleStartTime');
+    const endInput = document.getElementById('scheduleEndTime');
+
+    const date = dateInput.value;
+    const startTime = startInput.value;
+    const endTime = endInput.value;
+
+    if (!date || !startTime || !endTime) {
+        showToast('Por favor completa todos los campos de horario', 'warning');
+        return;
+    }
+
+    if (startTime >= endTime) {
+        showToast('La hora de inicio debe ser anterior a la hora de fin', 'warning');
+        return;
+    }
+
+    // Check if schedule already exists
+    const exists = currentClientSchedules.some(s => s.schedule_date === date && s.start_time === startTime);
+    if (exists) {
+        showToast('Este horario ya existe', 'warning');
+        return;
+    }
+
+    currentClientSchedules.push({
+        schedule_date: date,
+        start_time: startTime,
+        end_time: endTime
+    });
+
+    // Clear inputs
+    dateInput.value = '';
+    startInput.value = '';
+    endInput.value = '';
+
+    renderSchedulesList();
+    showToast('Horario agregado', 'success');
+}
+
+function deleteScheduleRow(idx) {
+    const schedule = currentClientSchedules[idx];
+    currentClientSchedules.splice(idx, 1);
+    renderSchedulesList();
+    showToast(`Horario ${schedule.schedule_date} eliminado`, 'info');
+}
+
+async function saveClientSchedules(clientId) {
+    try {
+        const response = await fetch(`/api/clients/${clientId}/schedules`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ schedules: currentClientSchedules })
+        });
+
+        if (response.ok) {
+            console.log('Schedules saved successfully');
+            return true;
+        } else {
+            console.error('Error saving schedules:', response.status);
+            showToast('Error al guardar horarios', 'error');
+            return false;
+        }
+    } catch (e) {
+        console.error('Error in saveClientSchedules:', e);
+        showToast('Error al guardar horarios: ' + e.message, 'error');
+        return false;
     }
 }
 
