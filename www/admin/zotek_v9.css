@@ -2026,3 +2026,114 @@ body.light-mode [style*="color: #c9d1d9"],
 body.light-mode [style*="color: #8b949e"] {
     color: #1f2328 !important;
 }
+
+/* ============================================
+   CLIENT EDITOR TABS
+   ============================================ */
+.client-tab-nav {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 0;
+}
+
+.client-tab-btn {
+    padding: 10px 22px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.92rem;
+    font-weight: 500;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: -2px;
+    border-radius: 6px 6px 0 0;
+}
+
+.client-tab-btn:hover {
+    color: var(--text);
+    background: rgba(88, 166, 255, 0.07);
+}
+
+.client-tab-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    background: rgba(88, 166, 255, 0.06);
+}
+
+.client-tab-content {
+    animation: tabFadeIn 0.18s ease;
+}
+
+@keyframes tabFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.general-config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .general-config-grid {
+        grid-template-columns: 1fr;
+    }
+    .client-tab-btn {
+        padding: 8px 14px;
+        font-size: 0.85rem;
+    }
+}
+
+body.light-mode .client-tab-btn {
+    color: #656d76;
+}
+body.light-mode .client-tab-btn:hover {
+    color: #1f2328;
+    background: rgba(3, 102, 214, 0.07);
+}
+body.light-mode .client-tab-btn.active {
+    color: #0366d6;
+    border-bottom-color: #0366d6;
+    background: rgba(3, 102, 214, 0.06);
+}
+body.light-mode .client-tab-nav {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ============== Schedule Editor Styles ============== */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.empty-state i {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+.empty-state p {
+    margin: 0;
+}
+
+.section-sub {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
