@@ -490,8 +490,12 @@ async def recibir_mensaje(request: Request):
                             client_data = real_client
                             
                         if not client_data:
-                            logger.error(f"❌ ERROR: No client found for phoneID {phone_number_id}")
-                            return {"status": "error", "message": "Client not found"}
+                            # Fallback a Zotek Soluciones IA por defecto
+                            logger.info(f"⚠️ No client found for phoneID {phone_number_id}, usando Zotek como fallback")
+                            client_data = database.get_client_by_phone_id("980996958435648")
+                            if not client_data:
+                                logger.error(f"❌ ERROR: No client found and Zotek fallback also failed")
+                                return {"status": "error", "message": "Client not found"}
                         
                         logger.info(f"✅ Client Found: {client_data.get('name')} (ID: {client_data.get('id')})")
 
@@ -538,7 +542,10 @@ async def recibir_mensaje(request: Request):
                                 "psicologo": "demo_psychology",
                                 "psicólogo": "demo_psychology",
                                 "salon": "demo_salon",
-                                "belleza": "demo_salon"
+                                "belleza": "demo_salon",
+                                "zotek": "980996958435648",
+                                "ia": "980996958435648",
+                                "soluciones": "980996958435648"
                             }
 
                             demo_phone_id = None
