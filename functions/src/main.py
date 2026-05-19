@@ -219,57 +219,6 @@ def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_
 async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
-@app.get("/api/test-whatsapp")
-async def test_whatsapp(to: str = "523123173431", current_user: str = Depends(get_current_user)):
-    """Diagnostic endpoint: tests WhatsApp API send capability."""
-    import sys
-    results = {"steps": [], "target": to}
-
-    try:
-        # Step 1: Get first client
-        clients = database.list_clients()
-        if not clients:
-            return {"error": "No clients in PostgreSQL database", "steps": results["steps"]}
-        client = clients[0]
-        results["steps"].append(f"1. Client found: {client.get('name')}")
-        
-        # Step 2: Check token
-        token = client.get('whatsapp_token', '')
-        phone_id = client.get('phone_number_id', '')
-        results["steps"].append(f"2. Token present: {bool(token)}")
-        results["steps"].append(f"3. phone_number_id: {phone_id}")
-        
-        # Step 4: Test WhatsApp API - Send Message
-        import requests as req
-        url = f"https://graph.facebook.com/v22.0/{phone_id}/messages"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "messaging_product": "whatsapp",
-            "to": to,
-            "type": "text",
-            "text": {"body": "Test diagnostic message from Bot server"}
-        }
-        
-        results["steps"].append(f"4. Attempting send to {to}...")
-        resp = req.post(url, headers=headers, json=data)
-        results["status_code"] = resp.status_code
-        results["response_body"] = resp.json() if resp.status_code != 204 else {}
-        
-        if resp.status_code == 200:
-            results["result"] = "SUCCESS"
-        else:
-            results["result"] = "FAILED"
-            
-    except Exception as e:
-        import traceback
-        results["error"] = f"{type(e).__name__}: {e}"
-        results["traceback"] = traceback.format_exc()
-    
-    return results
-
 # === SECURITY HELPERS ===
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
@@ -287,6 +236,57 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         return email
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.get("/api/test-whatsapp")
+async def test_whatsapp(to: str = "523123173431", current_user: str = Depends(get_current_user)):
+    """Diagnostic endpoint: tests WhatsApp API send capability."""
+    import sys
+    results = {"steps": [], "target": to}
+
+    try:
+        # Step 1: Get first client
+        clients = database.list_clients()
+        if not clients:
+            return {"error": "No clients in PostgreSQL database", "steps": results["steps"]}
+        client = clients[0]
+        results["steps"].append(f"1. Client found: {client.get('name')}")
+
+        # Step 2: Check token
+        token = client.get('whatsapp_token', '')
+        phone_id = client.get('phone_number_id', '')
+        results["steps"].append(f"2. Token present: {bool(token)}")
+        results["steps"].append(f"3. phone_number_id: {phone_id}")
+
+        # Step 4: Test WhatsApp API - Send Message
+        import requests as req
+        url = f"https://graph.facebook.com/v22.0/{phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"body": "Test diagnostic message from Bot server"}
+        }
+
+        results["steps"].append(f"4. Attempting send to {to}...")
+        resp = req.post(url, headers=headers, json=data)
+        results["status_code"] = resp.status_code
+        results["response_body"] = resp.json() if resp.status_code != 204 else {}
+
+        if resp.status_code == 200:
+            results["result"] = "SUCCESS"
+        else:
+            results["result"] = "FAILED"
+
+    except Exception as e:
+        import traceback
+        results["error"] = f"{type(e).__name__}: {e}"
+        results["traceback"] = traceback.format_exc()
+
+    return results
 
 # === AUTH API ===
 
