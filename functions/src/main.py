@@ -563,10 +563,13 @@ async def recibir_mensaje(request: Request):
 
                             if demo_phone_id:
                                 # Usuario quiere iniciar una demo nueva
-                                demo_client = database.get_client_by_phone_id(demo_phone_id)
-                                if not demo_client:
-                                    # Fallback: demos hardcodeados viven en get_client_by_id, no en DB por phone_id
+                                # Para IDs demo_* usar siempre el dict hardcodeado (tiene response fields)
+                                if demo_phone_id.startswith('demo_'):
                                     demo_client = database.get_client_by_id(demo_phone_id)
+                                else:
+                                    demo_client = database.get_client_by_phone_id(demo_phone_id)
+                                    if not demo_client:
+                                        demo_client = database.get_client_by_id(demo_phone_id)
 
                                 if demo_client:
                                     tipo_demo = demo_phone_id.replace("demo_", "")
@@ -756,7 +759,11 @@ async def recibir_mensaje(request: Request):
                             # Si es demo, cargar el menú del demo
                             if session_is_demo and demo_phone_id_from_session:
                                 logger.debug(f"[DEBUG] Loading demo menu for: {demo_phone_id_from_session}")
-                                demo_client_for_menu = database.get_client_by_phone_id(demo_phone_id_from_session)
+                                # Para IDs demo_* usar siempre el dict hardcodeado (tiene response fields completos)
+                                if demo_phone_id_from_session.startswith('demo_'):
+                                    demo_client_for_menu = database.get_client_by_id(demo_phone_id_from_session)
+                                else:
+                                    demo_client_for_menu = database.get_client_by_phone_id(demo_phone_id_from_session)
                                 if not demo_client_for_menu:
                                     # Fallback: client_data ya es el demo client (cargado via get_client_by_id)
                                     demo_client_for_menu = client_data
