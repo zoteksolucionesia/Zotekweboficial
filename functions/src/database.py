@@ -1004,22 +1004,25 @@ def get_user_session(user_number, phone_number_id):
 
 
 def save_user_session(user_number, phone_number_id, session_data):
-    """Guarda o actualiza la sesión de sandbox."""
+    """Guarda o actualiza la sesión de sandbox (manual upsert sin ON CONFLICT)."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
+
         demo_mode = session_data.get('demo_mode', '')
         session_data_json = json.dumps(session_data)
-        
-        # UPSERT: Insertar o actualizar si ya existe
-        cursor.execute('''
-            INSERT INTO sandbox_sessions (user_number, phone_number_id, demo_mode, session_data)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (user_number, phone_number_id) 
-            DO UPDATE SET demo_mode = %s, session_data = %s, updated_at = CURRENT_TIMESTAMP
-        ''', (user_number, phone_number_id, demo_mode, session_data_json, demo_mode, session_data_json))
-        
+
+        # Manual UPSERT: UPDATE first, INSERT if no row exists
+        cursor.execute(
+            "UPDATE sandbox_sessions SET demo_mode = %s, session_data = %s, updated_at = CURRENT_TIMESTAMP WHERE user_number = %s AND phone_number_id = %s",
+            (demo_mode, session_data_json, user_number, phone_number_id)
+        )
+        if cursor.rowcount == 0:
+            cursor.execute(
+                "INSERT INTO sandbox_sessions (user_number, phone_number_id, demo_mode, session_data) VALUES (%s, %s, %s, %s)",
+                (user_number, phone_number_id, demo_mode, session_data_json)
+            )
+
         conn.commit()
         cursor.close()
         conn.close()
