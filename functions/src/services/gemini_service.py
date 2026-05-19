@@ -150,14 +150,22 @@ class GeminiEngine:
         instrucciones_base = client_data.get('system_instruction') or \
             f"Eres el agente inteligente de {nombre_bot}. Ayuda al usuario usando tus herramientas."
 
-        duracion = database.get_client_session_duration(client_id)
+        is_demo = str(client_id).startswith('demo_')
 
-        # 2. System Instruction (Cerebro del Agente)
-        prompt_sistema = f"""
+        if is_demo:
+            # Demos: prompt limpio sin reglas de agente ni tools de Zotek
+            prompt_sistema = instrucciones_base
+            config = {
+                "system_instruction": prompt_sistema,
+                "temperature": 0.4,
+            }
+        else:
+            duracion = database.get_client_session_duration(client_id)
+            prompt_sistema = f"""
         {instrucciones_base}
 
         {horarios_str}
-        
+
         {booked_str}
 
         --- CONOCIMIENTO DISPONIBLE ---
@@ -175,13 +183,13 @@ class GeminiEngine:
         9. Si te preguntan por horarios, diles los que tienes listados arriba de forma clara. (Nota: Solo se te muestran fechas de hoy en adelante).
         10. Si usas una herramienta, el sistema la ejecutará por ti.
         """
-
-        try:
             config = {
                 "system_instruction": prompt_sistema,
                 "temperature": 0.4,
                 "tools": self.tools
             }
+
+        try:
             
             contents = [mensaje_usuario]
             
@@ -225,7 +233,5 @@ class GeminiEngine:
 
     def generar_respuesta(self, mensaje_usuario, client_data, numero_telefono):
         """Mantiene compatibilidad con el flujo legacy."""
-        res = self.generar_respuesta_agente(mensaje_usuario, client_data, numero_telefono)
-        return res['text']
         res = self.generar_respuesta_agente(mensaje_usuario, client_data, numero_telefono)
         return res['text']
