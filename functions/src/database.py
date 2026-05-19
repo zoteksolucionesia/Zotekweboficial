@@ -544,10 +544,19 @@ COLECCIÓN ACTUAL:
     _MENU_RESTAURANT = json.dumps({
         "text": "🍽️ Bienvenido a *La Mesa Elegante*\n\nCocina mexicana contemporánea en el corazón del Centro Histórico.\n\n¿En qué te puedo ayudar hoy? 👇",
         "options": [
-            {"title": "📋 Ver el Menú completo"},
+            {
+                "title": "📋 Ver el Menú completo",
+                "response": "🍽️ *Menú completo — La Mesa Elegante*\n\n*ENTRADAS*\n• Guacamole de la casa (para 2) — $120\n• Sopa de lima estilo yucateco — $95\n• Flautas de pollo con crema y queso — $110\n• Ceviche de camarón con tostadas — $145\n\n*PLATOS FUERTES*\n• Arrachera a la parrilla (300g) — $285\n• Mole negro con pollo y arroz — $210\n• Camarones al ajillo — $265\n• Enchiladas verdes con pollo — $175\n• Filete en salsa de chile pasilla — $320\n• Chiles rellenos de queso — $190\n• Tacos de cochinita pibil (3 pzas) — $155\n\n*POSTRES*\n• Pastel de tres leches — $85\n• Churros con chocolate — $75\n• Flan napolitano — $70\n\n*BEBIDAS*\n• Aguas frescas $45 | Refrescos $40\n• Cerveza nacional $65 | Vino (copa) $95\n• Margarita clásica $110\n\n¿Deseas hacer una *reservación*? 😊"
+            },
             {"title": "📅 Hacer una Reservación"},
-            {"title": "⏰ Horarios y Ubicación"},
-            {"title": "💰 Precios y Promociones"},
+            {
+                "title": "⏰ Horarios y Ubicación",
+                "response": "📍 *La Mesa Elegante*\n\n📌 Av. Juárez #456, Centro Histórico, CDMX\n📞 55-1234-5678\n\n🕐 *Horarios:*\n• Lunes a Viernes: 1pm – 11pm\n• Sábado y Domingo: 12pm – 11pm\n\n¿Deseas hacer una *reservación*? 😊"
+            },
+            {
+                "title": "💰 Precios y Promociones",
+                "response": "💰 *Precios — La Mesa Elegante*\n\n🥗 Entradas: $95 – $145\n🍽️ Platos fuertes: $155 – $320\n🍮 Postres: $70 – $85\n🍹 Bebidas: $40 – $110\n\n🎉 *Promociones:*\n• Martes y Miércoles: 2x1 en Margaritas\n• Domingo familiar: 10% de descuento en mesa de 4+\n\nEscribe *menú* para ver todas las opciones. 😊"
+            },
             {"title": "🚪 Salir (volver a Zotek)"}
         ]
     })

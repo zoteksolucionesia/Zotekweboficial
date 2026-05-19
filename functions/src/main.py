@@ -1022,33 +1022,19 @@ async def recibir_mensaje(request: Request):
                                 logger.info(f"[Webhook] Fallback has 0 options. Allowing Gemini to handle.")
                                 # Let Gemini handle it
 
-                        # --- INYECCIÓN DE CONTEXTO DEMO ---
-                        session = database.get_user_session(numero_usuario, phone_number_id)
-                        if session and session.get('demo_mode'):
-                            demo_mode = session['demo_mode']
-                            demo_phone_id = session.get('demo_phone_id')
-
-                            # Cargar el bot demo desde la base de datos si tenemos el phone_id
-                            if demo_phone_id:
-                                demo_client = database.get_client_by_phone_id(demo_phone_id)
-                                if demo_client:
-                                    # Reemplazar client_data con el bot demo completo
-                                    client_data = demo_client
-                                    logger.info(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos.")
-                            else:
-                                # Fallback: intentar encontrar el demo por modo (solo si no hay phone_id)
-                                demo_phone_ids = {
-                                    "restaurante": "demo_restaurant",
-                                    "tienda": "demo_retail",
-                                    "dental": "demo_dental",
-                                    "psicologo": "demo_psychology",
-                                    "salon": "demo_salon"
-                                }
-                                if demo_mode in demo_phone_ids:
-                                    demo_client = database.get_client_by_phone_id(demo_phone_ids[demo_mode])
-                                    if demo_client:
-                                        client_data = demo_client
-                                        logger.info(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos.")
+                        # --- SAFETY NET: garantizar client_data es el demo correcto ---
+                        # Si demo_client_id está activo pero client_data se desincronizó
+                        # (ej. timeout de DB al leer sesión en el paso anterior), recargarlo.
+                        if demo_client_id and str(client_data.get('id', '')) != demo_client_id:
+                            logger.warning(f"[Demo] client_data drift: esperado '{demo_client_id}', "
+                                           f"encontrado '{client_data.get('id')}'. Recargando.")
+                            _demo_reload = database.get_client_by_id(demo_client_id)
+                            if _demo_reload:
+                                client_data = _demo_reload
+                                if real_client:
+                                    client_data['whatsapp_token'] = real_client.get('whatsapp_token')
+                                    client_data['phone_number_id'] = real_client.get('phone_number_id')
+                                logger.info(f"[Demo] client_data restaurado: {client_data.get('name')}")
                         
                         prompt = texto_usuario
                         if message.get('type') == 'interactive':
