@@ -6,6 +6,7 @@ import logging
 import random
 import threading
 import smtplib
+import unicodedata
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from collections import deque
@@ -751,8 +752,8 @@ async def recibir_mensaje(request: Request):
                         session_data_dict = session.get('session_data', {}) if session else {}
                         demo_phone_id_from_session = session_data_dict.get('demo_phone_id') if session_is_demo else None
 
-                        logger.debug(f"[DEBUG] session_is_demo: {session_is_demo}")
-                        logger.debug(f"[DEBUG] demo_phone_id_from_session: {demo_phone_id_from_session}")
+                        logger.info(f"[DEMO_TRACE] session_is_demo={session_is_demo} demo_phone_id={demo_phone_id_from_session} demo_client_id={demo_client_id} texto='{texto_usuario[:40]}'")
+
 
                         menu_data = None
                         try:
@@ -793,11 +794,11 @@ async def recibir_mensaje(request: Request):
 
                             def clean_string(s):
                                 if not s: return ""
-                                # Eliminar emojis, caracteres especiales y acentos
+                                # NFD decompose so accented chars become base+combining mark
+                                s = unicodedata.normalize('NFD', s)
+                                # Remove non-word chars (removes emoji AND combining accent marks)
                                 s = re.sub(r'[^\w\s]', '', s)
-                                # Normalizar: eliminar acentos y convertir a lowercase
                                 s = s.lower().strip()
-                                # Eliminar espacios multiples
                                 s = re.sub(r'\s+', ' ', s)
                                 return s
 
@@ -848,9 +849,11 @@ async def recibir_mensaje(request: Request):
                                         if found: return found
                                 return None
 
+                            logger.info(f"[DEMO_TRACE] menu_data loaded={bool(menu_data)} options={len(menu_data.get('options',[]) if menu_data else [])}")
                             match = buscar_opcion(menu_data.get('options', []), texto_usuario)
                             if not match and 'opciones' in menu_data:
                                 match = buscar_opcion(menu_data['opciones'], texto_usuario)
+                            logger.info(f"[DEMO_TRACE] match='{match.get('title') if match else None}' has_response={bool(match.get('response') if match else False)}")
 
                             if match and isinstance(match, dict):
                                 # ============================================
