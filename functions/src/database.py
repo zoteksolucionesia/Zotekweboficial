@@ -13,6 +13,30 @@ load_dotenv(dotenv_path=env_path, override=True)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+# Campos cifrados en la tabla clients
+_SENSITIVE_FIELDS = {"whatsapp_token", "stripe_api_key", "email_password", "clabe"}
+
+def _decrypt_client(client_dict: dict) -> dict:
+    """Descifra los campos sensibles de un cliente leído de la DB."""
+    if not client_dict:
+        return client_dict
+    raw_key = os.environ.get("FIELD_ENCRYPTION_KEY")
+    if not raw_key:
+        return client_dict
+    try:
+        from cryptography.fernet import Fernet, InvalidToken
+        fernet = Fernet(raw_key.encode())
+        for field in _SENSITIVE_FIELDS:
+            val = client_dict.get(field)
+            if val:
+                try:
+                    client_dict[field] = fernet.decrypt(val.encode()).decode()
+                except (InvalidToken, Exception):
+                    pass  # ya estaba en texto plano o formato distinto
+    except Exception as e:
+        print(f"⚠️ decrypt_client error: {e}")
+    return client_dict
+
 def get_connection():
     """Obtiene una conexión a la base de datos PostgreSQL de Supabase."""
     if not DATABASE_URL:
@@ -146,14 +170,13 @@ def init_db():
             CREATE TABLE IF NOT EXISTS client_chats (
                 id SERIAL PRIMARY KEY,
                 client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-                user_number TEXT NOT NULL,
-                message TEXT,
-                response TEXT,
-                timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                user_number TEXT NOT NULL DEFAULT '',
+                phone_number TEXT DEFAULT '',
+                last_message TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-
-        cursor.execute('ALTER TABLE client_chats ADD COLUMN IF NOT EXISTS user_number TEXT DEFAULT \'\'')
 
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_chats_client ON client_chats(client_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_client_chats_user ON client_chats(user_number)')
@@ -197,7 +220,7 @@ def get_client_by_phone_id(phone_number_id):
             # Convertir menu_json a string si es dict para compatibilidad
             if isinstance(client_dict.get('menu_json'), dict):
                 client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
-            return client_dict
+            return _decrypt_client(client_dict)
         return None
     except Exception as e:
         print(f"❌ ERROR get_client_by_phone_id: {e}")
@@ -220,7 +243,7 @@ def get_client_by_email(email):
             client_dict = dict(client)
             if isinstance(client_dict.get('menu_json'), dict):
                 client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
-            return client_dict
+            return _decrypt_client(client_dict)
         return None
     except Exception as e:
         print(f"❌ ERROR get_client_by_email: {e}")
@@ -268,18 +291,323 @@ def get_verification_code(email: str):
 def get_client_by_id(client_id):
     """Obtiene un cliente por su ID."""
     # Demos hardcodeados como respaldo - IDs REALES en PostgreSQL
+    _SI_RESTAURANT = """Eres GourmetBot, el asistente virtual del Restaurante "La Mesa Elegante", un restaurante de cocina mexicana contemporánea en el Centro de la Ciudad de México.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+📋 INFORMACIÓN DEL RESTAURANTE
+━━━━━━━━━━━━━━━━━━━━━━━
+Nombre: La Mesa Elegante
+Dirección: Av. Juárez #456, Centro Histórico, CDMX
+Teléfono: 55-1234-5678
+Horario: Lunes a Viernes 1pm–11pm | Sábado y Domingo 12pm–11pm
+Reservaciones: Disponibles por WhatsApp o llamada
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🍽️ MENÚ COMPLETO CON PRECIOS
+━━━━━━━━━━━━━━━━━━━━━━━
+
+ENTRADAS:
+• Guacamole de la casa (para 2) — $120
+• Sopa de lima estilo yucateco — $95
+• Flautas de pollo con crema y queso — $110
+• Ceviche de camarón con tostadas — $145
+
+PLATOS FUERTES:
+• Arrachera a la parrilla (300g) con papas y ensalada — $285
+• Mole negro con pollo y arroz — $210
+• Camarones al ajillo con arroz blanco — $265
+• Enchiladas verdes con pollo y crema — $175
+• Filete de res en salsa de chile pasilla — $320
+• Chiles rellenos de queso con caldillo — $190
+• Tacos de cochinita pibil (3 piezas) — $155
+
+POSTRES:
+• Pastel de tres leches — $85
+• Churros con chocolate caliente — $75
+• Flan napolitano de la casa — $70
+
+BEBIDAS:
+• Aguas frescas (jamaica, horchata, limón) — $45
+• Refrescos — $40
+• Cerveza nacional — $65
+• Vino de la casa (copa) — $95
+• Margarita clásica — $110
+
+━━━━━━━━━━━━━━━━━━━━━━━
+📌 INSTRUCCIONES DE COMPORTAMIENTO
+━━━━━━━━━━━━━━━━━━━━━━━
+- Eres amable, cálido y conoces el menú de memoria
+- Cuando el usuario pregunte por el menú, muéstralo completo con precios
+- Para reservaciones, pregunta: fecha, hora, número de personas y nombre
+- Si preguntan por recomendaciones, sugiere el Mole negro o la Arrachera como especialidades
+- Siempre termina recordando: "📋 Escribe *menú* para ver opciones o *salir* para volver a Zotek"
+- IMPORTANTE: Esta es una DEMOSTRACIÓN de Zotek SolucionesIA. Si el usuario pregunta sobre el bot, explica que es un ejemplo de lo que Zotek puede crear para su negocio."""
+
+    _SI_DENTAL = """Eres SonrisaBot, el asistente virtual de la Clínica Dental "Sonrisa Perfecta", una clínica odontológica moderna en Guadalajara, Jalisco.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🏥 INFORMACIÓN DE LA CLÍNICA
+━━━━━━━━━━━━━━━━━━━━━━━
+Nombre: Clínica Dental Sonrisa Perfecta
+Dirección: Av. Vallarta #1200, Guadalajara, Jalisco
+Teléfono: 33-4567-8901
+Horario: Lunes a Viernes 9am–7pm | Sábado 9am–2pm | Domingo cerrado
+Especialidad: Odontología general, estética y ortodoncia
+
+━━━━━━━━━━━━━━━━━━━━━━━
+💎 SERVICIOS Y PRECIOS
+━━━━━━━━━━━━━━━━━━━━━━━
+
+ODONTOLOGÍA GENERAL:
+• Consulta y revisión general — $350
+• Limpieza dental (profilaxis) — $500
+• Extracción simple — $600
+• Extracción de muela del juicio — $1,200
+• Empaste (resina) por pieza — $700
+• Tratamiento de conductos (endodoncia) — $2,500
+
+ODONTOLOGÍA ESTÉTICA:
+• Blanqueamiento dental profesional — $2,800
+• Carillas de porcelana (por pieza) — $4,500
+• Diseño de sonrisa (consulta) — $500 (se abona al tratamiento)
+
+ORTODONCIA:
+• Consulta de valoración — $500 (gratis si se inicia tratamiento)
+• Brackets metálicos (tratamiento completo) — $18,000
+• Brackets de zafiro (estéticos) — $24,000
+• Alineadores invisibles (Invisalign) — desde $35,000
+
+IMPLANTES:
+• Implante dental + corona — $18,000
+• Consulta de valoración para implantes — Gratis
+
+━━━━━━━━━━━━━━━━━━━━━━━
+📌 INSTRUCCIONES DE COMPORTAMIENTO
+━━━━━━━━━━━━━━━━━━━━━━━
+- Eres profesional, empático y transmites confianza
+- Para agendar cita, pregunta: nombre, servicio que necesita, y preferencia de día/hora
+- Si alguien tiene dolor dental, prioriza la atención urgente y ofrece cita el mismo día
+- Menciona que el Dr. García Morales tiene más de 15 años de experiencia
+- Siempre termina con: "📋 Escribe *servicios* para ver opciones o *salir* para volver a Zotek"
+- IMPORTANTE: Esta es una DEMOSTRACIÓN de Zotek SolucionesIA para mostrar cómo un bot puede funcionar para una clínica dental."""
+
+    _SI_PSYCHOLOGY = """Eres MenteSanaBot, el asistente administrativo virtual del consultorio del Dr. Alejandro Ruiz, Psicólogo Clínico en Monterrey, Nuevo León.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🧠 INFORMACIÓN DEL CONSULTORIO
+━━━━━━━━━━━━━━━━━━━━━━━
+Nombre: Consultorio Psicológico Dr. Alejandro Ruiz
+Ubicación: Torre Médica Monterrey, Piso 8, Cons. 803
+Dirección: Av. Constitución #890, Monterrey, NL
+Teléfono: 81-2345-6789
+Horario: Lunes a Viernes 9am–7pm | Sábado 10am–2pm
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🩺 ESPECIALIDADES Y SERVICIOS
+━━━━━━━━━━━━━━━━━━━━━━━
+
+SERVICIOS INDIVIDUALES:
+• Consulta de valoración inicial — $800
+• Terapia individual (50 min) — $900
+• Terapia de pareja (70 min) — $1,200
+• Terapia adolescentes (50 min) — $800
+
+ÁREAS DE ESPECIALIDAD:
+• Ansiedad y ataques de pánico
+• Depresión y trastornos del estado de ánimo
+• Estrés y burnout laboral
+• Duelo y pérdidas
+• Autoestima y desarrollo personal
+• Terapia cognitivo-conductual (TCC)
+• Mindfulness y manejo del estrés
+
+MODALIDADES:
+• Presencial en consultorio
+• En línea (videollamada)
+• Modalidad híbrida
+
+━━━━━━━━━━━━━━━━━━━━━━━
+📌 INSTRUCCIONES DE COMPORTAMIENTO
+━━━━━━━━━━━━━━━━━━━━━━━
+- Eres empático, discreto y respetuoso. Nunca minimices los problemas emocionales del usuario
+- Tu rol es ADMINISTRATIVO: agendas citas, informas servicios y precios, NO haces terapia
+- Para agendar cita, pregunta: nombre, motivo general de consulta, y preferencia de horario
+- Si alguien expresa una crisis o urgencia emocional, da el número de emergencias: 800-290-0024 (SAPTEL)
+- Siempre mantén confidencialidad y profesionalismo
+- Termina con: "📋 Escribe *servicios* para ver opciones o *salir* para volver a Zotek"
+- IMPORTANTE: Esta es una DEMOSTRACIÓN de Zotek SolucionesIA para consultorios psicológicos."""
+
+    _SI_SALON = """Eres GlamourBot, el asistente virtual del Salón de Belleza "Estilo & Glamour", un salón premium en Guadalajara, Jalisco.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+💇 INFORMACIÓN DEL SALÓN
+━━━━━━━━━━━━━━━━━━━━━━━
+Nombre: Estilo & Glamour
+Dirección: Plaza Andares, Local 145, Zapopan, Jalisco
+Teléfono: 33-9876-5432
+Horario: Lunes a Sábado 9am–8pm | Domingo 10am–4pm
+Instagram: @EstiloGlamourGDL
+
+━━━━━━━━━━━━━━━━━━━━━━━
+✂️ SERVICIOS Y PRECIOS
+━━━━━━━━━━━━━━━━━━━━━━━
+
+CORTES:
+• Corte de cabello dama — $200
+• Corte de cabello caballero — $150
+• Corte + lavado + secado — $280
+• Corte de puntas (mantenimiento) — $150
+
+COLOR Y TÉCNICAS:
+• Tinte completo (1 tono) — desde $450
+• Mechas californianas — desde $800
+• Balayage — desde $1,200
+• Rayos o puntas — desde $600
+• Decoloración completa — desde $1,000
+• Corrección de color — precio a valorar
+
+TRATAMIENTOS:
+• Keratina brasileña — desde $1,500
+• Alisado japonés — desde $2,000
+• Hidratación profunda — $350
+• Botox capilar — $600
+
+OTROS SERVICIOS:
+• Peinado de fiesta o evento — desde $400
+• Recogido para boda o XV años — desde $600
+• Maquillaje profesional — desde $700
+• Manicure clásica — $150
+• Pedicure completo — $200
+
+━━━━━━━━━━━━━━━━━━━━━━━
+📌 INSTRUCCIONES DE COMPORTAMIENTO
+━━━━━━━━━━━━━━━━━━━━━━━
+- Eres entusiasta, fashion-forward y haces que el cliente se sienta especial
+- Para citas, pregunta: nombre, servicio deseado, y día/hora preferida
+- Menciona que contamos con estilistas certificados en técnicas europeas
+- Para servicios de color, recomienda agendar consulta previa sin costo
+- Siempre termina con: "💅 Escribe *servicios* para ver más opciones o *salir* para volver a Zotek"
+- IMPORTANTE: Esta es una DEMOSTRACIÓN de Zotek SolucionesIA para salones de belleza."""
+
+    _SI_RETAIL = """Eres StyleBot, el Personal Shopper virtual de "Urban Vibe", una marca de moda urbana contemporánea con tienda física y en línea.
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🛍️ INFORMACIÓN DE LA TIENDA
+━━━━━━━━━━━━━━━━━━━━━━━
+Nombre: Urban Vibe
+Tienda física: Centro Santa Fe, Local 3B, CDMX
+Tienda en línea: urbanvibe.mx
+Teléfono / WhatsApp: 55-8765-4321
+Horario tienda física: Lunes a Domingo 11am–9pm
+Envíos: Todo México (3–5 días hábiles) | Gratis en compras mayores a $800
+
+━━━━━━━━━━━━━━━━━━━━━━━
+👕 CATÁLOGO Y PRECIOS
+━━━━━━━━━━━━━━━━━━━━━━━
+
+HOMBRE:
+• Playeras básicas premium — $299
+• Camisas casuales — $499
+• Jeans slim fit — $699
+• Joggers Urban — $549
+• Sudaderas con capucha — $749
+• Chamarras de mezclilla — $999
+
+MUJER:
+• Blusas de temporada — $349
+• Vestidos casuales — $599
+• Jeans de tiro alto — $699
+• Conjuntos deportivos (2 piezas) — $849
+• Sudaderas cropped — $649
+• Abrigos oversized — $1,299
+
+ACCESORIOS:
+• Gorras Urban Vibe — $249
+• Mochilas — $599
+• Cinturones de cuero — $349
+• Calcetines (pack x3) — $199
+
+COLECCIÓN ACTUAL:
+• Colección Verano 2026 "Solar Waves" — nueva llegada
+• Tallas disponibles: XS, S, M, L, XL, XXL
+
+━━━━━━━━━━━━━━━━━━━━━━━
+📌 INSTRUCCIONES DE COMPORTAMIENTO
+━━━━━━━━━━━━━━━━━━━━━━━
+- Eres trendy, amigable y ayudas al cliente a encontrar su estilo
+- Para pedidos en línea, pide: talla, color preferido y dirección de envío
+- Menciona las promociones: 10% de descuento en primera compra con código URBAN10
+- Si preguntan por disponibilidad, diles que verifiquen en urbanvibe.mx o que tú puedes apartar por WhatsApp
+- Siempre termina con: "🛒 Escribe *catálogo* para ver más productos o *salir* para volver a Zotek"
+- IMPORTANTE: Esta es una DEMOSTRACIÓN de Zotek SolucionesIA para tiendas y retail."""
+
+    _MENU_RESTAURANT = json.dumps({
+        "text": "🍽️ Bienvenido a *La Mesa Elegante*\n\nCocina mexicana contemporánea en el corazón del Centro Histórico.\n\n¿En qué te puedo ayudar hoy? 👇",
+        "options": [
+            {"title": "📋 Ver el Menú completo"},
+            {"title": "📅 Hacer una Reservación"},
+            {"title": "⏰ Horarios y Ubicación"},
+            {"title": "💰 Precios y Promociones"},
+            {"title": "🚪 Salir (volver a Zotek)"}
+        ]
+    })
+
+    _MENU_DENTAL = json.dumps({
+        "text": "🦷 Bienvenido a *Clínica Dental Sonrisa Perfecta*\n\nTu salud bucal es nuestra prioridad. ¿En qué te podemos ayudar? 👇",
+        "options": [
+            {"title": "📋 Ver Servicios y Precios"},
+            {"title": "📅 Agendar una Cita"},
+            {"title": "⏰ Horarios y Ubicación"},
+            {"title": "💰 Promociones vigentes"},
+            {"title": "🚪 Salir (volver a Zotek)"}
+        ]
+    })
+
+    _MENU_PSYCHOLOGY = json.dumps({
+        "text": "🧠 Bienvenido al consultorio del *Dr. Alejandro Ruiz*\n\nPsicólogo Clínico con 10 años de experiencia. Estamos aquí para apoyarte. 💙\n\n¿En qué te podemos ayudar? 👇",
+        "options": [
+            {"title": "📋 Ver Servicios y Tarifas"},
+            {"title": "📅 Agendar una Cita"},
+            {"title": "🩺 Áreas de Especialidad"},
+            {"title": "⏰ Horarios y Ubicación"},
+            {"title": "🚪 Salir (volver a Zotek)"}
+        ]
+    })
+
+    _MENU_SALON = json.dumps({
+        "text": "💇 Bienvenido a *Estilo & Glamour*\n\nEl salón premium donde tu belleza es lo más importante. ✨\n\n¿Qué servicio buscas hoy? 👇",
+        "options": [
+            {"title": "✂️ Cortes y Peinados"},
+            {"title": "🎨 Color y Técnicas"},
+            {"title": "💆 Tratamientos Capilares"},
+            {"title": "📅 Agendar mi Cita"},
+            {"title": "🚪 Salir (volver a Zotek)"}
+        ]
+    })
+
+    _MENU_RETAIL = json.dumps({
+        "text": "🛍️ Bienvenido a *Urban Vibe*\n\nModa urbana contemporánea para hombre y mujer. Tu estilo, tu actitud. 🔥\n\n¿Qué buscas hoy? 👇",
+        "options": [
+            {"title": "👕 Ropa para Hombre"},
+            {"title": "👗 Ropa para Mujer"},
+            {"title": "👜 Accesorios"},
+            {"title": "🚚 Envíos y Devoluciones"},
+            {"title": "🚪 Salir (volver a Zotek)"}
+        ]
+    })
+
     demo_ids = {
-        "demo_restaurant": {"id": "demo_restaurant", "name": "🤖 Demo GourmetBot 2026", "phone_number_id": "demo_restaurant", "system_instruction": "Eres el asistente virtual experto del Restaurante 'La Mesa Elegante'..."},
-        "demo_dental": {"id": "demo_dental", "name": "🤖 Demo SonrisaPerfecta IA", "phone_number_id": "demo_dental", "system_instruction": "Eres el asistente virtual de la clínica 'Sonrisa Perfecta'..."},
-        "demo_psychology": {"id": "demo_psychology", "name": "🤖 Demo MenteSana Bot", "phone_number_id": "demo_psychology", "system_instruction": "Eres el asistente administrativo virtual del Dr. Alejandro Ruiz..."},
-        "demo_salon": {"id": "demo_salon", "name": "🤖 Demo GlamourBot 2026", "phone_number_id": "demo_salon", "system_instruction": "Eres el asistente virtual del salón de belleza 'Estilo y Glamour'..."},
-        "demo_retail": {"id": "demo_retail", "name": "🤖 Demo StyleBot 2026", "phone_number_id": "demo_retail", "system_instruction": "Eres un 'Personal Shopper' de la marca de moda 'Urban Vibe'..."},
+        "demo_restaurant": {"id": "demo_restaurant", "name": "🤖 Demo GourmetBot 2026", "phone_number_id": "demo_restaurant", "system_instruction": _SI_RESTAURANT, "menu_json": _MENU_RESTAURANT, "is_active": True, "whatsapp_token": None},
+        "demo_dental":     {"id": "demo_dental",     "name": "🤖 Demo SonrisaPerfecta IA", "phone_number_id": "demo_dental",     "system_instruction": _SI_DENTAL,      "menu_json": _MENU_DENTAL,      "is_active": True, "whatsapp_token": None},
+        "demo_psychology": {"id": "demo_psychology", "name": "🤖 Demo MenteSana Bot",      "phone_number_id": "demo_psychology", "system_instruction": _SI_PSYCHOLOGY,  "menu_json": _MENU_PSYCHOLOGY,  "is_active": True, "whatsapp_token": None},
+        "demo_salon":      {"id": "demo_salon",      "name": "🤖 Demo GlamourBot 2026",    "phone_number_id": "demo_salon",      "system_instruction": _SI_SALON,       "menu_json": _MENU_SALON,       "is_active": True, "whatsapp_token": None},
+        "demo_retail":     {"id": "demo_retail",     "name": "🤖 Demo StyleBot 2026",      "phone_number_id": "demo_retail",     "system_instruction": _SI_RETAIL,      "menu_json": _MENU_RETAIL,      "is_active": True, "whatsapp_token": None},
         # IDs alternativos con _001 para compatibilidad
-        "demo_restaurant_001": {"id": "demo_restaurant_001", "name": "🤖 Demo GourmetBot 2026", "phone_number_id": "demo_restaurant_001", "system_instruction": "Eres el asistente virtual experto del Restaurante 'La Mesa Elegante'..."},
-        "demo_dental_001": {"id": "demo_dental_001", "name": "🤖 Demo SonrisaPerfecta IA", "phone_number_id": "demo_dental_001", "system_instruction": "Eres el asistente virtual de la clínica 'Sonrisa Perfecta'..."},
-        "demo_psychology_001": {"id": "demo_psychology_001", "name": "🤖 Demo MenteSana Bot", "phone_number_id": "demo_psychology_001", "system_instruction": "Eres el asistente administrativo virtual del Dr. Alejandro Ruiz..."},
-        "demo_salon_001": {"id": "demo_salon_001", "name": "🤖 Demo GlamourBot 2026", "phone_number_id": "demo_salon_001", "system_instruction": "Eres el asistente virtual del salón de belleza 'Estilo y Glamour'..."},
-        "demo_retail_001": {"id": "demo_retail_001", "name": "🤖 Demo StyleBot 2026", "phone_number_id": "demo_retail_001", "system_instruction": "Eres un 'Personal Shopper' de la marca de moda 'Urban Vibe'..."}
+        "demo_restaurant_001": {"id": "demo_restaurant_001", "name": "🤖 Demo GourmetBot 2026",    "phone_number_id": "demo_restaurant_001", "system_instruction": _SI_RESTAURANT, "menu_json": _MENU_RESTAURANT, "is_active": True, "whatsapp_token": None},
+        "demo_dental_001":     {"id": "demo_dental_001",     "name": "🤖 Demo SonrisaPerfecta IA", "phone_number_id": "demo_dental_001",     "system_instruction": _SI_DENTAL,      "menu_json": _MENU_DENTAL,      "is_active": True, "whatsapp_token": None},
+        "demo_psychology_001": {"id": "demo_psychology_001", "name": "🤖 Demo MenteSana Bot",      "phone_number_id": "demo_psychology_001", "system_instruction": _SI_PSYCHOLOGY,  "menu_json": _MENU_PSYCHOLOGY,  "is_active": True, "whatsapp_token": None},
+        "demo_salon_001":      {"id": "demo_salon_001",      "name": "🤖 Demo GlamourBot 2026",    "phone_number_id": "demo_salon_001",      "system_instruction": _SI_SALON,       "menu_json": _MENU_SALON,       "is_active": True, "whatsapp_token": None},
+        "demo_retail_001":     {"id": "demo_retail_001",     "name": "🤖 Demo StyleBot 2026",      "phone_number_id": "demo_retail_001",     "system_instruction": _SI_RETAIL,      "menu_json": _MENU_RETAIL,      "is_active": True, "whatsapp_token": None},
     }
 
     cid_str = str(client_id)
@@ -298,7 +626,7 @@ def get_client_by_id(client_id):
             client_dict = dict(client)
             if isinstance(client_dict.get('menu_json'), dict):
                 client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
-            return client_dict
+            return _decrypt_client(client_dict)
         return None
     except Exception as e:
         print(f"❌ ERROR get_client_by_id: {e}")
@@ -356,7 +684,7 @@ def list_clients():
             client_dict = dict(row)
             if isinstance(client_dict.get('menu_json'), dict):
                 client_dict['menu_json'] = json.dumps(client_dict['menu_json'])
-            clients.append(client_dict)
+            clients.append(_decrypt_client(client_dict))
         return clients
     except Exception as e:
         print(f"❌ ERROR list_clients: {e}")
@@ -404,11 +732,18 @@ def add_client(data):
         return False
 
 
+_ALLOWED_UPDATE_FIELDS = {
+    'name', 'system_instruction', 'email', 'calendly_url', 'menu_json',
+    'plan', 'is_active', 'bank_name', 'beneficiary_name',
+    'whatsapp_token', 'phone_number_id', 'verify_token', 'stripe_api_key', 'clabe',
+    'email_password',
+}
+
 def update_client(client_id, data):
     """Actualiza la configuración de un cliente existente."""
     try:
-        # Eliminar campos que no se deben actualizar
-        data = {k: v for k, v in data.items() if k not in ['id', 'created_at']}
+        # Eliminar campos que no se deben actualizar y aplicar whitelist de columnas
+        data = {k: v for k, v in data.items() if k in _ALLOWED_UPDATE_FIELDS}
         
         if not data:
             return False
@@ -820,7 +1155,5 @@ if __name__ == "__main__":
     try:
         init_db()
         print("✅ Conexión exitosa")
-    except Exception as e:
-        print(f"❌ Error: {e}")
     except Exception as e:
         print(f"❌ Error: {e}")

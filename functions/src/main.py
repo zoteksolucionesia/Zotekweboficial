@@ -53,10 +53,8 @@ if not SECRET_KEY:
     raise ValueError("SECRET_KEY no definida en variables de entorno")
 if not ADMIN_EMAIL:
     raise ValueError("ADMIN_EMAIL no definida en variables de entorno")
-ADMIN_EMAILS = [
-    ADMIN_EMAIL,
-    "morentinomar@gmail.com"
-]
+_extra_admins = [e.strip() for e in os.getenv("ADMIN_EMAILS_EXTRA", "").split(",") if e.strip()]
+ADMIN_EMAILS = list({ADMIN_EMAIL} | set(_extra_admins))
 EMAIL_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
 WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")
 
@@ -93,7 +91,7 @@ app.add_middleware(
         "https://zotek-ia.firebaseapp.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        "*"
+        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -222,7 +220,7 @@ async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/test-whatsapp")
-async def test_whatsapp(to: str = "523123173431"):
+async def test_whatsapp(to: str = "523123173431", current_user: str = Depends(get_current_user)):
     """Diagnostic endpoint: tests WhatsApp API send capability."""
     import sys
     results = {"steps": [], "target": to}
@@ -466,12 +464,13 @@ async def recibir_mensaje(request: Request):
                         demo_client_id = None
                         if session and session.get('demo_mode'):
                             demo_mode = session['demo_mode']
-                            # IDs deben coincidir con los de database.py
-                            if demo_mode == "Restaurante": demo_client_id = "demo_restaurant"
-                            elif demo_mode == "Dental": demo_client_id = "demo_dental"
-                            elif demo_mode == "Psicólogo" or demo_mode == "Psicología": demo_client_id = "demo_psychology"
-                            elif demo_mode == "Salon" or demo_mode == "Salón": demo_client_id = "demo_salon"
-                            elif demo_mode == "Retail" or demo_mode == "Tienda": demo_client_id = "demo_retail"
+                            # Normalizar: lower, sin prefijo "demo_", sin acentos
+                            _dm = demo_mode.lower().replace("demo_", "").replace("é", "e").replace("ó", "o").replace("á", "a").replace("í", "i").replace("ú", "u")
+                            if "restaurant" in _dm:    demo_client_id = "demo_restaurant"
+                            elif "dental" in _dm or "clinica" in _dm or "clinic" in _dm: demo_client_id = "demo_dental"
+                            elif "psicolog" in _dm or "psychology" in _dm or "mental" in _dm: demo_client_id = "demo_psychology"
+                            elif "salon" in _dm or "belleza" in _dm or "glamour" in _dm: demo_client_id = "demo_salon"
+                            elif "retail" in _dm or "tienda" in _dm or "moda" in _dm or "urban" in _dm: demo_client_id = "demo_retail"
                         
                         # Obtener siempre el cliente real primero (propietario del número base)
                         real_client = database.get_client_by_phone_id(phone_number_id)
@@ -531,10 +530,18 @@ async def recibir_mensaje(request: Request):
                         logger.debug(f"[DEBUG] texto_usuario DESPUES de extraer: '{texto_usuario}'")
                         logger.debug(f"[DEBUG] message_type: {message_type}")
 
+                        # Salida de demo universal — funciona aunque haya sesión activa
+                        texto_lower = texto_usuario.lower().strip()
+                        universal_exit_keywords = ["hola", "inicio", "start", "reiniciar",
+                                                   "salir", "terminar", "terminar demo", "salir demo", "volver", "regresar"]
+                        if demo_client_id and texto_lower in universal_exit_keywords:
+                            database.delete_user_session(numero_usuario, phone_number_id)
+                            logger.info(f"[Demo] Salida de demo universal vía '{texto_lower}' para {numero_usuario}")
+                            demo_client_id = None
+                            client_data = real_client  # volver al cliente real (Zotek)
+
                         # Verificar si el usuario quiere iniciar UNA NUEVA demo (no viene de sesión)
                         if not demo_client_id:
-                            texto_lower = texto_usuario.lower().strip()
-
                             demo_keyword_map = {
                                 "restaurante": "demo_restaurant",
                                 "tienda": "demo_retail",
@@ -544,19 +551,22 @@ async def recibir_mensaje(request: Request):
                                 "salon": "demo_salon",
                                 "belleza": "demo_salon",
                                 "zotek": "980996958435648",
-                                "ia": "980996958435648",
-                                "soluciones": "980996958435648"
+                                "zotek ia": "980996958435648",
+                                "soluciones ia": "980996958435648",
                             }
 
                             demo_phone_id = None
                             for keyword, phone_id in demo_keyword_map.items():
-                                if keyword in texto_lower:
+                                if re.search(r'\b' + re.escape(keyword) + r'\b', texto_lower):
                                     demo_phone_id = phone_id
                                     break
 
                             if demo_phone_id:
                                 # Usuario quiere iniciar una demo nueva
                                 demo_client = database.get_client_by_phone_id(demo_phone_id)
+                                if not demo_client:
+                                    # Fallback: demos hardcodeados viven en get_client_by_id, no en DB por phone_id
+                                    demo_client = database.get_client_by_id(demo_phone_id)
 
                                 if demo_client:
                                     tipo_demo = demo_phone_id.replace("demo_", "")
@@ -608,15 +618,6 @@ async def recibir_mensaje(request: Request):
                                     return {"status": "demo_started"}
                                 else:
                                     logger.info(f"[Demo] Bot demo '{demo_phone_id}' no encontrado")
-
-                            # Si es mensaje de salir de demo
-                            if texto_lower in ["salir", "terminar", "terminar demo", "salir demo"]:
-                                if session and session.get("demo_mode"):
-                                    database.delete_user_session(numero_usuario, phone_number_id)
-                                    logger.info(f"[Demo] Terminando sesión de demo para {numero_usuario}")
-                                    msg_salida = "Has salido del modo demo. Ahora vuelvo a ser el asistente general de Zotek Soluciones IA. En que mas puedo ayudarte?"
-                                    whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    return {"status": "demo_ended"}
 
                         # ============================================
                         # FLUJO DE RESERVA INTERACTIVA (Restaurante)
@@ -756,6 +757,9 @@ async def recibir_mensaje(request: Request):
                             if session_is_demo and demo_phone_id_from_session:
                                 logger.debug(f"[DEBUG] Loading demo menu for: {demo_phone_id_from_session}")
                                 demo_client_for_menu = database.get_client_by_phone_id(demo_phone_id_from_session)
+                                if not demo_client_for_menu:
+                                    # Fallback: client_data ya es el demo client (cargado via get_client_by_id)
+                                    demo_client_for_menu = client_data
                                 logger.debug(f"[DEBUG] demo_client_for_menu: {bool(demo_client_for_menu)}")
                                 if demo_client_for_menu and demo_client_for_menu.get('menu_json'):
                                     menu_json_str = demo_client_for_menu.get('menu_json')
@@ -843,9 +847,20 @@ async def recibir_mensaje(request: Request):
 
                             if match and isinstance(match, dict):
                                 # ============================================
-                                # INICIAR FLUJO DE RESERVA (Restaurante)
+                                # SALIR DE DEMO (botón "Salir" en menú demo)
                                 # ============================================
                                 titulo_match = str(match.get('title', '')).lower()
+                                if session_is_demo and 'salir' in titulo_match:
+                                    database.delete_user_session(numero_usuario, phone_number_id)
+                                    logger.info(f"[Demo] Salida vía botón Salir del menú demo para {numero_usuario}")
+                                    if not skip_whatsapp and real_client:
+                                        msg_salida = "Has salido del modo demo. ¡Bienvenido de vuelta a Zotek SolucionesIA! 🚀\n\nEscribe *menú* para ver nuestras opciones."
+                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, real_client['whatsapp_token'], real_client['phone_number_id'])
+                                    return {"status": "demo_ended"}
+
+                                # ============================================
+                                # INICIAR FLUJO DE RESERVA (Restaurante)
+                                # ============================================
                                 if 'reserva' in titulo_match and 'hacer' in titulo_match:
                                     logger.info(f"[Reserva] Iniciando flujo de reserva para {numero_usuario}")
 
