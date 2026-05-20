@@ -1076,7 +1076,7 @@ def get_client_schedules(client_id):
         cursor.execute('''
             SELECT schedule_date, start_time, end_time 
             FROM client_schedules 
-            WHERE client_id = %s
+            WHERE client_id = %s AND schedule_date >= CURRENT_DATE
             ORDER BY schedule_date ASC, start_time ASC
         ''', (client_id,))
         rows = cursor.fetchall()
