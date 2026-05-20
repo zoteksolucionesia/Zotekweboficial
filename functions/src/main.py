@@ -1991,7 +1991,28 @@ async def widget_chat(request: Request):
                         email=args.get("email_cliente", ""),
                         date_time=dt_obj
                     )
-                    confirmation_msg = f"¡Perfecto! He agendado tu cita para el {appointment_date} a las {start_time}. ¿Hay algo más en lo que pueda ayudarte?"
+                    nombre_cliente = args.get("nombre_cliente", "")
+                    business_name = client_data.get("name", "")
+                    try:
+                        DAYS_ES = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+                        dia_semana = DAYS_ES[datetime.strptime(appointment_date, "%Y-%m-%d").weekday()]
+                    except Exception:
+                        dia_semana = ""
+                    if apt_result["id"] > 0 and apt_result["token"]:
+                        token = apt_result["token"]
+                        cita_url = f"https://zotek-ia.web.app/cita?t={token}"
+                        saludo = f"¡Listo, {nombre_cliente}! " if nombre_cliente else "¡Listo! "
+                        confirmation_msg = (
+                            f"{saludo}Tu cita quedó reservada.\n\n"
+                            f"📍 *{business_name}*\n"
+                            f"📅 Fecha: {appointment_date} ({dia_semana})\n"
+                            f"🕐 Hora: {start_time}\n"
+                            + (f"👤 Nombre: {nombre_cliente}\n" if nombre_cliente else "")
+                            + f"🔗 {cita_url}\n\n"
+                            f"¿Necesitás algo más?"
+                        )
+                    else:
+                        confirmation_msg = f"¡Perfecto! He agendado tu cita para el {appointment_date} a las {start_time}. ¿Hay algo más en lo que pueda ayudarte?"
                 elif name == "registrar_cliente_potencial":
                     from .services.lead_service import save_lead
                     save_lead(
