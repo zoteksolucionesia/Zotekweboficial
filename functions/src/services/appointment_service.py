@@ -24,43 +24,37 @@ class AppointmentService:
     
     def create_appointment(self, client_id: int, phone: str,
                           date_time: datetime, name: str = None,
-                          email: str = '', notes: str = None) -> int:
+                          email: str = '', notes: str = None) -> dict:
         """
-        Crea una nueva cita
-        
-        Args:
-            client_id: ID del cliente (negocio)
-            phone: Teléfono del cliente
-            date_time: Fecha y hora de la cita
-            name: Nombre del cliente (opcional)
-            email: Email del cliente (opcional)
-            notes: Notas adicionales
-            
+        Crea una nueva cita.
+
         Returns:
-            ID de la cita creada
+            {"id": int, "token": str} o {"id": -1, "token": None} en error
         """
         try:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
+
             cursor.execute("""
                 INSERT INTO appointments
                 (client_id, phone, date_time, name, email, notes)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id
+                RETURNING id, token
             """, (client_id, phone, date_time, name, email or '', notes or ''))
-            
-            appointment_id = cursor.fetchone()['id']
+
+            row = cursor.fetchone()
+            appointment_id = row['id']
+            token = str(row['token'])
             conn.commit()
             cursor.close()
             conn.close()
-            
+
             print(f"[Appointment] Created appointment {appointment_id} for {phone}")
-            return appointment_id
-            
+            return {"id": appointment_id, "token": token}
+
         except Exception as e:
             print(f"[Appointment] Error creating appointment: {e}")
-            return -1
+            return {"id": -1, "token": None}
     
     def confirm_appointment(self, appointment_id: int) -> bool:
         """

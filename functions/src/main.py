@@ -1984,7 +1984,7 @@ async def widget_chat(request: Request):
                     except:
                         dt_obj = datetime.now()
 
-                    appointment_service.create_appointment(
+                    apt_result = appointment_service.create_appointment(
                         client_id=client_id,
                         name=args.get("nombre_cliente", "Web User"),
                         phone=args.get("telefono_contacto", ""),
@@ -2092,7 +2092,7 @@ async def create_appointment_api(client_id: str, request: Request):
         logger.info(f"Error parsing date: {e}")
         raise HTTPException(status_code=400, detail="Fecha inválida. Usa formato YYYY-MM-DD e incluye appointment_time.")
 
-    appointment_id = appointment_service.create_appointment(
+    apt_result = appointment_service.create_appointment(
         client_id=client_id_value,
         phone=data.get('phone_number') or data.get('phone', ''),
         date_time=dt_obj,
@@ -2101,8 +2101,8 @@ async def create_appointment_api(client_id: str, request: Request):
         notes=data.get('notes', '')
     )
 
-    if appointment_id > 0:
-        return {"status": "created", "appointment_id": appointment_id}
+    if apt_result["id"] > 0:
+        return {"status": "created", "appointment_id": apt_result["id"], "token": apt_result["token"]}
     raise HTTPException(status_code=400, detail="Error al crear cita en la base de datos")
 
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/confirm")
