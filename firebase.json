@@ -21,6 +21,10 @@
     ],
     "rewrites": [
       {
+        "source": "/cita",
+        "destination": "/cita/index.html"
+      },
+      {
         "source": "/login",
         "destination": "/admin/login.html"
       },

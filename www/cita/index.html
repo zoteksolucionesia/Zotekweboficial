@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tu Cita | Zotek</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f1117;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .card {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 1.25rem;
+            padding: 2.5rem 2rem;
+            max-width: 440px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #a78bfa;
+        }
+
+        .logo-dot {
+            width: 8px;
+            height: 8px;
+            background: #7c3aed;
+            border-radius: 50%;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+        .badge-pending   { background: #1e3a5f; color: #60a5fa; }
+        .badge-confirmed { background: #14532d; color: #4ade80; }
+        .badge-cancelled { background: #450a0a; color: #f87171; }
+        .badge-completed { background: #1c1c38; color: #a78bfa; }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #f1f5f9;
+            margin-bottom: 0.4rem;
+        }
+
+        .business-name {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+        }
+
+        .detail-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.875rem;
+            padding: 0.875rem 0;
+            border-bottom: 1px solid #2d3748;
+        }
+        .detail-row:last-of-type { border-bottom: none; }
+
+        .detail-icon {
+            font-size: 1.25rem;
+            width: 1.5rem;
+            text-align: center;
+            flex-shrink: 0;
+            margin-top: 0.05rem;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.15rem;
+        }
+
+        .detail-value {
+            font-size: 0.95rem;
+            color: #e2e8f0;
+            font-weight: 500;
+        }
+
+        .skeleton {
+            background: linear-gradient(90deg, #2d3748 25%, #374151 50%, #2d3748 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s infinite;
+            border-radius: 0.375rem;
+            height: 1rem;
+            width: 60%;
+        }
+
+        @keyframes shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .error-state {
+            text-align: center;
+            padding: 1rem 0;
+        }
+        .error-state .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+        .error-state p { color: #94a3b8; font-size: 0.95rem; }
+
+        .footer {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+        .footer a { color: #7c3aed; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="card" id="card">
+        <div class="logo">
+            <span class="logo-dot"></span>
+            Zotek IA
+        </div>
+
+        <div id="content">
+            <div class="badge badge-pending"><span class="skeleton" style="width:80px;display:inline-block;"></span></div>
+            <h1><span class="skeleton" style="width:180px;display:inline-block;"></span></h1>
+            <p class="business-name"><span class="skeleton" style="width:120px;display:inline-block;"></span></p>
+            <div class="detail-row"><div class="skeleton" style="width:100%;"></div></div>
+            <div class="detail-row"><div class="skeleton" style="width:100%;"></div></div>
+        </div>
+
+        <div class="footer">
+            Gestionado por <a href="https://zotek-ia.web.app" target="_blank">Zotek IA</a>
+        </div>
+    </div>
+
+    <script src="cita.js"></script>
+</body>
+</html>

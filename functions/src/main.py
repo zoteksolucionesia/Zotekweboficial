@@ -2148,6 +2148,20 @@ async def cancel_appointment(client_id: str, appointment_id: int,
         return {"status": "cancelled", "message": "Cita cancelada"}
     raise HTTPException(status_code=400, detail="Error al cancelar cita")
 
+@app.get("/api/appointments/token/{token}")
+async def get_appointment_by_token(token: str):
+    """Endpoint público para obtener detalles de una cita por token UUID (sin auth)."""
+    apt = database.get_appointment_by_token(token)
+    if not apt:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+    # Serializar campos no-JSON-serializables
+    if apt.get("date_time"):
+        apt["date_time"] = apt["date_time"].isoformat()
+    if apt.get("token"):
+        apt["token"] = str(apt["token"])
+    return apt
+
+
 # === STATIC FILES (LOCAL DEV) ===
 # Firebase Hosting maneja los estáticos en producción, pero aquí
 # los montamos para poder probar localmente (http://127.0.0.1:8000/portal/index.html)

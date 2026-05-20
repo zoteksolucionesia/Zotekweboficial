@@ -1087,6 +1087,27 @@ def get_client_schedules(client_id):
         print(f"❌ ERROR get_client_schedules: {e}")
         return []
 
+def get_appointment_by_token(token: str):
+    """Obtiene una cita por su token UUID. Incluye nombre del negocio desde clients."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute('''
+            SELECT a.id, a.date_time, a.name, a.phone, a.email, a.status, a.notes, a.token,
+                   c.name AS business_name, c.id AS client_id
+            FROM appointments a
+            JOIN clients c ON a.client_id = c.id
+            WHERE a.token = %s::uuid
+        ''', (token,))
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[DB] ERROR get_appointment_by_token: {e}")
+        return None
+
+
 def get_client_session_duration(client_id):
     """Obtiene la duración de sesión (minutos) guardada en menu_json del cliente."""
     try:
