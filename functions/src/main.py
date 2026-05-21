@@ -8,7 +8,8 @@ import threading
 import smtplib
 import unicodedata
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from collections import deque
 import sys
 import json
@@ -2011,6 +2012,62 @@ async def widget_chat(request: Request):
                             + f"🔗 {cita_url}\n\n"
                             f"¿Necesitás algo más?"
                         )
+                        # --- Pieza 4A: WhatsApp proactivo ---
+                        # IMPORTANTE: Siempre se envía desde el número oficial de Zotek (phone_id=980996958435648),
+                        # nunca desde el número del cliente. Las plantillas están aprobadas en la cuenta de Zotek.
+                        _phone = args.get("telefono_contacto", "").strip()
+                        logger.info(f"[Pieza 4A] telefono_contacto={_phone}")
+                        if _phone:
+                            # Normalizar: agregar +52 si falta
+                            if not _phone.startswith("+"):
+                                _phone = ("+" + _phone) if _phone.startswith("52") else ("+52" + _phone)
+                            # Siempre usar credenciales de Zotek (no las del cliente)
+                            _zotek = database.get_client_by_phone_id("980996958435648")
+                            _wa_token = _zotek.get("whatsapp_token", "") if _zotek else ""
+                            _wa_phone_id = _zotek.get("phone_number_id", "") if _zotek else ""
+                            logger.info(f"[Pieza 4A] Credenciales Zotek: token_present={bool(_wa_token)}, phone_id={_wa_phone_id}")
+                            if _wa_token and _wa_phone_id:
+                                dia_long = f"{dia_semana}, {appointment_date}"
+                                # Meta espera el número sin "+"
+                                to_phone_meta = _phone.lstrip("+")
+                                _vars = [nombre_cliente or "Cliente", business_name, dia_long, start_time, cita_url]
+                                result = False
+                                for _lang in ["es_MX", "es", "es_LA"]:
+                                    logger.info(f"[Pieza 4A] Enviando template a {to_phone_meta}, lang={_lang}")
+                                    result = whatsapp_service.enviar_template_whatsapp(
+                                        phone_number_id=_wa_phone_id,
+                                        whatsapp_token=_wa_token,
+                                        to_phone=to_phone_meta,
+                                        template_name="zotek_confirmacion_cita",
+                                        variables=_vars,
+                                        language=_lang,
+                                    )
+                                    if result:
+                                        logger.info(f"[Pieza 4A] Enviado OK con lang={_lang}")
+                                        break
+                                logger.info(f"[Pieza 4A] Resultado final: {result}")
+                            else:
+                                logger.warning(f"[Pieza 4A] No se encontraron credenciales de Zotek en BD")
+                        # --- Pieza 4B: Email de confirmación ---
+                        _email = args.get("email_cliente", "").strip()
+                        if _email:
+                            from .services.email_service import get_email_service_for_client
+                            email_svc = get_email_service_for_client(client_data)
+                            if email_svc:
+                                email_svc.send_email(
+                                    to=_email,
+                                    subject=f"✅ Cita confirmada — {business_name}",
+                                    body=(
+                                        f"Hola {nombre_cliente or 'Cliente'},\n\n"
+                                        f"Tu cita ha sido agendada exitosamente.\n\n"
+                                        f"📍 {business_name}\n"
+                                        f"📅 Fecha: {appointment_date} ({dia_semana})\n"
+                                        f"🕐 Hora: {start_time}\n"
+                                        f"🔗 Ver detalles: {cita_url}\n\n"
+                                        f"¡Te esperamos!\n\n"
+                                        f"— {business_name}"
+                                    )
+                                )
                     else:
                         confirmation_msg = f"¡Perfecto! He agendado tu cita para el {appointment_date} a las {start_time}. ¿Hay algo más en lo que pueda ayudarte?"
                 elif name == "registrar_cliente_potencial":
@@ -2055,12 +2112,18 @@ async def get_schedules(client_id: str, week_start: str = None):
     client_id_int = int(client_id) if str(client_id).isdigit() else client_id
     session_duration = database.get_client_session_duration(client_id_int)
 
+    mexico_tz = ZoneInfo("America/Mexico_City")
     booked_list = []
     for b in booked:
         dt = b['date_time']
         if not hasattr(dt, 'strftime'):
             dt = _dt.fromisoformat(str(dt))
-        booked_list.append({"date": dt.strftime('%Y-%m-%d'), "time": dt.strftime('%H:%M')})
+        # Si el datetime es naive, asumimos UTC (postgres con timestamp without tz lo devuelve así)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        # Convertir a hora de México para que coincida con los slots locales del frontend
+        dt_local = dt.astimezone(mexico_tz)
+        booked_list.append({"date": dt_local.strftime('%Y-%m-%d'), "time": dt_local.strftime('%H:%M')})
 
     return {
         "schedules": schedules,
@@ -2097,6 +2160,23 @@ async def create_appointment_api(client_id: str, request: Request):
     data = await request.json()
     client_id_value = int(client_id) if client_id.isdigit() else client_id
 
+    # Obtener datos del cliente (para credenciales de WhatsApp)
+    client_data = database.get_client_by_id(client_id_value)
+    if not client_data:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    # Validar y normalizar número de teléfono (agregar +52 si falta)
+    raw_phone = data.get('phone_number') or data.get('phone', '')
+    phone_number = raw_phone
+    if phone_number:
+        phone_number = phone_number.strip()
+        if not phone_number.startswith('+'):
+            if phone_number.startswith('52'):
+                phone_number = '+' + phone_number
+            else:
+                phone_number = '+52' + phone_number
+    logger.info(f"[API-Citas] Phone normalize: raw='{raw_phone}' -> normalized='{phone_number}'")
+
     # Parsear fecha
     try:
         # Intentar parsear fecha y hora combinados o separados
@@ -2106,7 +2186,12 @@ async def create_appointment_api(client_id: str, request: Request):
                 dt_obj = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
             else:
                 hr_str = data.get('appointment_time', '00:00')
-                dt_obj = datetime.strptime(f"{dt_str} {hr_str}", "%Y-%m-%d %H:%M")
+                # Parsear como hora local de México (UTC-6)
+                dt_naive = datetime.strptime(f"{dt_str} {hr_str}", "%Y-%m-%d %H:%M")
+                mexico_tz = ZoneInfo("America/Mexico_City")
+                dt_obj = dt_naive.replace(tzinfo=mexico_tz)
+                # Convertir a UTC para almacenar en BD
+                dt_obj = dt_obj.astimezone(ZoneInfo("UTC"))
         else:
             raise ValueError("Falta fecha de cita")
     except Exception as e:
@@ -2115,7 +2200,7 @@ async def create_appointment_api(client_id: str, request: Request):
 
     apt_result = appointment_service.create_appointment(
         client_id=client_id_value,
-        phone=data.get('phone_number') or data.get('phone', ''),
+        phone=phone_number,
         date_time=dt_obj,
         name=data.get('customer_name') or data.get('name', ''),
         email=data.get('email', ''),
@@ -2123,6 +2208,70 @@ async def create_appointment_api(client_id: str, request: Request):
     )
 
     if apt_result["id"] > 0:
+        # Enviar plantilla de confirmación de Meta (Pieza 4)
+        # IMPORTANTE: Siempre se envía desde el número oficial de Zotek (phone_id=980996958435648),
+        # nunca desde el número del cliente. Las plantillas están aprobadas en la cuenta de Zotek.
+        import sys
+        print(f"[API-Pieza4] Inicio envío template para appointment {apt_result['id']}, phone={phone_number}"); sys.stdout.flush()
+        try:
+            _phone = phone_number
+            _zotek = database.get_client_by_phone_id("980996958435648")
+            if not _zotek:
+                print("[API-Pieza4] No se encontró cliente Zotek en BD (phone_id=980996958435648)"); sys.stdout.flush()
+                _wa_token = ""
+                _wa_phone_id = ""
+            else:
+                _wa_token = _zotek.get("whatsapp_token", "") or ""
+                _wa_phone_id = _zotek.get("phone_number_id", "") or ""
+            # Diagnóstico: longitud y prefijo del token para detectar si quedó cifrado
+            token_len = len(_wa_token)
+            token_prefix = _wa_token[:6] if _wa_token else ""
+            print(f"[API-Pieza4] Credenciales Zotek: token_len={token_len}, token_prefix='{token_prefix}', phone_id={_wa_phone_id}"); sys.stdout.flush()
+
+            if _wa_token and _wa_phone_id:
+                # Formatear fecha y hora para el mensaje
+                dt_mexico = dt_obj.astimezone(ZoneInfo("America/Mexico_City"))
+                appointment_date_str = dt_mexico.strftime("%d/%m/%Y")
+                appointment_time_str = dt_mexico.strftime("%H:%M")
+                dia_semana = {0:'Lunes',1:'Martes',2:'Miércoles',3:'Jueves',4:'Viernes',5:'Sábado',6:'Domingo'}[dt_mexico.weekday()]
+
+                # Token y URL de la cita pública
+                token = apt_result["token"]
+                cita_url = f"https://zotek-ia.web.app/cita?t={token}"
+
+                # whatsapp_service ya está importado a nivel de módulo (línea 43)
+                # Quitamos el "+" porque Meta espera el número sin "+"
+                to_phone_meta = _phone.lstrip("+")
+                _vars = [
+                    data.get('customer_name') or data.get('name', 'Cliente'),
+                    client_data.get('name', 'Mi negocio'),
+                    f"{dia_semana}, {appointment_date_str}",
+                    appointment_time_str,
+                    cita_url
+                ]
+                # Intentar varios códigos de idioma — Meta a veces usa código distinto al label
+                result = False
+                for _lang in ["es_MX", "es", "es_LA"]:
+                    print(f"[API-Pieza4] Enviando a {to_phone_meta}, template=zotek_confirmacion_cita, lang={_lang}"); sys.stdout.flush()
+                    result = whatsapp_service.enviar_template_whatsapp(
+                        phone_number_id=_wa_phone_id,
+                        whatsapp_token=_wa_token,
+                        to_phone=to_phone_meta,
+                        template_name="zotek_confirmacion_cita",
+                        variables=_vars,
+                        language=_lang,
+                    )
+                    if result:
+                        print(f"[API-Pieza4] Enviado OK con lang={_lang}"); sys.stdout.flush()
+                        break
+                print(f"[API-Pieza4] Resultado final: {result}"); sys.stdout.flush()
+            else:
+                logger.warning(f"[API-Pieza4] Sin credenciales WhatsApp para client_id {client_id_value}")
+        except Exception as e:
+            import traceback
+            logger.error(f"[API-Pieza4] Error enviando confirmación: {e}\n{traceback.format_exc()}")
+            # No fallar la creación si hay error en el mensaje
+
         return {"status": "created", "appointment_id": apt_result["id"], "token": apt_result["token"]}
     raise HTTPException(status_code=400, detail="Error al crear cita en la base de datos")
 
