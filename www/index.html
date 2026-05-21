@@ -1,12 +1,25 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zotek AI | Automatización Inteligente & Agentes</title>
+    <title>Zotek Soluciones IA | Consultoría, agentes y desarrollo a medida</title>
     <meta name="description"
-        content="Plataforma AI-Native de automatización. Orquesta agentes inteligentes para ventas, soporte y procesos internos.">
+        content="Construimos IA que resuelve problemas reales: consultoría, agentes para WhatsApp, desarrollo de software y sistemas de recordatorios y agendamiento.">
+
+    <!-- Anti-FOUC: aplica el tema antes del render. Default = dark; solo cambia si el usuario lo eligió manualmente. -->
+    <script>
+        (function() {
+            try {
+                var saved = localStorage.getItem('zotek-theme');
+                var initial = saved || 'dark';
+                document.documentElement.setAttribute('data-theme', initial);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,7 +27,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
         rel="stylesheet">
 
-    <link rel="stylesheet" href="style.css?v=2.20">
+    <link rel="stylesheet" href="style.css?v=3.2">
 </head>
 
 <body>
@@ -36,68 +49,98 @@
         <a href="/" class="logo-container">
             <img src="/Logo-zotek_animado.svg" alt="Zotek Logo" class="logo-login" style="height: 60px;">
         </a>
-        
+
         <nav class="nav-links">
-            <a href="#probar" class="nav-link">Modelos</a>
-            <a href="#soluciones" class="nav-link">Soluciones</a>
-            <a href="#precios" class="nav-link">Precios</a>
+            <a href="#servicios" class="nav-link">Servicios</a>
+            <a href="#proceso" class="nav-link">Cómo trabajamos</a>
+            <a href="#industrias" class="nav-link">Industrias</a>
+            <a href="#contacto" class="nav-link">Contacto</a>
         </nav>
 
-        <div style="display: flex; gap: 1rem;">
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema claro/oscuro" title="Cambiar tema">
+                <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            </button>
             <a href="/admin/login.html" class="nav-btn">
                 Dashboard
             </a>
-            <a href="#probar" class="nav-btn primary-outline">
-                Comenzar
+            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20mi%20diagnóstico%20gratis%20de%2030%20minutos" target="_blank" class="nav-btn primary-outline">
+                Diagnóstico gratis
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
             </a>
         </div>
     </header>
 
     <main>
+        <!-- HERO -->
         <section class="hero">
             <div class="badge">
                 <div class="badge-dot"></div>
-                Generación de Agentes con IA de Google
+                Consultoría · Agentes IA · Desarrollo · Automatización
             </div>
-            
+
             <h1 class="font-display">
-                <span class="text-gradient">El motor AI-Native para</span><br>
-                <span class="text-gradient-primary">automatizar tu negocio.</span>
+                <span class="text-gradient">Construimos IA que</span><br>
+                <span class="text-gradient-primary">resuelve problemas reales.</span>
             </h1>
-            
+
             <p>
-                Orquesta agentes inteligentes que entienden tu contexto, interactúan con tus clientes en WhatsApp y ejecutan flujos de trabajo en segundos.
+                Somos tu socio en transformación digital: te asesoramos qué automatizar, construimos los agentes de IA que tu negocio necesita y desarrollamos el software a tu medida.
             </p>
-            
+
             <div class="hero-cta">
-                <a href="#probar" class="btn-primary">
-                    Probar Agentes Demo
+                <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20hablar%20con%20un%20consultor" target="_blank" class="btn-primary">
+                    Hablar con un consultor
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                 </a>
-                <a href="/admin/login.html" class="btn-secondary">
-                    Ir al Dashboard
+                <a href="#servicios" class="btn-secondary">
+                    Ver servicios
                 </a>
             </div>
         </section>
 
-        <section class="services-section" id="probar">
+        <!-- SERVICIOS -->
+        <section class="services-section" id="servicios">
             <div class="section-header">
-                <h2 class="text-gradient font-display" id="soluciones">Agentes Especializados</h2>
-                <p>Nuestros agentes entienden contexto, analizan intenciones y cierran procesos sin supervisión.</p>
+                <h2 class="text-gradient font-display">¿Qué hacemos?</h2>
+                <p>Cuatro áreas complementarias para llevar IA y software a tu operación.</p>
             </div>
 
             <div class="services-grid">
-                <!-- Service 1: Agents -->
-                <div class="service-card" id="card-1">
+                <!-- Servicio 1: Consultoría y capacitación -->
+                <div class="service-card" id="consultoria">
                     <div class="service-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1v4h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1v4h1a2 2 0 0 1 2 2H8a2 2 0 0 1 2-2v-4h1a2 2 0 0 1 2-2v-2a2 2 0 0 1-2-2h-1V6h1a2 2 0 0 1 2-2h1z"/></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422a12.083 12.083 0 0 1 .665 6.479A11.952 11.952 0 0 0 12 20.055a11.952 11.952 0 0 0-6.824-2.998 12.078 12.078 0 0 1 .665-6.479L12 14z"/></svg>
                     </div>
-                    <h3>Agentes Zotek</h3>
-                    <p>Agentes conversacionales hyper-realistas conectados directamente a tu WhatsApp Business.</p>
-                    
+                    <h3>Consultoría y capacitación en IA</h3>
+                    <p>Diagnosticamos tu operación, identificamos qué procesos puedes automatizar con IA y capacitamos a tu equipo para que lo aproveche.</p>
+
+                    <ul class="feature-list">
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Análisis de procesos automatizables</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Roadmap de adopción de IA</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Capacitación práctica para tu equipo</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Selección de herramientas (Gemini, GPT, Claude)</li>
+                    </ul>
+                </div>
+
+                <!-- Servicio 2: Agentes de IA -->
+                <div class="service-card" id="agentes">
+                    <div class="service-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>
+                    </div>
+                    <h3>Agentes de IA para WhatsApp</h3>
+                    <p>Tu negocio atendiendo 24/7. Los agentes entienden contexto, califican leads, agendan citas y ejecutan flujos sin intervención humana.</p>
+
+                    <ul class="feature-list">
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Atención al cliente automatizada</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Agendamiento y confirmaciones</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Calificación de leads en tiempo real</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Integrados con tu base de datos</li>
+                    </ul>
+
                     <div class="demo-dock">
-                        <div class="demo-title">Interactúa en Vivo</div>
+                        <div class="demo-title">Pruébalos ahora en WhatsApp</div>
                         <div class="demo-list">
                             <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20información%20sobre%20tus%20servicios" target="_blank" class="demo-item featured">
                                 <div><span class="emoji">🤖</span> Agente Maestro Zotek</div>
@@ -128,56 +171,173 @@
                     </div>
                 </div>
 
-                <!-- Service 2: Workflows -->
-                <div class="service-card" id="card-2">
+                <!-- Servicio 3: Desarrollo de software -->
+                <div class="service-card" id="desarrollo">
                     <div class="service-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                     </div>
-                    <h3>Espacios de Trabajo y Bases de Datos</h3>
-                    <p>Gestión de clientes donde los agentes actualizan la base de datos automáticamente con cada interacción.</p>
-                    
-                     <div class="demo-dock" style="border: none; margin-top: 1rem; padding-top: 0;">
-                        <ul style="list-style: none; color: var(--text-secondary); font-size: 0.95rem; display: flex; flex-direction: column; gap: 0.8rem;">
-                            <li style="display: flex; gap: 0.8rem; align-items: center;"><svg style="color: var(--primary)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Sincronización en tiempo real</li>
-                            <li style="display: flex; gap: 0.8rem; align-items: center;"><svg style="color: var(--primary)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Detección de intenciones IA</li>
-                            <li style="display: flex; gap: 0.8rem; align-items: center;"><svg style="color: var(--primary)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Sanitización de datos GDPR</li>
-                        </ul>
+                    <h3>Desarrollo de software a medida</h3>
+                    <p>Aplicaciones web, móviles y de escritorio diseñadas exactamente para tu operación. Sin templates genéricos.</p>
+
+                    <ul class="feature-list">
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Aplicaciones web (React, Next.js)</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Apps móviles (Android e iOS)</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Aplicaciones de escritorio</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> APIs y backends (Python, FastAPI)</li>
+                    </ul>
+
+                    <div class="tech-stack">
+                        <span class="tech-badge">Python</span>
+                        <span class="tech-badge">FastAPI</span>
+                        <span class="tech-badge">React</span>
+                        <span class="tech-badge">Next.js</span>
+                        <span class="tech-badge">Firebase</span>
+                        <span class="tech-badge">Supabase</span>
                     </div>
                 </div>
 
-                <!-- Service 3: Integrations -->
-                <div class="service-card" id="card-3">
+                <!-- Servicio 4: Recordatorios y agendamiento -->
+                <div class="service-card" id="recordatorios">
                     <div class="service-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     </div>
-                    <h3>Análisis y Métricas</h3>
-                    <p>Métricas precisas y análisis de sentimientos de cada conversación procesada por nuestra infraestructura.</p>
-                    
-                    <div class="demo-dock" style="border: none; margin-top: 1rem; padding-top: 0;">
-                        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); border-radius: 8px; padding: 1.5rem;">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                                <span style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Tiempo Resp. IA</span>
-                                <span style="font-size: 0.85rem; color: #00e5ff; font-weight: 600;">~0.7s</span>
-                            </div>
-                            <div style="width: 100%; background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px;">
-                                <div style="width: 90%; background: #00e5ff; height: 100%; border-radius: 2px; box-shadow: 0 0 10px #00e5ff;"></div>
-                            </div>
-                            
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; margin-top: 1.5rem;">
-                                <span style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 500;">Ahorro Consultas DB</span>
-                                <span style="font-size: 0.85rem; color: #8b5cf6; font-weight: 600;">80%</span>
-                            </div>
-                             <div style="width: 100%; background: rgba(255,255,255,0.1); height: 4px; border-radius: 2px;">
-                                <div style="width: 80%; background: #8b5cf6; height: 100%; border-radius: 2px; box-shadow: 0 0 10px #8b5cf6;"></div>
-                            </div>
-                        </div>
-                    </div>
+                    <h3>Recordatorios y agendamiento</h3>
+                    <p>Reduce ausencias hasta un 60%. Tus clientes reservan en línea y reciben confirmaciones y recordatorios automáticos por WhatsApp y correo.</p>
+
+                    <ul class="feature-list">
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Agenda online integrada a tu sitio</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Confirmación automática por WhatsApp</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Recordatorios 24h antes de la cita</li>
+                        <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg> Panel admin para reagendar / cancelar</li>
+                    </ul>
                 </div>
             </div>
         </section>
+
+        <!-- PROCESO -->
+        <section class="process-section" id="proceso">
+            <div class="section-header">
+                <h2 class="text-gradient font-display">Cómo trabajamos</h2>
+                <p>De la primera conversación al producto en producción, sin sorpresas.</p>
+            </div>
+
+            <div class="process-grid">
+                <div class="process-step">
+                    <div class="process-number">01</div>
+                    <h4>Diagnóstico gratis</h4>
+                    <p>30 minutos por WhatsApp donde entendemos tu operación y detectamos oportunidades de IA o automatización.</p>
+                    <span class="process-tag">GRATIS · 30 MIN</span>
+                </div>
+
+                <div class="process-step">
+                    <div class="process-number">02</div>
+                    <h4>Propuesta a medida</h4>
+                    <p>Te entregamos alcance, tiempos y costos por escrito. Sin letra chica ni montajes ocultos.</p>
+                </div>
+
+                <div class="process-step">
+                    <div class="process-number">03</div>
+                    <h4>Implementación</h4>
+                    <p>Construimos en sprints cortos con entregas validables. Tú ves avances cada semana.</p>
+                </div>
+
+                <div class="process-step">
+                    <div class="process-number">04</div>
+                    <h4>Acompañamiento</h4>
+                    <p>Capacitamos a tu equipo y damos soporte continuo. El producto vive contigo, no solo se entrega.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- INDUSTRIAS -->
+        <section class="industries-section" id="industrias">
+            <div class="section-header">
+                <h2 class="text-gradient font-display">Industrias que atendemos</h2>
+                <p>Sectores donde ya hemos implementado IA y software a medida.</p>
+            </div>
+
+            <div class="industries-grid">
+                <div class="industry-card">
+                    <span class="industry-emoji">🧠</span>
+                    <h4>Psicología y terapia</h4>
+                    <p>Agendamiento, recordatorios, gestión de pacientes y notas de sesión.</p>
+                </div>
+                <div class="industry-card">
+                    <span class="industry-emoji">🏥</span>
+                    <h4>Clínicas dentales y médicas</h4>
+                    <p>Citas, expedientes, recordatorios y triaje inicial por WhatsApp.</p>
+                </div>
+                <div class="industry-card">
+                    <span class="industry-emoji">🍕</span>
+                    <h4>Restaurantes</h4>
+                    <p>Reservas, menús dinámicos, pedidos y atención automatizada.</p>
+                </div>
+                <div class="industry-card">
+                    <span class="industry-emoji">💇‍♀️</span>
+                    <h4>Belleza y wellness</h4>
+                    <p>Citas con tu estilista preferido, recordatorios y promociones.</p>
+                </div>
+                <div class="industry-card">
+                    <span class="industry-emoji">🛍️</span>
+                    <h4>Retail y e-commerce</h4>
+                    <p>Asistentes de venta, catálogo conversacional y postventa.</p>
+                </div>
+                <div class="industry-card">
+                    <span class="industry-emoji">💼</span>
+                    <h4>Servicios profesionales</h4>
+                    <p>Consultores, despachos y profesionistas independientes.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA FINAL -->
+        <section class="cta-final" id="contacto">
+            <div class="cta-card">
+                <h2 class="font-display">Cuéntanos tu problema en 2 minutos</h2>
+                <p>Sin formulario, sin compromiso. Te respondemos por WhatsApp con un diagnóstico inicial gratis.</p>
+                <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20necesito%20ayuda%20con%20una%20implementación%20de%20IA"
+                   target="_blank" class="btn-primary cta-btn">
+                    Escribir por WhatsApp
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                </a>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="site-footer">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="/Logo-zotek_animado.svg" alt="Zotek Logo" style="height: 50px;">
+                    <p>IA y software a medida para que tu negocio crezca sin contratar más personal.</p>
+                </div>
+                <div class="footer-links">
+                    <div>
+                        <h5>Servicios</h5>
+                        <a href="#consultoria">Consultoría</a>
+                        <a href="#agentes">Agentes IA</a>
+                        <a href="#desarrollo">Desarrollo</a>
+                        <a href="#recordatorios">Recordatorios</a>
+                    </div>
+                    <div>
+                        <h5>Empresa</h5>
+                        <a href="#proceso">Cómo trabajamos</a>
+                        <a href="#industrias">Industrias</a>
+                        <a href="/admin/login.html">Dashboard</a>
+                    </div>
+                    <div>
+                        <h5>Contacto</h5>
+                        <a href="https://wa.me/523123775877" target="_blank">WhatsApp</a>
+                        <a href="mailto:zoteksolucionesia@gmail.com">zoteksolucionesia@gmail.com</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <span>© 2026 Zotek Soluciones IA · Todos los derechos reservados</span>
+            </div>
+        </footer>
     </main>
 
-    <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20necesito%20ayuda%20con%20una%20implementación%20de%20IA" 
+    <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20necesito%20ayuda%20con%20una%20implementación%20de%20IA"
        target="_blank" class="whatsapp-float" title="Habla con un experto">
         <i class="fab fa-whatsapp"></i>
         <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp" width="35">
@@ -185,10 +345,10 @@
     </a>
 
 
-    <script src="script.js?v=2.20"></script>
+    <script src="script.js?v=3.2"></script>
     <script>
         // Efecto hover brillante en las tarjetas (Glassmorphism avanzado)
-        document.querySelectorAll('.service-card').forEach(card => {
+        document.querySelectorAll('.service-card, .process-step, .industry-card').forEach(card => {
             card.addEventListener('mousemove', e => {
                 const rect = card.getBoundingClientRect();
                 const x = e.clientX - rect.left;
@@ -197,6 +357,20 @@
                 card.style.setProperty('--mouse-y', `${y}px`);
             });
         });
+
+        // Toggle de tema claro/oscuro (default = dark; respeta solo elección manual del usuario)
+        (function() {
+            const root = document.documentElement;
+            const toggle = document.getElementById('theme-toggle');
+            if (!toggle) return;
+
+            toggle.addEventListener('click', () => {
+                const current = root.getAttribute('data-theme');
+                const next = current === 'dark' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                try { localStorage.setItem('zotek-theme', next); } catch (e) {}
+            });
+        })();
     </script>
 </body>
 
