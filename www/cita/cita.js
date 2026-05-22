@@ -12,6 +12,8 @@
         completed: { text: 'Completada', cls: 'badge-completed' },
     };
 
+    let currentToken = null;
+
     function getToken() {
         return new URLSearchParams(window.location.search).get('t');
     }
@@ -62,6 +64,15 @@
 
         document.getElementById('content').innerHTML = html;
         document.title = `Cita — ${apt.business_name || 'Zotek IA'}`;
+
+        // Botón de cancelar solo si la cita está activa
+        const actionsEl = document.getElementById('actions');
+        if (apt.status === 'pending' || apt.status === 'confirmed') {
+            actionsEl.innerHTML = `<button class="btn-cancel" id="btn-cancel">Cancelar esta cita</button>`;
+            document.getElementById('btn-cancel').addEventListener('click', openModal);
+        } else {
+            actionsEl.innerHTML = '';
+        }
     }
 
     function renderError(msg) {
@@ -71,10 +82,52 @@
                 <h1 style="font-size:1.2rem;margin-bottom:0.5rem;">Cita no encontrada</h1>
                 <p>${msg}</p>
             </div>`;
+        document.getElementById('actions').innerHTML = '';
+    }
+
+    function openModal() {
+        document.getElementById('modal-overlay').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('modal-overlay').classList.remove('active');
+    }
+
+    function showToast(msg, isError) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.classList.toggle('error', !!isError);
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    async function confirmCancel() {
+        const btn = document.getElementById('modal-confirm');
+        btn.disabled = true;
+        btn.textContent = 'Cancelando...';
+        try {
+            const res = await fetch(`${API}/api/appointments/token/${encodeURIComponent(currentToken)}/cancel`, {
+                method: 'POST',
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.detail || `HTTP ${res.status}`);
+            }
+            closeModal();
+            showToast('Cita cancelada correctamente');
+            // Recargar detalles para reflejar el nuevo estado
+            await load();
+        } catch (e) {
+            showToast(e.message || 'Error al cancelar la cita', true);
+            btn.disabled = false;
+            btn.textContent = 'Sí, cancelar';
+            console.error(e);
+        }
     }
 
     async function load() {
         const token = getToken();
+        currentToken = token;
         if (!token) {
             renderError('El enlace no contiene un identificador de cita válido.');
             return;
@@ -95,5 +148,13 @@
         }
     }
 
-    load();
+    // Wire up modal buttons (always present in DOM)
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('modal-cancel').addEventListener('click', closeModal);
+        document.getElementById('modal-confirm').addEventListener('click', confirmCancel);
+        document.getElementById('modal-overlay').addEventListener('click', (e) => {
+            if (e.target.id === 'modal-overlay') closeModal();
+        });
+        load();
+    });
 })();

@@ -132,6 +132,114 @@
             color: #475569;
         }
         .footer a { color: #7c3aed; text-decoration: none; }
+
+        /* Botón de cancelar */
+        .btn-cancel {
+            display: block;
+            width: 100%;
+            margin-top: 1.5rem;
+            padding: 0.875rem 1rem;
+            background: transparent;
+            color: #f87171;
+            border: 1px solid #7f1d1d;
+            border-radius: 0.75rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-cancel:hover:not(:disabled) {
+            background: #450a0a;
+            border-color: #f87171;
+        }
+        .btn-cancel:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            z-index: 100;
+            backdrop-filter: blur(4px);
+        }
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: #1a1f2e;
+            border: 1px solid #2d3748;
+            border-radius: 1rem;
+            padding: 2rem 1.5rem;
+            max-width: 380px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .modal-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .modal h2 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #f1f5f9;
+            margin-bottom: 0.5rem;
+        }
+        .modal p {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+        .modal-actions button {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 0.625rem;
+            font-family: inherit;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s;
+        }
+        .btn-secondary {
+            background: #2d3748;
+            color: #e2e8f0;
+        }
+        .btn-secondary:hover { background: #374151; }
+        .btn-danger {
+            background: #b91c1c;
+            color: #fff;
+        }
+        .btn-danger:hover:not(:disabled) { background: #dc2626; }
+        .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #14532d;
+            color: #fff;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 200;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+        .toast.error { background: #7f1d1d; }
     </style>
 </head>
 <body>
@@ -149,10 +257,26 @@
             <div class="detail-row"><div class="skeleton" style="width:100%;"></div></div>
         </div>
 
+        <div id="actions"></div>
+
         <div class="footer">
             Gestionado por <a href="https://zotek-ia.web.app" target="_blank">Zotek IA</a>
         </div>
     </div>
+
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal">
+            <div class="modal-icon">⚠️</div>
+            <h2>¿Cancelar esta cita?</h2>
+            <p>Esta acción no se puede deshacer. Si quieres reagendar, deberás crear una nueva cita.</p>
+            <div class="modal-actions">
+                <button class="btn-secondary" id="modal-cancel">Volver</button>
+                <button class="btn-danger" id="modal-confirm">Sí, cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
 
     <script src="cita.js"></script>
 </body>

@@ -2311,6 +2311,25 @@ async def get_appointment_by_token(token: str):
     return apt
 
 
+@app.post("/api/appointments/token/{token}/cancel")
+async def cancel_appointment_by_token(token: str):
+    """Endpoint público para cancelar una cita por token UUID (sin auth).
+    El token UUID actúa como autenticación implícita: solo quien lo posee puede cancelar."""
+    apt = database.get_appointment_by_token(token)
+    if not apt:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+
+    if apt.get("status") in ("cancelled", "completed"):
+        raise HTTPException(status_code=400, detail=f"La cita ya está {apt.get('status')}")
+
+    from .services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    if apt_service.cancel_appointment(apt["id"]):
+        return {"status": "cancelled", "message": "Cita cancelada"}
+    raise HTTPException(status_code=400, detail="Error al cancelar cita")
+
+
 # === STATIC FILES (LOCAL DEV) ===
 # Firebase Hosting maneja los estáticos en producción, pero aquí
 # los montamos para poder probar localmente (http://127.0.0.1:8000/portal/index.html)
