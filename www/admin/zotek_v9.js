@@ -2093,9 +2093,17 @@ function escHtmlAdmin(str) {
 
 function formatDateTimeAdmin(dt) {
     if (!dt) return '—';
-    const d = new Date(dt);
+    // Supabase devuelve timestamps sin sufijo de timezone; forzar interpretación UTC
+    const dtUtc = (dt.endsWith('Z') || dt.includes('+') || dt.includes('-', 10))
+        ? dt
+        : dt.replace(' ', 'T') + 'Z';
+    const d = new Date(dtUtc);
     if (isNaN(d)) return dt;
-    return d.toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    return d.toLocaleString('es-MX', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'America/Mexico_City'
+    });
 }
 
 function renderCitasTableAdmin() {
