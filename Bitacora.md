@@ -1,5 +1,116 @@
 # Zotek Project Session Logs
 
+## Session Log: 2026-06-01 (14:05) — SSO con el CRM LiliBauza (login único en el portal)
+
+### Metadata
+- **Session Date:** June 1, 2026, 14:05
+- **Status:** SSO implementado y verificado E2E. El portal acepta una sesión iniciada desde el CRM LiliBauza sin pedir OTP.
+- **Affected Components:** `functions/src/main.py`, `www/portal/portal.js`, `functions/.env`
+- **Commit:** `c267561` (rama `feature/admin-client-tabs-ui`)
+- **Repo externo relacionado:** LiliBauza-admin (CRM), commit `b9059ea`.
+
+### 1. Contexto
+El CRM de terapeutas (`lilibauza-admin.web.app`) embebe el portal Zotek (`zotek-ia.web.app/portal`) dentro de su sección `/admin/citas` mediante un iframe. La gestión de citas/leads/horarios vive 100% en el portal (Supabase `bjtqcnecyknwgieijqgh`); el CRM no almacena nada de citas. Requisito: el terapeuta ya autenticado en el CRM **no debe volver a loguearse** en el portal.
+
+### 2. Implementación del SSO
+- **Esquema:** el CRM firma un JWT HS256 de **corta duración (120 s)** con un secreto **COMPARTIDO** `PORTAL_SSO_SECRET` — **distinto** del `SECRET_KEY` interno del portal, para no exponer la firma de sesiones reales. La identidad viaja como **email**.
+- **Nuevo endpoint** `POST /api/auth/sso` en `functions/src/main.py`:
+  - Lee `PORTAL_SSO_SECRET = os.getenv("PORTAL_SSO_SECRET")` (devuelve 500 si falta).
+  - Decodifica el `sso_token` con `jwt.decode(..., algorithms=[ALGORITHM])` (`HS256`); 401 si es inválido/expirado.
+  - Resuelve rol: `admin` si el email está en `ADMIN_EMAILS_EXTRA`, si no `client`. Busca el cliente por email (`database.get_client_by_email`); si no existe y no es admin → **403**.
+  - Emite el `access_token` interno habitual con `create_access_token(data={"sub": email, "role": role, "client_id": client_id})` y devuelve `{access_token, token_type, role, client_id, client_name, email}`.
+- **Frontend** `www/portal/portal.js`: `init()` se hizo `async`. Si detecta `?sso=<token>` en la URL: limpia el query con `history.replaceState`, hace `fetch` a `/api/auth/sso`, guarda `access_token`/`clientData` en `localStorage` y entra directo a `showDashboard()`. Si falla, cae al flujo normal de OTP.
+
+### 3. Configuración / despliegue
+- `PORTAL_SSO_SECRET` agregado a `functions/.env` (mismo valor que en el CRM). **Importante:** la línea debe usar fin de línea **LF**; un CRLF en esa línea rompió el parseo del `.env` y devolvió "no configurado".
+- Deploy: `firebase deploy --only functions` (api_handler, Python 3.13, 2ª gen / Cloud Run).
+
+### 4. Verificación
+- `morentinomar@gmail.com` (presente en `ADMIN_EMAILS_EXTRA`) → entra como **admin**, `access_token` emitido, sin OTP. ✅
+- `lilibauza@gmail.com` → **403** (no registrado como cliente en el SaaS). Pendiente: registrarla cuando use su propio email.
+
+### 5. Pendientes
+- 🔒 Rotar `PORTAL_SSO_SECRET` (quedó visible en el chat de la sesión); cambiarlo idéntico en el `.env` del portal y del CRM, y redesplegar ambos.
+- Dar de alta a `lilibauza@gmail.com` como cliente del portal para que su SSO funcione.
+- 🎨 Integración visual del portal embebido → **implementada** (ver entrada 14:14).
+
+---
+
+## Session Log: 2026-06-01 (14:14) — Refresco de marca del portal (violeta-cian + acento heredado del CRM)
+
+### Metadata
+- **Session Date:** June 1, 2026, 14:14
+- **Status:** Implementado (solo frontend). Pendiente de `firebase deploy --only hosting`.
+- **Affected Components:** `www/portal/portal.css`, `www/portal/index.html`, `www/portal/portal.js`
+- **Repo externo relacionado:** LiliBauza-admin (CRM), `src/app/admin/citas/page.tsx`.
+
+### 1. Objetivo
+Alinear el portal con la identidad SaaS nueva (violeta-cian del rediseño de `/cita/`) y, cuando se embeba dentro del CRM LiliBauza (`/admin/citas`), que adopte el color de branding del terapeuta. Regla de diseño: **acentos = color del CRM; fondos/degradados = violeta-cian del SaaS**.
+
+> **Corrección (misma sesión):** la primera pasada usó los colores del rediseño de `/cita/`. Al comparar el portal con el **landing** (`zotek-ia.web.app`), no coincidían: la marca real usa **cyan brillante `#00e5ff`** y fondo **slate `#0f172a`**. Se re-alineó el portal a los tokens **exactos del landing** (`www/style.css`). Valores finales abajo.
+
+### 2. Cambios
+- **`portal.css`** (alineado a la paleta de marca de `www/style.css`):
+  - **Dark:** `--primary: #8b5cf6` (violet, acento interactivo legible con texto blanco), `--accent-cyan: #00e5ff`, `--bg: #0f172a` (slate-900), superficies slate (`#1e293b`/`#334155`), texto `#f1f5f9`/`#94a3b8`.
+  - **Light:** `--primary: #7c3aed`, `--accent-cyan: #0891b2`, `--bg: #eef2f7`, superficies `#fff`/`#f1f5f9`.
+  - `--brand-gradient`: cyan→violeta (`#00e5ff → #8b5cf6` en dark; `#0891b2 → #7c3aed` en light) — el mismo de "resuelve problemas reales" del landing.
+  - `--accent: var(--primary)` (alias para la sección Horarios, que usaba `var(--accent,...)`).
+  - Glows de fondo (body + login) con los valores del landing: violeta `rgba(139,92,246,.08)` + cyan `rgba(0,229,255,.08)`.
+  - `--primary-dim` ahora se deriva con `color-mix(in srgb, var(--primary) N%, transparent)` → al sobrescribir `--primary` (acento del CRM), el tinte sigue al acento de forma cohesiva.
+  - **Fondo SaaS sutil:** radiales violeta/cian de baja opacidad en `html, body` (`background-attachment: fixed`) y un degradado violeta-cian más marcado en la pantalla de login.
+  - **Franja de marca** violeta→cian (`::after` de `.sidebar-brand`) bajo el logo.
+  - `.btn-upload:hover` pasó de `rgba(108,99,255,.22)` → `var(--primary-dim)`.
+- **`index.html`:** los `#6C63FF` inline (envelope-check del login, ícono KPI "citas hoy", ícono brain de "Probar Agente") → `var(--primary)` / `var(--primary-dim)`.
+- **`portal.js`:** `init()` lee de la URL `?accent=<hex>` (valida `^#[0-9a-fA-F]{6}$` y hace `setProperty('--primary', ...)`) y `?theme=light|dark` (llama `applyTheme`). Limpia `sso`/`accent`/`theme` del URL con `replaceState`. Si no llegan, el portal usa su paleta violeta-cian por defecto.
+
+### 3. Lado CRM (referencia)
+- `src/app/admin/citas/page.tsx`: el iframe añade `accent=<--color-primary>` y `theme=<dark|light>` (según el modo del CRM) tanto al URL con SSO como al de fallback.
+
+### 4. Notas
+- `color-mix()` requiere navegador moderno (soportado en Chrome/Edge/Safari/Firefox actuales).
+- No toca backend ni el flujo SSO (`/api/auth/sso` intacto).
+
+---
+
+## Session Log: 2026-06-01 (15:32) — Portal alineado al estilo REAL del landing (blobs, acento cyan, botones, efecto linterna)
+
+### Metadata
+- **Session Date:** June 1, 2026, 15:32
+- **Status:** Implementado y **desplegado** (`firebase deploy --only hosting`, 3 iteraciones).
+- **Affected Components:** `www/portal/portal.css`, `www/portal/index.html`, `www/portal/portal.js`
+- **Referencia de marca:** `www/style.css` (landing) — fuente de verdad de la identidad Zotek.
+
+### 1. Problema detectado (feedback del usuario, con capturas)
+El portal **no se parecía** al landing `zotek-ia.web.app`. Iterando sobre las capturas se detectó:
+1. El usuario seguía viendo los colores viejos → **faltaba desplegar** (los cambios estaban solo en local). Causa raíz de la confusión inicial.
+2. La primera paleta usó los tonos de `/cita/` (`#7c3aed`/`#0891b2`), pero la marca real usa **cyan brillante `#00e5ff`** y fondo **slate `#0f172a`**.
+3. El fondo del landing tiene un **glow teal/violeta fuerte** que el portal no tenía. Se identificó que NO son `radial-gradient` del `body`, sino **dos "blobs"** (`.bg-blobs > .blob`): un círculo **cyan arriba-izquierda** y uno **violeta abajo-derecha**, con `filter: blur(120px)` y `opacity` (0.5 dark / 0.22 light), sobre **superficies semitransparentes (glassmorphism)** con `backdrop-filter`. Es la técnica usada en TODA la web Zotek (landing, `/admin`, `/login`).
+4. **El usuario rechazó los botones violetas** y aclaró la paleta de texto correcta: **cyan, azules, blancos y gris claro**.
+5. Pidió el **efecto "linterna"**: una luz que sigue el cursor al pasar sobre los recuadros (en el landing es `.service-card::before` con `radial-gradient` posicionado en `var(--mouse-x/--mouse-y)` + JS `mousemove`).
+
+### 2. Cambios finales aplicados (`portal.css`)
+- **Paleta = tokens exactos del landing.** Dark: `--bg: #0f172a`, superficies slate **translúcidas** (`rgba(30,41,59,.55)` / `rgba(51,65,85,.55)`) con `backdrop-filter: blur()` en `.sidebar`, `.card`, `.kpi-card`, `.login-card`. Texto `#f1f5f9` / `#94a3b8`. Light análogo (`--bg: #eef2f7`, superficies blancas translúcidas).
+- **Acento `--primary` = CYAN** (`#00e5ff` dark / `#0891b2` light) — NO violeta. Aplica a links, nav activo, foco e iconos. (`--brand-violet` se conserva solo para el blob de fondo.)
+- **Botones estilo landing:** `.btn-primary` pasó de violeta a **sólido claro con texto oscuro** (`background: var(--text); color: var(--bg)`), con hover `translateY(-2px)` + sombra. Sin violeta.
+- **Blobs de fondo** (`.bg-blobs` + `.blob-1` cyan / `.blob-2` violeta): replican el landing. Tras feedback se **agrandó e intensificó** el blob cyan: `760px`, `top:8% left:-14%`, `--blob-opacity: 0.65` (dark). `blur(120px)`, animación `blob-float` 20s.
+- **Efecto linterna:** `.card`/`.kpi-card` con `::before` = `radial-gradient(600px circle at var(--mouse-x) var(--mouse-y), var(--spotlight), transparent 40%)`, `opacity 0 → 1` en hover. `--spotlight: rgba(0,229,255,.10)` (luz cyan). Contenido elevado con `z-index:1`.
+- Se eliminaron los `radial-gradient` que había puesto en `html,body` y `#screen-login` (ahora el glow lo dan SOLO los blobs, como en el resto del sitio).
+
+### 3. Cambios en `index.html` y `portal.js`
+- **`index.html`:** se insertó el markup `<div class="bg-blobs"><div class="blob blob-1"></div><div class="blob blob-2"></div></div>` tras `<body>`. (Los `#6C63FF` inline ya estaban migrados a `var(--primary)`.)
+- **`portal.js`:** listener `mousemove` delegado en `document` que calcula la posición relativa del cursor dentro de `.card`/`.kpi-card` y setea `--mouse-x`/`--mouse-y` (cubre tarjetas dinámicas). Además `init()` ya leía `?accent`/`?theme` para el embed en el CRM.
+
+### 4. Interacción con el embed del CRM
+- El acento base es cyan (standalone). Cuando el portal se embebe en el CRM y llega `?accent=<hex>`, ese color **sobrescribe `--primary`** (nav/links/iconos toman el color del terapeuta). Los **blobs y el degradado de marca** usan `--accent-cyan`/`--brand-violet` fijos → el **fondo violeta-cian de Zotek se mantiene** aunque cambie el acento. Los botones ahora son claros (no dependen del acento).
+
+### 5. Despliegue
+- `firebase deploy --only hosting --project zotek-ia` (proyecto `zotek-ia`, hosting sirve `www/`). 3 despliegues durante la iteración de afinado.
+
+### 6. Pendiente de validación visual
+- Confirmar con el usuario: botones blancos + acento cyan OK, efecto linterna visible, e intensidad del glow de fondo (ajustable vía `--blob-opacity` / tamaño del `.blob-1`).
+
+---
+
 ## Session Log: 2026-06-01
 
 ### Metadata

@@ -10,6 +10,12 @@
 </head>
 <body>
 
+<!-- Fondo de marca Zotek: blobs cyan/violeta difuminados (igual que el landing) -->
+<div class="bg-blobs">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+</div>
+
 <!-- ==============================================
      PANTALLA DE LOGIN
 =============================================== -->
@@ -37,7 +43,7 @@
     <!-- Paso 2: C├│digo -->
     <div id="step-code" style="display:none">
       <p class="login-sent-msg">
-        <i class="fas fa-envelope-circle-check" style="color:#6C63FF"></i>
+        <i class="fas fa-envelope-circle-check" style="color:var(--primary)"></i>
         Te enviamos un código de 6 dígitos a <strong id="sent-to-email"></strong>
       </p>
       <div class="form-group">
@@ -130,7 +136,7 @@
 
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-icon" style="background:rgba(108,99,255,.15);color:#6C63FF">
+          <div class="kpi-icon" style="background:var(--primary-dim);color:var(--primary)">
             <i class="fas fa-calendar-day"></i>
           </div>
           <div class="kpi-body">
@@ -287,7 +293,7 @@
           <!-- Instrucción del agente -->
           <div class="config-card">
             <div class="config-card-header">
-              <i class="fas fa-brain" style="color:#6C63FF"></i>
+              <i class="fas fa-brain" style="color:var(--primary)"></i>
               <h3>Instrucción del Agente</h3>
             </div>
             <p class="config-hint">Define el comportamiento y personalidad de tu asistente.</p>

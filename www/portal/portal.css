@@ -7,16 +7,23 @@
 /* —— Modo oscuro (default) ———————————————— */
 :root,
 [data-theme="dark"] {
-  --primary:      #6C63FF;
-  --primary-dim:  rgba(108,99,255,.14);
-  --bg:           #0d1117;
-  --surface:      #161b22;
-  --surface2:     #1c2230;
-  --border:       rgba(255,255,255,.08);
-  --text:         #e6edf3;
-  --text-muted:   #8b949e;
-  --text-inv:     #0d1117;
-  --input-bg:     #0d1117;
+  /* Paleta de marca Zotek (igual que el landing www/style.css) */
+  --primary:      #00e5ff;                 /* cyan brillante = acento interactivo (links, nav, foco, iconos) */
+  --primary-dim:  color-mix(in srgb, var(--primary) 16%, transparent);
+  --accent:       var(--primary);
+  --accent-cyan:  #00e5ff;
+  --brand-violet: #8b5cf6;
+  --brand-gradient: linear-gradient(135deg, #00e5ff 0%, #8b5cf6 100%);
+  --blob-opacity: 0.65;
+  --spotlight:    rgba(0,229,255,.10);     /* luz "linterna" que sigue el cursor en tarjetas */
+  --bg:           #0f172a;                 /* slate-900 */
+  --surface:      rgba(30,41,59,.55);      /* slate-800 translúcido (glass) */
+  --surface2:     rgba(51,65,85,.55);      /* slate-700 translúcido */
+  --border:       rgba(148,163,184,.15);
+  --text:         #f1f5f9;                 /* slate-100 */
+  --text-muted:   #94a3b8;                 /* slate-400 */
+  --text-inv:     #0f172a;
+  --input-bg:     rgba(15,23,42,.6);
   --shadow:       rgba(0,0,0,.4);
   --chat-bg:      #1a1a1e;
   --chat-screen:  #f2f2f7;
@@ -27,16 +34,23 @@
 
 /* —— Modo claro —————————————————————————— */
 [data-theme="light"] {
-  --primary:      #6C63FF;
-  --primary-dim:  rgba(108,99,255,.1);
-  --bg:           #f0f2f5;
-  --surface:      #ffffff;
-  --surface2:     #f5f7fa;
-  --border:       rgba(0,0,0,.1);
-  --text:         #1a1a2e;
-  --text-muted:   #6b7280;
+  /* Paleta de marca Zotek en claro (igual que el landing www/style.css) */
+  --primary:      #0891b2;                 /* cyan-600 (mejor contraste en claro) = acento */
+  --primary-dim:  color-mix(in srgb, var(--primary) 12%, transparent);
+  --accent:       var(--primary);
+  --accent-cyan:  #0891b2;
+  --brand-violet: #7c3aed;
+  --brand-gradient: linear-gradient(135deg, #0891b2 0%, #7c3aed 100%);
+  --blob-opacity: 0.22;
+  --spotlight:    rgba(8,145,178,.10);
+  --bg:           #eef2f7;                 /* slate claro */
+  --surface:      rgba(255,255,255,.82);   /* glass claro */
+  --surface2:     rgba(241,245,249,.75);   /* slate-100 translúcido */
+  --border:       rgba(15,23,42,.1);
+  --text:         #0f172a;                 /* slate-900 */
+  --text-muted:   #475569;                 /* slate-600 */
   --text-inv:     #ffffff;
-  --input-bg:     #f5f7fa;
+  --input-bg:     rgba(241,245,249,.85);
   --shadow:       rgba(0,0,0,.12);
   --chat-bg:      #e8e8ed;
   --chat-screen:  #f2f2f7;
@@ -54,18 +68,35 @@ html, body {
   transition: background .25s, color .25s;
 }
 
+/* —— Fondo de marca Zotek: blobs cyan/violeta (igual que el landing) —————— */
+.bg-blobs {
+  position: fixed; inset: 0; width: 100vw; height: 100vh;
+  z-index: -1; overflow: hidden; pointer-events: none;
+}
+.blob {
+  position: absolute; filter: blur(120px); opacity: var(--blob-opacity);
+  border-radius: 50%; animation: blob-float 20s ease-in-out infinite alternate;
+}
+.blob-1 { width: 760px; height: 760px; background: var(--accent-cyan); top: 8%; left: -14%; }
+.blob-2 { width: 520px; height: 520px; background: var(--brand-violet); bottom: -12%; right: -6%; animation-delay: -5s; }
+@keyframes blob-float {
+  0%   { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(50px, 80px) scale(1.1); }
+}
+
 /* —— Screens ————————————————————————————— */
 .screen { min-height: 100vh; }
 
 /* —— Login ——————————————————————————————— */
 #screen-login {
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at 60% 40%, rgba(108,99,255,.16) 0%, transparent 65%), var(--bg);
+  background: transparent;
   padding: 20px; min-height: 100vh;
 }
 
 .login-card {
   background: var(--surface);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: 20px;
   padding: 40px 36px;
@@ -104,13 +135,14 @@ html, body {
 .form-group input:focus { border-color: var(--primary); }
 
 /* —— Buttons ————————————————————————————— */
+/* Botón principal estilo Zotek: sólido claro con texto oscuro (como "Dashboard" del landing) */
 .btn-primary {
-  background: var(--primary); color: #fff; border: none; border-radius: 10px;
+  background: var(--text); color: var(--bg); border: none; border-radius: 10px;
   padding: 12px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
-  font-family: inherit; transition: opacity .2s; display: inline-flex; align-items: center; gap: 8px;
+  font-family: inherit; transition: transform .2s, box-shadow .2s; display: inline-flex; align-items: center; gap: 8px;
 }
-.btn-primary:hover   { opacity: .88; }
-.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary:hover   { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(0,0,0,.28); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
 .btn-full { width: 100%; justify-content: center; }
 
 .btn-secondary {
@@ -154,6 +186,7 @@ html, body {
 /* —— Sidebar ————————————————————————————— */
 .sidebar {
   width: 240px; background: var(--surface); border-right: 1px solid var(--border);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   display: flex; flex-direction: column; flex-shrink: 0; z-index: 100;
   transition: background .25s;
 }
@@ -161,6 +194,13 @@ html, body {
 .sidebar-brand {
   display: flex; align-items: center; justify-content: center;
   padding: 20px 16px 16px; border-bottom: 1px solid var(--border);
+  position: relative;
+}
+/* Acento de marca SaaS (violeta→cian) en la cabecera del sidebar */
+.sidebar-brand::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: var(--brand-gradient);
+  opacity: .9;
 }
 .sidebar-logo-img { width: 144px; height: 144px; }
 
@@ -228,6 +268,7 @@ html, body {
 }
 .kpi-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   padding: 18px; display: flex; align-items: center; gap: 14px;
   transition: background .25s;
 }
@@ -236,9 +277,22 @@ html, body {
 .kpi-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
 /* —— Card ———————————————————————————————— */
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: background .25s; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: background .25s; }
 .card-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
 .card-header h3 { font-size: 14px; font-weight: 600; }
+
+/* Efecto "linterna": una luz cyan sigue el cursor sobre cada tarjeta (igual que el landing) */
+.kpi-card, .card { position: relative; }
+.kpi-card { overflow: hidden; }
+.kpi-card::before, .card::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), var(--spotlight), transparent 40%);
+  opacity: 0; transition: opacity .35s ease;
+}
+.kpi-card:hover::before, .card:hover::before { opacity: 1; }
+/* El contenido de la tarjeta queda por encima de la luz */
+.kpi-card > *, .card > * { position: relative; z-index: 1; }
 
 /* —— Tables —————————————————————————————— */
 .table-wrap { overflow-x: auto; }
@@ -362,7 +416,7 @@ html, body {
   cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 8px;
   transition: background .2s;
 }
-.btn-upload:hover { background: rgba(108,99,255,.22); }
+.btn-upload:hover { background: var(--primary-dim); }
 .btn-upload:disabled { opacity: .5; cursor: not-allowed; }
 .upload-hint { font-size: 11px; color: var(--text-muted); }
 

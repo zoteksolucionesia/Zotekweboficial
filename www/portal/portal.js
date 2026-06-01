@@ -1086,12 +1086,32 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
   // SSO de entrada desde el CRM de terapeutas: si llega ?sso=<token>, lo canjeamos
   // por una sesión del portal sin pedir login. El token es de un solo uso y corto.
   const params = new URLSearchParams(window.location.search);
+
+  // Branding heredado del CRM cuando el portal se embebe en /admin/citas:
+  //   ?accent=<hex>  → tiñe los acentos (botones, nav activo, foco) con el color
+  //                    de marca del terapeuta, para que el portal se sienta parte
+  //                    del CRM. El degradado violeta-cian de FONDO se mantiene (es
+  //                    la identidad del SaaS Zotek).
+  //   ?theme=light|dark → sincroniza el modo claro/oscuro con el del CRM.
+  const accent = params.get('accent');
+  if (accent && /^#[0-9a-fA-F]{6}$/.test(accent)) {
+    document.documentElement.style.setProperty('--primary', accent);
+  }
+  const themeParam = params.get('theme');
+  if (themeParam === 'light' || themeParam === 'dark') {
+    applyTheme(themeParam);
+  }
+
   const ssoToken = params.get('sso');
-  if (ssoToken) {
-    // Quitar el token de la URL de inmediato (no dejarlo en el historial).
-    params.delete('sso');
+
+  // Quitar de la URL los parámetros efímeros/sensibles (no dejarlos en el historial).
+  if (ssoToken || accent || themeParam) {
+    params.delete('sso'); params.delete('accent'); params.delete('theme');
     const clean = window.location.pathname + (params.toString() ? `?${params.toString()}` : '');
     window.history.replaceState({}, document.title, clean);
+  }
+
+  if (ssoToken) {
     try {
       const res = await fetch(`${API}/api/auth/sso`, {
         method: 'POST',
@@ -1114,3 +1134,16 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
 
   if (authToken && clientData) showDashboard();
 })();
+
+// ===========================================
+// EFECTO "LINTERNA" EN TARJETAS (igual que el landing)
+// Una luz cyan sigue el cursor sobre .card / .kpi-card. Delegado en document
+// para cubrir también las tarjetas que se renderizan dinámicamente.
+// ===========================================
+document.addEventListener('mousemove', (e) => {
+  const card = e.target.closest('.card, .kpi-card');
+  if (!card) return;
+  const rect = card.getBoundingClientRect();
+  card.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+  card.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+});
