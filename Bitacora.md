@@ -7,7 +7,7 @@
 - **Status:** 
   - Code: Webhook logs cleaned, frontend URL token parser fixed and deployed to production.
   - WhatsApp: Message delivery functionality restored under the new month's free conversation allowance (1,000 free conversations/month limit reset).
-- **Affected Components:** `www/cita/cita.js`, `functions/src/main.py`, `functions/src/services/whatsapp_service.py`
+- **Affected Components:** `www/cita/cita.js`, `www/cita/index.html`, `functions/src/main.py`, `functions/src/services/whatsapp_service.py`
 
 ### 1. Context & Testing
 - **WhatsApp Cuota Reset:** Al iniciar el mes de junio, se restableció el límite gratuito mensual de Meta, permitiendo realizar pruebas exitosas sin necesidad de saldo.
@@ -16,9 +16,9 @@
 
 ### 2. Implementations & Code Changes
 - **Corrección de URL Redundante (Frontend):**
-  - **Archivo:** `www/cita/cita.js`
+  - **Archivos:** `www/cita/cita.js` y `www/cita/index.html`
   - **Incidencia:** La URL base configurada en Meta incluye el literal `{TOKEN}` (ej: `https://zotek-ia.web.app/cita/?t={TOKEN}`). Al concatenar el sufijo de cita `cita?t={token}`, la URL final resultaba en `.../cita/?t={TOKEN}cita?t=TOKEN_REAL`, rompiendo la carga de la cita.
-  - **Solución:** Se actualizó `getToken()` en el frontend para extraer robustamente el token real al final de la URL en caso de haber redundancia o concatenaciones con placeholders de Meta.
+  - **Solución:** Se actualizó `getToken()` en el frontend para extraer robustamente el token real al final de la URL en caso de haber redundancia o concatenaciones con placeholders de Meta. Adicionalmente, se integró un parámetro de versión (`?v=2.0.1`) como cache-buster en la importación del script en `index.html` para obligar a los navegadores a invalidar su copia en caché.
   - **Despliegue:** Se realizó deploy de hosting exitoso (`firebase deploy --only hosting`).
 - **Limpieza de Logs de Depuración (Backend):**
   - **Archivos:** `functions/src/main.py` y `functions/src/services/whatsapp_service.py`
