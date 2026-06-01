@@ -1082,6 +1082,35 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
 // ===========================================
 // INIT
 // ===========================================
-(function init() {
+(async function init() {
+  // SSO de entrada desde el CRM de terapeutas: si llega ?sso=<token>, lo canjeamos
+  // por una sesión del portal sin pedir login. El token es de un solo uso y corto.
+  const params = new URLSearchParams(window.location.search);
+  const ssoToken = params.get('sso');
+  if (ssoToken) {
+    // Quitar el token de la URL de inmediato (no dejarlo en el historial).
+    params.delete('sso');
+    const clean = window.location.pathname + (params.toString() ? `?${params.toString()}` : '');
+    window.history.replaceState({}, document.title, clean);
+    try {
+      const res = await fetch(`${API}/api/auth/sso`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sso_token: ssoToken }),
+      });
+      const data = await res.json();
+      if (res.ok && data.access_token) {
+        authToken  = data.access_token;
+        clientData = { id: data.client_id, name: data.client_name, email: data.email || '' };
+        localStorage.setItem(TOKEN_KEY,  authToken);
+        localStorage.setItem(CLIENT_KEY, JSON.stringify(clientData));
+        showDashboard();
+        return;
+      }
+    } catch (_) {
+      // Si el SSO falla, cae al flujo normal de login.
+    }
+  }
+
   if (authToken && clientData) showDashboard();
 })();

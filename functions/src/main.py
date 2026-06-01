@@ -49,6 +49,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
+# Secreto COMPARTIDO con el CRM de terapeutas para el SSO de entrada al portal.
+# Distinto de SECRET_KEY (que firma las sesiones internas del portal).
+PORTAL_SSO_SECRET = os.getenv("PORTAL_SSO_SECRET")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 
 if not SECRET_KEY:
@@ -1273,12 +1276,57 @@ async def verify_code(request: Request):
 
     access_token = create_access_token(data={"sub": email, "role": role, "client_id": client_id})
     return {
-        "access_token": access_token, 
-        "token_type": "bearer", 
-        "role": role, 
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": role,
         "client_id": client_id,
         "client_name": client_name
     }
+
+
+@app.post("/api/auth/sso")
+async def sso_login(request: Request):
+    """SSO de entrada: el CRM de terapeutas firma un token corto con el email del
+    terapeuta (usando PORTAL_SSO_SECRET, compartido). Aquí se valida y, si el email
+    corresponde a un cliente registrado, se emite el access_token normal del portal
+    sin pedir código OTP."""
+    if not PORTAL_SSO_SECRET:
+        raise HTTPException(status_code=500, detail="PORTAL_SSO_SECRET no configurado")
+
+    data = await request.json()
+    sso_token = data.get("sso_token")
+    if not sso_token:
+        raise HTTPException(status_code=400, detail="Token SSO requerido")
+
+    try:
+        payload = jwt.decode(sso_token, PORTAL_SSO_SECRET, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token SSO inválido o expirado")
+
+    email = (payload.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Token SSO sin email")
+
+    is_admin = email in [e.lower().strip() for e in ADMIN_EMAILS]
+    role = "admin" if is_admin else "client"
+
+    client = database.get_client_by_email(email)
+    if not client and not is_admin:
+        raise HTTPException(status_code=403, detail=f"Email {email} no registrado en el portal")
+
+    client_id = str(client['id']) if client else "13"
+    client_name = client['name'] if client else "Usuario Admin"
+
+    access_token = create_access_token(data={"sub": email, "role": role, "client_id": client_id})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": role,
+        "client_id": client_id,
+        "client_name": client_name,
+        "email": email
+    }
+
 
 @app.get("/api/me")
 async def get_me(token: str = Depends(oauth2_scheme)):
