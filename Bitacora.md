@@ -13,6 +13,7 @@
 - **WhatsApp Cuota Reset:** Al iniciar el mes de junio, se restableció el límite gratuito mensual de Meta, permitiendo realizar pruebas exitosas sin necesidad de saldo.
 - **Flujo de Citas:** Las citas de prueba se están generando actualmente desde el proyecto de **Lili Bauza Web**.
 - **Prueba Realizada:** Se envió exitosamente el template `zotek_confirmacion_cita_v2` al número de pruebas `+52 312 317 3431`, confirmando la recepción física del mensaje en el dispositivo.
+- **Verificación E2E Exitosa:** Se agendó una cita de prueba en producción desde `lilibauza.web.app`, se recibió el mensaje de confirmación por WhatsApp en el dispositivo, y al hacer clic en "Ver cita", el portal cargó de manera correcta mostrando el horario programado a las 12:00 PM local (resolviendo la URL de Meta y la zona horaria). Posteriormente, se canceló la cita desde el portal de usuario, y el horario quedó disponible nuevamente en la landing page del negocio, validando el ciclo completo.
 
 ### 2. Implementations & Code Changes
 - **Corrección de URL Redundante (Frontend):**
