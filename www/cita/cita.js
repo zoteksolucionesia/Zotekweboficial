@@ -15,7 +15,17 @@
     let currentToken = null;
 
     function getToken() {
-        return new URLSearchParams(window.location.search).get('t');
+        const rawToken = new URLSearchParams(window.location.search).get('t');
+        if (!rawToken) return null;
+        
+        // Si el WABA concatena el sufijo y nos da un parámetro como "{TOKEN}cita?t=UUID"
+        if (rawToken.includes('t=')) {
+            const parts = rawToken.split('t=');
+            return parts[parts.length - 1];
+        }
+        
+        // Remover el literal "{TOKEN}" o "%7BTOKEN%7D" si quedó pegado al inicio
+        return rawToken.replace(/^\{TOKEN\}/i, '').replace(/^%7BTOKEN%7D/i, '');
     }
 
     function formatDate(isoStr) {

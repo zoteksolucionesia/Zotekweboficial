@@ -131,8 +131,12 @@ def enviar_menu_lista(numero, texto, titulo_boton, titulo_seccion, opciones, wha
         return False
 
 
-def enviar_template_whatsapp(phone_number_id, whatsapp_token, to_phone, template_name, variables, language="es_MX"):
-    """Envía una plantilla HSM aprobada por Meta (mensajes proactivos fuera de ventana 24h)."""
+def enviar_template_whatsapp(phone_number_id, whatsapp_token, to_phone, template_name, variables, language="es_MX", url_suffix=None):
+    """Envía una plantilla HSM aprobada por Meta (mensajes proactivos fuera de ventana 24h).
+
+    url_suffix: sufijo dinámico para el botón URL de la plantilla (ej. 'cita?t=UUID').
+                Meta concatena este valor con la URL base configurada en el template.
+    """
     if not whatsapp_token or not phone_number_id:
         print(f"❌ ERROR: WhatsApp token o phone_number_id faltantes"); sys.stdout.flush()
         return False
@@ -142,6 +146,17 @@ def enviar_template_whatsapp(phone_number_id, whatsapp_token, to_phone, template
         "Authorization": f"Bearer {whatsapp_token}",
         "Content-Type": "application/json; charset=utf-8"
     }
+    components = [{
+        "type": "body",
+        "parameters": [{"type": "text", "text": str(v)} for v in variables]
+    }]
+    if url_suffix:
+        components.append({
+            "type": "button",
+            "sub_type": "url",
+            "index": "0",
+            "parameters": [{"type": "text", "text": str(url_suffix)}]
+        })
     data = {
         "messaging_product": "whatsapp",
         "to": to_phone,
@@ -149,10 +164,7 @@ def enviar_template_whatsapp(phone_number_id, whatsapp_token, to_phone, template
         "template": {
             "name": template_name,
             "language": {"code": language},
-            "components": [{
-                "type": "body",
-                "parameters": [{"type": "text", "text": str(v)} for v in variables]
-            }]
+            "components": components,
         }
     }
     try:

@@ -424,20 +424,21 @@ async def recibir_mensaje(request: Request):
     try:
         data = await request.json()
         logger.debug(f"DEBUG: Webhook data received: {data}")
-        
+
         # Guardar en logs recientes
         timestamp_str = datetime.now().isoformat()
         RECENT_LOGS.append({"time": timestamp_str, "payload": data})
-        
+
         if data.get('object') == 'whatsapp_business_account':
             for entry in data.get('entry', []):
                 for change in entry.get('changes', []):
                     value = change.get('value', {})
                     if 'statuses' in value:
                         for st in value['statuses']:
-                            logger.debug(
+                            logger.info(
                                 f"[Webhook] Status update: {st.get('status')} "
-                                f"for msg {st.get('id')} to {st.get('recipient_id')}"
+                                f"for msg {st.get('id')} to {st.get('recipient_id')} "
+                                f"errors={st.get('errors')}"
                             )
                         continue
 
@@ -2030,7 +2031,7 @@ async def widget_chat(request: Request):
                                 dia_long = f"{dia_semana}, {appointment_date}"
                                 # Meta espera el número sin "+"
                                 to_phone_meta = _phone.lstrip("+")
-                                _vars = [nombre_cliente or "Cliente", business_name, dia_long, start_time, cita_url]
+                                _vars = [nombre_cliente or "Cliente", business_name, dia_long, start_time]
                                 result = False
                                 for _lang in ["es_MX", "es", "es_LA"]:
                                     logger.info(f"[Pieza 4A] Enviando template a {to_phone_meta}, lang={_lang}")
@@ -2038,9 +2039,10 @@ async def widget_chat(request: Request):
                                         phone_number_id=_wa_phone_id,
                                         whatsapp_token=_wa_token,
                                         to_phone=to_phone_meta,
-                                        template_name="zotek_confirmacion_cita",
+                                        template_name="zotek_confirmacion_cita_v2",
                                         variables=_vars,
                                         language=_lang,
+                                        url_suffix=f"cita?t={token}",
                                     )
                                     if result:
                                         logger.info(f"[Pieza 4A] Enviado OK con lang={_lang}")
@@ -2235,9 +2237,8 @@ async def create_appointment_api(client_id: str, request: Request):
                 appointment_time_str = dt_mexico.strftime("%H:%M")
                 dia_semana = {0:'Lunes',1:'Martes',2:'Miércoles',3:'Jueves',4:'Viernes',5:'Sábado',6:'Domingo'}[dt_mexico.weekday()]
 
-                # Token y URL de la cita pública
+                # Token de la cita pública (se usa como sufijo dinámico del botón WhatsApp)
                 token = apt_result["token"]
-                cita_url = f"https://zotek-ia.web.app/cita?t={token}"
 
                 # whatsapp_service ya está importado a nivel de módulo (línea 43)
                 # Quitamos el "+" porque Meta espera el número sin "+"
@@ -2247,19 +2248,19 @@ async def create_appointment_api(client_id: str, request: Request):
                     client_data.get('name', 'Mi negocio'),
                     f"{dia_semana}, {appointment_date_str}",
                     appointment_time_str,
-                    cita_url
                 ]
                 # Intentar varios códigos de idioma — Meta a veces usa código distinto al label
                 result = False
                 for _lang in ["es_MX", "es", "es_LA"]:
-                    print(f"[API-Pieza4] Enviando a {to_phone_meta}, template=zotek_confirmacion_cita, lang={_lang}"); sys.stdout.flush()
+                    print(f"[API-Pieza4] Enviando a {to_phone_meta}, template=zotek_confirmacion_cita_v2, lang={_lang}"); sys.stdout.flush()
                     result = whatsapp_service.enviar_template_whatsapp(
                         phone_number_id=_wa_phone_id,
                         whatsapp_token=_wa_token,
                         to_phone=to_phone_meta,
-                        template_name="zotek_confirmacion_cita",
+                        template_name="zotek_confirmacion_cita_v2",
                         variables=_vars,
                         language=_lang,
+                        url_suffix=f"cita?t={token}",
                     )
                     if result:
                         print(f"[API-Pieza4] Enviado OK con lang={_lang}"); sys.stdout.flush()
