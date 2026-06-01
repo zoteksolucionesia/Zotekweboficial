@@ -2304,9 +2304,14 @@ async def get_appointment_by_token(token: str):
     apt = database.get_appointment_by_token(token)
     if not apt:
         raise HTTPException(status_code=404, detail="Cita no encontrada")
-    # Serializar campos no-JSON-serializables
+    # Serializar campos no-JSON-serializables (convertir naive UTC a America/Mexico_City)
     if apt.get("date_time"):
-        apt["date_time"] = apt["date_time"].isoformat()
+        dt = apt["date_time"]
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        mexico_tz = ZoneInfo("America/Mexico_City")
+        dt_local = dt.astimezone(mexico_tz)
+        apt["date_time"] = dt_local.isoformat()
     if apt.get("token"):
         apt["token"] = str(apt["token"])
     return apt

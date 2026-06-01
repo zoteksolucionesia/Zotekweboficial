@@ -20,6 +20,11 @@
   - **Incidencia:** La URL base configurada en Meta incluye el literal `{TOKEN}` (ej: `https://zotek-ia.web.app/cita/?t={TOKEN}`). Al concatenar el sufijo de cita `cita?t={token}`, la URL final resultaba en `.../cita/?t={TOKEN}cita?t=TOKEN_REAL`, rompiendo la carga de la cita.
   - **Solución:** Se actualizó `getToken()` en el frontend para extraer robustamente el token real al final de la URL en caso de haber redundancia o concatenaciones con placeholders de Meta. Adicionalmente, se integró un parámetro de versión (`?v=2.0.1`) como cache-buster en la importación del script en `index.html` para obligar a los navegadores a invalidar su copia en caché.
   - **Despliegue:** Se realizó deploy de hosting exitoso (`firebase deploy --only hosting`).
+- **Corrección de Desfase de Zona Horaria (Backend):**
+  - **Archivo:** `functions/src/main.py`
+  - **Incidencia:** La columna `date_time` en la tabla `appointments` es de tipo `timestamp without time zone` y almacena las fechas en UTC (ej: las 12:00 PM local de CDMX se guarda como 18:00:00). Al consultarla por API, el backend retornaba un datetime naive `2026-06-02T18:00:00` sin offset. El navegador del cliente interpretaba esto como hora local nativa y mostraba las "6:00 PM" en lugar de las "12:00 PM".
+  - **Solución:** Se ajustó el serializador de `/api/appointments/token/{token}` para dotar de zona horaria UTC al objeto datetime si es naive, y luego convertirlo explícitamente a la zona del negocio (`America/Mexico_City`) antes de exportarlo a string. Esto genera la hora local correcta con el offset correspondiente (ej: `2026-06-02T12:00:00-06:00`), haciendo que el navegador renderice las 12:00 PM exactas elegidas por el usuario.
+  - **Despliegue:** Se realizó deploy de las funciones con éxito (`firebase deploy --only functions`).
 - **Limpieza de Logs de Depuración (Backend):**
   - **Archivos:** `functions/src/main.py` y `functions/src/services/whatsapp_service.py`
   - **Acción:** Se removieron los prints de depuración temporales (`[WEBHOOK RAW]`, `[WEBHOOK VALUE]` y prints del payload/response de WhatsApp) para limpiar la deuda técnica, consolidando los estados del webhook bajo `logger.info`.
