@@ -5,9 +5,9 @@
 ### Metadata
 - **Session Date:** June 1, 2026
 - **Status:** 
-  - Code: Webhook logs cleaned, frontend URL token parser fixed and deployed to production.
-  - WhatsApp: Message delivery functionality restored under the new month's free conversation allowance (1,000 free conversations/month limit reset).
-- **Affected Components:** `www/cita/cita.js`, `www/cita/index.html`, `functions/src/main.py`, `functions/src/services/whatsapp_service.py`
+  - Code: Webhook logs cleaned, frontend token parser fixed, and public appointment status page redesigned (Well.Be light-themed layout) and deployed.
+  - WhatsApp: Message delivery functionality restored under the new month's free conversation allowance.
+- **Affected Components:** `www/cita/cita.js`, `www/cita/index.html`, `functions/src/main.py`, `functions/src/database.py`, `functions/src/services/whatsapp_service.py`
 
 ### 1. Context & Testing
 - **WhatsApp Cuota Reset:** Al iniciar el mes de junio, se restableció el límite gratuito mensual de Meta, permitiendo realizar pruebas exitosas sin necesidad de saldo.
@@ -29,6 +29,34 @@
 - **Limpieza de Logs de Depuración (Backend):**
   - **Archivos:** `functions/src/main.py` y `functions/src/services/whatsapp_service.py`
   - **Acción:** Se removieron los prints de depuración temporales (`[WEBHOOK RAW]`, `[WEBHOOK VALUE]` y prints del payload/response de WhatsApp) para limpiar la deuda técnica, consolidando los estados del webhook bajo `logger.info`.
+- **Rediseño Estético y Funcional del Portal de Citas (Frontend & Backend):**
+  - **Archivos:** `www/cita/index.html`, `www/cita/cita.js`, `functions/src/database.py`, `functions/src/main.py`
+  - **Requerimiento:** Modernizar el portal de visualización de citas públicas `/cita/` para alinearlo con el diseño premium de Well.Be en tonos claros y utilizar los colores de Zotek SaaS (degradados violeta/cian).
+  - **Solución Backend:**
+    - Se agregaron campos `c.system_instruction`, `c.vapi_professional_phone`, `c.email_user`, `c.calendly_url` al query en `database.py`.
+    - Se implementó un parser con expresiones regulares en `main.py` para extraer la ubicación física (`business_address`), el teléfono (`business_phone`), el enlace directo a WhatsApp (`business_whatsapp`), el email de contacto (`business_email`) y el rubro/especialidad (`business_subtitle`) directamente de las instrucciones del prompt (`system_instruction`) del cliente de manera dinámica.
+    - Se eliminan por seguridad los campos internos del JSON de respuesta antes de retornarlo al cliente para evitar fugas del prompt.
+  - **Solución Frontend:**
+    - Se rediseñó por completo `index.html` usando vanilla CSS para crear una cuadrícula responsiva de dos columnas (Cita y Negocio) en modo claro premium.
+    - Se rediseñó `cita.js` para renderizar el nuevo diseño, añadir animaciones y skeletons de carga, crear un link dinámico de "Agregar a Google Calendar", incrustar un mapa interactivo dinámico de Google Maps en un iframe usando la dirección física extraída y añadir un botón flotante verde para contactar por WhatsApp.
+
+### 3. Walkthrough & Verification (Rediseño de Cita)
+- **Validación del Backend:**
+  - Se realizó una consulta directa al endpoint de producción `https://zotek-ia.web.app/api/appointments/token/c7b412cf-f08f-4e56-ba42-725dc88968c8`.
+  - El JSON devuelto contiene correctamente todos los campos parsed:
+    - `business_address`: "Ceiba 105, Colonia Leandro Valle, Villa de Álvarez, Colima"
+    - `business_phone`: "312 145 6877"
+    - `business_whatsapp`: "https://wa.me/523121456877"
+    - `business_subtitle`: "Trauma y conducta compulsiva"
+    - `business_email`: "lilibauza@gmail.com"
+  - La propiedad `system_instruction` fue eliminada de la respuesta por seguridad de manera exitosa.
+- **Validación del Frontend:**
+  - El portal carga correctamente en la URL pública: `https://zotek-ia.web.app/cita/?t=c7b412cf-f08f-4e56-ba42-725dc88968c8`.
+  - Se visualizan las dos columnas (detalles de la cita a la izquierda con banner en degradado violeta/cian y mapa dinámico + detalles del profesional a la derecha).
+  - El mapa de Google Maps interactivo se renderiza correctamente incrustando la dirección física mediante un iframe.
+  - El botón de Google Calendar redirige a la plantilla de creación de eventos con la fecha/hora y ubicación precargadas en formato UTC.
+  - El botón verde de WhatsApp redirige a `https://wa.me/523121456877` para establecer contacto directo.
+  - El botón de "Cancelar Cita" se muestra y funciona llamando al modal de confirmación correspondiente.
 
 ---
 

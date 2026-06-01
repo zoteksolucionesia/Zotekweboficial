@@ -2314,6 +2314,72 @@ async def get_appointment_by_token(token: str):
         apt["date_time"] = dt_local.isoformat()
     if apt.get("token"):
         apt["token"] = str(apt["token"])
+
+    # Extraer información del negocio de system_instruction y otros campos
+    import re
+    system_instruction = apt.get("system_instruction") or ""
+    email_user = apt.get("email_user") or ""
+    email_login = apt.get("business_email") or ""
+    vapi_phone = apt.get("vapi_professional_phone") or ""
+
+    address = ""
+    phone = vapi_phone or ""
+    whatsapp = ""
+    email = email_user or email_login or ""
+
+    if system_instruction:
+        # Extraer dirección
+        addr_match = re.search(r'(?:Ubicación|Ubicacion):\s*(.*?)(?:\n|\||$)', system_instruction, re.IGNORECASE)
+        if addr_match:
+            address = addr_match.group(1).strip()
+            
+        # Extraer teléfono si no está en vapi_phone
+        if not phone:
+            phone_match = re.search(r'(?:Teléfono|Telefono|Tel|Phone):\s*([0-9\s+-]+)', system_instruction, re.IGNORECASE)
+            if phone_match:
+                phone = phone_match.group(1).strip()
+                
+        # Extraer WhatsApp
+        wa_match = re.search(r'(?:WhatsApp):\s*(https?://[^\s|]+)', system_instruction, re.IGNORECASE)
+        if wa_match:
+            whatsapp = wa_match.group(1).strip()
+            
+        # Extraer Email si no está en email_user
+        if not email_user:
+            email_match = re.search(r'Email:\s*([^\s|\n\r]+)', system_instruction, re.IGNORECASE)
+            if email_match:
+                email = email_match.group(1).strip()
+
+    # Formatear link de WhatsApp si no se encontró un link explícito
+    if phone and not whatsapp:
+        clean_phone = re.sub(r'\D', '', phone)
+        if len(clean_phone) == 10:
+            clean_phone = "52" + clean_phone
+        whatsapp = f"https://wa.me/{clean_phone}"
+
+    # Extraer especialidad / rubro
+    specialty = "Especialista"
+    if system_instruction:
+        spec_match = re.search(r'(?:Especialidad|Rubro):\s*(.*?)(?:\n|\||$)', system_instruction, re.IGNORECASE)
+        if spec_match:
+            specialty = spec_match.group(1).strip()
+        else:
+            for kw in ["Psicóloga Clínica", "Psicólogo Clínico", "Psicóloga", "Psicólogo", "Nutrióloga", "Nutriólogo", "Dentista", "Terapeuta", "Consultoría"]:
+                if kw.lower() in system_instruction.lower():
+                    specialty = kw
+                    break
+
+    apt["business_address"] = address
+    apt["business_phone"] = phone
+    apt["business_whatsapp"] = whatsapp
+    apt["business_email"] = email
+    apt["business_subtitle"] = specialty
+
+    # Remover campos internos por seguridad
+    apt.pop("system_instruction", None)
+    apt.pop("vapi_professional_phone", None)
+    apt.pop("email_user", None)
+
     return apt
 
 

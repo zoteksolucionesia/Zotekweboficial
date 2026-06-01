@@ -1094,7 +1094,8 @@ def get_appointment_by_token(token: str):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute('''
             SELECT a.id, a.date_time, a.name, a.phone, a.email, a.status, a.notes, a.token,
-                   c.name AS business_name, c.id AS client_id
+                   c.name AS business_name, c.id AS client_id, c.email AS business_email,
+                   c.system_instruction, c.vapi_professional_phone, c.email_user, c.calendly_url
             FROM appointments a
             JOIN clients c ON a.client_id = c.id
             WHERE a.token = %s::uuid
