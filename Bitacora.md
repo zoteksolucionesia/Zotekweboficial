@@ -331,3 +331,47 @@ The following modifications were shipped in this session:
   - Template v2 logic (`P-04`)
   - Public cancellation endpoints (`P-05`)
   - Diagnostic logging architecture (`P-06`)
+
+---
+
+## Session Log: 2026-06-02 (11:30) — Anti-FOUC: Eliminar flash de login en portal embebido
+
+### Metadata
+- **Session Date:** June 2, 2026, 11:30
+- **Status:** Implementado y desplegado en producción.
+- **Affected Components:** `www/portal/index.html`, `www/portal/portal.js`
+- **Commit:** `152575e` (rama `feature/admin-client-tabs-ui`)
+
+### 1. Problema Identificado
+El usuario reportó que al dar clic en **Citas** dentro del CRM LiliBauza (`/admin/citas`), el portal embebido mostraba la pantalla de login por 1-2 segundos antes de cargar el dashboard. Causa raíz: el HTML se renderiza completo (con login visible por defecto) mientras el JavaScript ejecuta `init()` y procesa el token SSO.
+
+### 2. Solución: Anti-FOUC con Spinner
+Se implementó un patrón de "Anti-FOUC" (Flash of Unstyled Content) con spinner minimalista:
+
+**Cambios en `index.html`:**
+- Agregar `<style>` inline en `<head>` que oculta el body inicialmente: `body { visibility: hidden; }`
+- Crear un div `#sso-loading` con spinner centrado y fondo opaco que cubre la pantalla
+- El spinner muestra un icono FontAwesome de carga + texto "Autenticando..."
+
+**Cambios en `portal.js`:**
+- Nueva función `hideSSOMLoadingSpinner()` que:
+  - Oculta el div `#sso-loading` con `display: none`
+  - Restaura visibilidad del body con `visibility: visible`
+- Llamar `hideSSOMLoadingSpinner()` en **todos los caminos** de `init()`:
+  - Al completar SSO exitosamente
+  - Si hay sesión en localStorage (usuario ya autenticado)
+  - En el flujo de fallback (mostrar login manual)
+
+### 3. UX Resultado
+- **Antes:** Parpadeo inicial de login → pausa de 1-2s → dashboard aparece
+- **Después:** Spinner elegante "Autenticando..." → dashboard carga sin interrupciones visuales
+
+El spinner usa colores de la marca (`--bg` para fondo, `--primary` para spinner) → se integra con el branding del portal.
+
+### 4. Despliegue
+- Commit a rama `feature/admin-client-tabs-ui` + push a GitHub (`official` remote)
+- Deploy: `firebase deploy --only hosting --project zotek-ia` ✅ completado en ~30s
+- Hosting URL: `https://zotek-ia.web.app` (portal disponible en producción)
+
+### 5. Validación
+- Pendiente: usuario valida que el embed en `/admin/citas` del CRM cargue sin flash (será visible después del deploy del CRM con `npm run deploy`)
