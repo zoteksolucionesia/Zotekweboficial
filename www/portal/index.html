@@ -7,8 +7,22 @@
   <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="portal.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- Anti-FOUC: Ocultar contenido hasta que SSO esté listo -->
+  <style>
+    body { visibility: hidden; }
+    #sso-loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg, #0f172a); z-index: 99999; }
+  </style>
 </head>
 <body>
+
+<!-- Loading: Spinner mientras se autentica SSO -->
+<div id="sso-loading">
+  <div style="text-align:center;">
+    <i class="fas fa-spinner fa-spin" style="font-size:2.5rem;color:var(--primary,#00e5ff);margin-bottom:1rem;display:block;"></i>
+    <p style="color:var(--text,#ffffff);font-size:0.95rem;margin:0;">Autenticando...</p>
+  </div>
+</div>
 
 <!-- Fondo de marca Zotek: blobs cyan/violeta difuminados (igual que el landing) -->
 <div class="bg-blobs">

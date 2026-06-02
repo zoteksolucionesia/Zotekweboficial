@@ -49,6 +49,12 @@ function setLoading(btnId, spinId, loading) {
   if (spin) spin.style.display = loading ? 'inline-block' : 'none';
 }
 
+function hideSSOMLoadingSpinner() {
+  const spinner = document.getElementById('sso-loading');
+  if (spinner) spinner.style.display = 'none';
+  document.body.style.visibility = 'visible';
+}
+
 // ===========================================
 // TEMA CLARO / OSCURO
 // ===========================================
@@ -1125,6 +1131,7 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
         localStorage.setItem(TOKEN_KEY,  authToken);
         localStorage.setItem(CLIENT_KEY, JSON.stringify(clientData));
         showDashboard();
+        hideSSOMLoadingSpinner();
         return;
       }
     } catch (_) {
@@ -1132,7 +1139,12 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
     }
   }
 
-  if (authToken && clientData) showDashboard();
+  if (authToken && clientData) {
+    showDashboard();
+    hideSSOMLoadingSpinner();
+  } else {
+    hideSSOMLoadingSpinner();
+  }
 })();
 
 // ===========================================
