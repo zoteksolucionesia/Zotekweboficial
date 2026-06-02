@@ -82,6 +82,28 @@ document.getElementById('btn-theme-login')?.addEventListener('click', toggleThem
 document.getElementById('btn-theme-sidebar')?.addEventListener('click', toggleTheme);
 document.getElementById('btn-theme-mobile')?.addEventListener('click', toggleTheme);
 
+// Sincronización en vivo del tema/acento cuando el portal va embebido en el CRM.
+// El CRM (lilibauza-admin) envía un postMessage cada vez que el terapeuta cambia
+// el modo claro/oscuro o el color de marca, para que el portal lo refleje al instante.
+// Firebase sirve el CRM en .web.app y .firebaseapp.com: aceptamos ambos orígenes.
+const CRM_ORIGINS = [
+  'https://lilibauza-admin.web.app',
+  'https://lilibauza-admin.firebaseapp.com',
+];
+window.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== 'zotek-brand') return;
+  console.log('[brand] mensaje recibido de', event.origin, data);
+  if (!CRM_ORIGINS.includes(event.origin)) {
+    console.warn('[brand] origin no permitido, ignorado:', event.origin);
+    return;
+  }
+  if (data.theme === 'light' || data.theme === 'dark') applyTheme(data.theme);
+  if (typeof data.accent === 'string' && /^#[0-9a-fA-F]{6}$/.test(data.accent)) {
+    document.documentElement.style.setProperty('--primary', data.accent);
+  }
+});
+
 // ===========================================
 // AUTH — LOGIN
 // ===========================================
@@ -1118,25 +1140,35 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
   }
 
   if (ssoToken) {
-    try {
-      const res = await fetch(`${API}/api/auth/sso`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sso_token: ssoToken }),
-      });
-      const data = await res.json();
-      if (res.ok && data.access_token) {
-        authToken  = data.access_token;
-        clientData = { id: data.client_id, name: data.client_name, email: data.email || '' };
-        localStorage.setItem(TOKEN_KEY,  authToken);
-        localStorage.setItem(CLIENT_KEY, JSON.stringify(clientData));
-        showDashboard();
-        hideSSOMLoadingSpinner();
-        return;
+    (async () => {
+      try {
+        console.log('[SSO] Token recibido del CRM, intercambiando por access_token...');
+        const ssoResp = await fetch(`${API}/api/auth/sso`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sso_token: ssoToken })
+        });
+        if (ssoResp.ok) {
+          const ssoData = await ssoResp.json();
+          console.log('[SSO] Autenticación exitosa:', ssoData);
+          authToken = ssoData.access_token;
+          clientData = {
+            id: ssoData.client_id,
+            name: ssoData.client_name || 'Usuario',
+            email: ssoData.email || ''
+          };
+          localStorage.setItem(TOKEN_KEY,  authToken);
+          localStorage.setItem(CLIENT_KEY, JSON.stringify(clientData));
+          showDashboard();
+          hideSSOMLoadingSpinner();
+          return;
+        } else {
+          console.error('[SSO] Error del servidor:', ssoResp.status, await ssoResp.text());
+        }
+      } catch (err) {
+        console.error('[SSO] Error intercambiando token:', err);
       }
-    } catch (_) {
-      // Si el SSO falla, cae al flujo normal de login.
-    }
+    })();
   }
 
   if (authToken && clientData) {
