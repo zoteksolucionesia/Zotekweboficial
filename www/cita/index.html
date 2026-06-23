@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tu Cita | Zotek IA</title>
+    <link rel="icon" id="favicon" href="/assets/logo.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -793,5 +794,62 @@
     <div class="toast" id="toast"></div>
 
     <script src="cita.js?v=2.0.2"></script>
+
+    <!-- Favicon animado: el chip del logo Zotek girando en la pestaña -->
+    <script>
+    (function () {
+        const link = document.getElementById('favicon');
+        if (!link) return;
+        const SIZE = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = SIZE; canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+        const cx = SIZE / 2, cy = SIZE / 2;
+        const orbit = SIZE * 0.30;   // radio donde giran los puntos
+        let angle = 0;
+
+        function draw() {
+            ctx.clearRect(0, 0, SIZE, SIZE);
+            // Líneas que conectan el centro con cada punto
+            ctx.strokeStyle = 'rgba(0,188,212,0.55)';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 4; i++) {
+                const a = angle + i * Math.PI / 2;
+                const x = cx + Math.cos(a) * orbit;
+                const y = cy + Math.sin(a) * orbit;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+            // Puntos rosados girando
+            ctx.fillStyle = 'rgba(255,0,102,0.85)';
+            for (let i = 0; i < 4; i++) {
+                const a = angle + i * Math.PI / 2;
+                const x = cx + Math.cos(a) * orbit;
+                const y = cy + Math.sin(a) * orbit;
+                ctx.beginPath();
+                ctx.arc(x, y, SIZE * 0.085, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            // Círculo central cyan
+            ctx.fillStyle = '#00bcd4';
+            ctx.beginPath();
+            ctx.arc(cx, cy, SIZE * 0.22, 0, Math.PI * 2);
+            ctx.fill();
+
+            link.href = canvas.toDataURL('image/png');
+            angle += 0.18;
+        }
+
+        let timer = setInterval(draw, 80);  // ~12 fps, suave y ligero
+        // Pausar cuando la pestaña no está visible (ahorra CPU)
+        document.addEventListener('visibilitychange', function () {
+            clearInterval(timer);
+            if (!document.hidden) timer = setInterval(draw, 80);
+        });
+        draw();
+    })();
+    </script>
 </body>
 </html>
