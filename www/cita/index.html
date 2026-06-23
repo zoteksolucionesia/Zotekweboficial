@@ -63,11 +63,10 @@
             text-decoration: none;
         }
 
-        .navbar-logo-dot {
-            width: 10px;
-            height: 10px;
-            background: var(--zotek-gradient);
-            border-radius: 50%;
+        .navbar-logo-img {
+            height: 36px;
+            width: auto;
+            display: block;
         }
 
         /* Main Container */
@@ -639,9 +638,8 @@
 <body>
     
     <nav class="navbar">
-        <a href="https://zotek-ia.web.app" class="navbar-logo" target="_blank">
-            <span class="navbar-logo-dot"></span>
-            Zotek IA
+        <a href="https://zotek-ia.web.app" class="navbar-logo" target="_blank" aria-label="Zotek IA">
+            <img src="/assets/logo.svg" alt="Zotek IA" class="navbar-logo-img" />
         </a>
     </nav>
 
