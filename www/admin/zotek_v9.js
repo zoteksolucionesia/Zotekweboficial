@@ -2225,6 +2225,81 @@ async function initCitasSection(clientId = currentClientId) {
     await loadAppointmentsAdmin(clientId);
 }
 
+// ===========================================
+// NUEVA CITA (alta manual + WhatsApp) — Admin
+// ===========================================
+function openNuevaCitaAdmin() {
+    if (!currentClientId) { showToast('Selecciona un cliente primero', 'error'); return; }
+    ['nca-name', 'nca-phone', 'nca-email', 'nca-date', 'nca-time', 'nca-notes'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const err = document.getElementById('nca-error');
+    if (err) { err.style.display = 'none'; err.textContent = ''; }
+    const dateEl = document.getElementById('nca-date');
+    if (dateEl) dateEl.min = new Date().toISOString().slice(0, 10);
+    document.getElementById('nca-modal').classList.add('active');
+    setTimeout(() => document.getElementById('nca-name')?.focus(), 80);
+}
+
+function closeNuevaCitaAdmin() {
+    document.getElementById('nca-modal')?.classList.remove('active');
+}
+
+function showNcaError(msg) {
+    const err = document.getElementById('nca-error');
+    if (err) { err.textContent = msg; err.style.display = 'block'; }
+}
+
+async function submitNuevaCitaAdmin() {
+    if (!currentClientId) return;
+    const name  = document.getElementById('nca-name').value.trim();
+    const phone = document.getElementById('nca-phone').value.trim();
+    const email = document.getElementById('nca-email').value.trim();
+    const date  = document.getElementById('nca-date').value;
+    const time  = document.getElementById('nca-time').value;
+    const notes = document.getElementById('nca-notes').value.trim();
+
+    document.getElementById('nca-error').style.display = 'none';
+    if (!name) return showNcaError('Ingresa el nombre del paciente.');
+    if (phone.replace(/\D/g, '').length < 10) return showNcaError('Ingresa un teléfono válido de 10 dígitos.');
+    if (!date) return showNcaError('Selecciona la fecha.');
+    if (!time) return showNcaError('Selecciona la hora.');
+
+    const btn = document.getElementById('nca-save');
+    btn.disabled = true;
+    const prevHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+
+    try {
+        // El backend crea la cita y envía la plantilla de WhatsApp al paciente automáticamente
+        const res = await fetch(`/api/clients/${currentClientId}/appointments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+                customer_name:    name,
+                phone_number:     phone,
+                email:            email,
+                appointment_date: date,
+                appointment_time: time,
+                notes:            notes,
+            }),
+        });
+        if (res.ok) {
+            closeNuevaCitaAdmin();
+            showToast('Cita creada. Se notificó al paciente por WhatsApp.', 'success');
+            await loadAppointmentsAdmin();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            showNcaError(data.detail || 'No se pudo crear la cita.');
+        }
+    } catch (e) {
+        showNcaError('Error de conexión. Intenta de nuevo.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = prevHtml;
+    }
+}
+
 // Initial load
 document.addEventListener('DOMContentLoaded', async () => {
     await checkUserRole();

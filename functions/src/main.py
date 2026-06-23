@@ -2355,11 +2355,11 @@ async def confirm_appointment(client_id: str, appointment_id: int,
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/cancel")
 async def cancel_appointment(client_id: str, appointment_id: int,
                             current_user: str = Depends(get_current_user)):
-    """Cancela una cita"""
+    """Cancela una cita (la cancela el negocio desde el admin/portal)"""
     from .services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
-    if apt_service.cancel_appointment(appointment_id):
+    if apt_service.cancel_appointment(appointment_id, cancelled_by="business"):
         return {"status": "cancelled", "message": "Cita cancelada"}
     raise HTTPException(status_code=400, detail="Error al cancelar cita")
 
@@ -2462,7 +2462,7 @@ async def cancel_appointment_by_token(token: str):
     from .services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
-    if apt_service.cancel_appointment(apt["id"]):
+    if apt_service.cancel_appointment(apt["id"], cancelled_by="patient"):
         return {"status": "cancelled", "message": "Cita cancelada"}
     raise HTTPException(status_code=400, detail="Error al cancelar cita")
 

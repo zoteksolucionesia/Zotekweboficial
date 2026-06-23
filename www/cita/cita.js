@@ -189,6 +189,41 @@
         document.title = `Cita — ${apt.business_name || 'Zotek IA'}`;
     }
 
+    function esc(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function renderCancelled(apt) {
+        // Link deshabilitado: ocultamos la vista de la cita y mostramos el estado cancelado
+        const grid = document.querySelector('.appointment-grid');
+        if (grid) grid.style.display = 'none';
+        document.getElementById('welcome-title').textContent = 'Cita cancelada';
+
+        const byBusiness = apt.cancelled_by === 'business';
+        const biz = apt.business_name || 'el especialista';
+        const msg = byBusiness
+            ? `Esta cita fue cancelada por <strong>${esc(biz)}</strong>.`
+            : 'Esta cita fue cancelada.';
+        const fecha = apt.date_time ? `${formatLongDate(apt.date_time)} · ${formatTime(apt.date_time)}` : '';
+
+        let waBtn = '';
+        if (apt.business_whatsapp) {
+            waBtn = `<a href="${apt.business_whatsapp}" target="_blank" class="btn-retry">Contactar por WhatsApp</a>`;
+        }
+
+        document.getElementById('error-container').innerHTML = `
+            <div class="card error-state">
+                <div class="error-icon">🚫</div>
+                <h2>Cita cancelada</h2>
+                <p>${msg}</p>
+                ${fecha ? `<p style="color:var(--text-light);font-size:0.9rem;margin-top:-0.5rem;">Estaba programada para: ${esc(fecha)}</p>` : ''}
+                <p style="color:var(--text-light);font-size:0.9rem;">Si necesitas una nueva cita, contacta directamente con ${esc(biz)}.</p>
+                ${waBtn}
+            </div>
+        `;
+        document.title = `Cita cancelada — ${apt.business_name || 'Zotek IA'}`;
+    }
+
     function renderError(msg) {
         document.getElementById('welcome-title').textContent = "Error";
         
@@ -262,12 +297,19 @@
             }
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const apt = await res.json();
-            
+
+            // Cita cancelada: link deshabilitado, mostramos quién la canceló
+            if (apt.status === 'cancelled') {
+                document.getElementById('error-container').innerHTML = '';
+                renderCancelled(apt);
+                return;
+            }
+
             // Make sure layout grid is visible if it was hidden by previous errors
             const grid = document.querySelector('.appointment-grid');
             if (grid) grid.style.display = 'grid';
             document.getElementById('error-container').innerHTML = '';
-            
+
             renderAppointment(apt);
         } catch (e) {
             renderError('Ocurrió un error al cargar la información. Intenta de nuevo más tarde.');

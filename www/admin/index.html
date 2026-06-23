@@ -692,6 +692,9 @@
                             <button type="button" class="btn btn-secondary btn-sm" onclick="loadAppointmentsAdmin()">
                                 <i class="fas fa-rotate"></i> Actualizar
                             </button>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="openNuevaCitaAdmin()">
+                                <i class="fas fa-plus"></i> Nueva Cita
+                            </button>
                         </div>
                     </div>
                     <div class="settings-card-body" style="padding: 0;">
@@ -767,6 +770,60 @@
             </div>
             <div class="emoji-picker-content" id="emojiPickerContent">
                 <!-- Emojis se cargan aquí -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Nueva Cita (alta manual + WhatsApp) -->
+    <div id="nca-modal" class="nca-modal" aria-hidden="true">
+        <div class="nca-backdrop" onclick="closeNuevaCitaAdmin()"></div>
+        <div class="nca-card" role="dialog" aria-modal="true">
+            <div class="nca-header">
+                <h3><i class="fas fa-calendar-plus"></i> Nueva Cita</h3>
+                <button type="button" class="nca-close" onclick="closeNuevaCitaAdmin()" aria-label="Cerrar">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+            <div class="nca-body">
+                <div class="nca-field">
+                    <label for="nca-name">Nombre del paciente *</label>
+                    <input type="text" id="nca-name" placeholder="Ej. María López" autocomplete="off" />
+                </div>
+                <div class="nca-row">
+                    <div class="nca-field">
+                        <label for="nca-phone">Teléfono (WhatsApp) *</label>
+                        <input type="tel" id="nca-phone" placeholder="10 dígitos" inputmode="numeric" autocomplete="off" />
+                    </div>
+                    <div class="nca-field">
+                        <label for="nca-email">Email (opcional)</label>
+                        <input type="email" id="nca-email" placeholder="correo@ejemplo.com" autocomplete="off" />
+                    </div>
+                </div>
+                <div class="nca-row">
+                    <div class="nca-field">
+                        <label for="nca-date">Fecha *</label>
+                        <input type="date" id="nca-date" />
+                    </div>
+                    <div class="nca-field">
+                        <label for="nca-time">Hora *</label>
+                        <input type="time" id="nca-time" />
+                    </div>
+                </div>
+                <div class="nca-field">
+                    <label for="nca-notes">Motivo / notas (opcional)</label>
+                    <textarea id="nca-notes" rows="2" placeholder="Ej. Primera consulta, ansiedad..."></textarea>
+                </div>
+                <p class="nca-hint">
+                    <i class="fab fa-whatsapp" style="color:#25d366"></i>
+                    Al guardar, se enviará un WhatsApp al paciente con los detalles de su cita.
+                </p>
+                <p id="nca-error" class="nca-error" style="display:none"></p>
+            </div>
+            <div class="nca-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeNuevaCitaAdmin()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="nca-save" onclick="submitNuevaCitaAdmin()">
+                    <i class="fas fa-paper-plane"></i> Guardar y notificar
+                </button>
             </div>
         </div>
     </div>

@@ -87,33 +87,35 @@ class AppointmentService:
             print(f"[Appointment] Error confirming appointment: {e}")
             return False
     
-    def cancel_appointment(self, appointment_id: int) -> bool:
+    def cancel_appointment(self, appointment_id: int, cancelled_by: str = None) -> bool:
         """
         Cancela una cita
-        
+
         Args:
             appointment_id: ID de la cita
-            
+            cancelled_by: quién canceló — 'business' (negocio desde admin/portal)
+                          o 'patient' (paciente desde el link público). Opcional.
+
         Returns:
             True si se canceló correctamente
         """
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute("""
                 UPDATE appointments
-                SET status = 'cancelled'
+                SET status = 'cancelled', cancelled_by = %s
                 WHERE id = %s
-            """, (appointment_id,))
-            
+            """, (cancelled_by, appointment_id))
+
             conn.commit()
             cursor.close()
             conn.close()
-            
-            print(f"[Appointment] Cancelled appointment {appointment_id}")
+
+            print(f"[Appointment] Cancelled appointment {appointment_id} by {cancelled_by}")
             return True
-            
+
         except Exception as e:
             print(f"[Appointment] Error cancelling appointment: {e}")
             return False
