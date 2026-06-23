@@ -2341,6 +2341,70 @@ async def create_appointment_api(client_id: str, request: Request):
         return {"status": "created", "appointment_id": apt_result["id"], "token": apt_result["token"]}
     raise HTTPException(status_code=400, detail="Error al crear cita en la base de datos")
 
+def _notificar_cancelacion_whatsapp(apt: dict):
+    """Best-effort: avisa al paciente por WhatsApp que su cita fue cancelada.
+
+    Solo se envía si la cita es a FUTURO (no tiene sentido avisar de una cita
+    que ya pasó). Usa la plantilla HSM 'zotek_cancelacion_cita' desde el número
+    oficial de Zotek (phone_id=980996958435648), igual que la confirmación.
+    Nunca lanza: si algo falla, solo se registra en logs.
+    """
+    try:
+        dt = apt.get("date_time")
+        if not dt:
+            return
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        # Gate: si la cita ya pasó, no se notifica
+        if dt <= datetime.now(timezone.utc):
+            logger.info(f"[Cancel-WA] Cita {apt.get('id')} es pasada; no se notifica al paciente")
+            return
+
+        phone = (apt.get("phone") or "").strip()
+        if not phone:
+            return
+
+        _zotek = database.get_client_by_phone_id("980996958435648")
+        if not _zotek:
+            logger.warning("[Cancel-WA] No se encontró cliente Zotek central (phone_id=980996958435648)")
+            return
+        _wa_token = _zotek.get("whatsapp_token", "") or ""
+        _wa_phone_id = _zotek.get("phone_number_id", "") or ""
+        if not (_wa_token and _wa_phone_id):
+            logger.warning("[Cancel-WA] Sin credenciales WhatsApp de Zotek")
+            return
+
+        dt_mexico = dt.astimezone(ZoneInfo("America/Mexico_City"))
+        fecha_str = dt_mexico.strftime("%d/%m/%Y")
+        hora_str = dt_mexico.strftime("%H:%M")
+        dia_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves',
+                      4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}[dt_mexico.weekday()]
+
+        _vars = [
+            apt.get("name") or "Cliente",
+            apt.get("client_name") or "Mi negocio",
+            f"{dia_semana}, {fecha_str}",
+            hora_str,
+        ]
+        to_phone_meta = phone.lstrip("+")
+        for _lang in ["es_MX", "es", "es_LA"]:
+            ok = whatsapp_service.enviar_template_whatsapp(
+                phone_number_id=_wa_phone_id,
+                whatsapp_token=_wa_token,
+                to_phone=to_phone_meta,
+                template_name="zotek_cancelacion_cita",
+                variables=_vars,
+                language=_lang,
+            )
+            if ok:
+                logger.info(f"[Cancel-WA] Aviso de cancelación enviado a {to_phone_meta} (lang={_lang})")
+                break
+    except Exception as e:
+        import traceback
+        logger.error(f"[Cancel-WA] Error notificando cancelación: {e}\n{traceback.format_exc()}")
+
+
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/confirm")
 async def confirm_appointment(client_id: str, appointment_id: int,
                              current_user: str = Depends(get_current_user)):
@@ -2355,13 +2419,21 @@ async def confirm_appointment(client_id: str, appointment_id: int,
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/cancel")
 async def cancel_appointment(client_id: str, appointment_id: int,
                             current_user: str = Depends(get_current_user)):
-    """Cancela una cita (la cancela el negocio desde el admin/portal)"""
+    """Cancela una cita (la cancela el negocio desde el admin/portal).
+    Si la cita es a futuro, avisa al paciente por WhatsApp (best-effort)."""
     from .services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
-    if apt_service.cancel_appointment(appointment_id, cancelled_by="business"):
-        return {"status": "cancelled", "message": "Cita cancelada"}
-    raise HTTPException(status_code=400, detail="Error al cancelar cita")
+    # Datos de la cita ANTES de cancelar (para el aviso por WhatsApp)
+    apt = apt_service.get_appointment_by_id(appointment_id)
+
+    if not apt_service.cancel_appointment(appointment_id, cancelled_by="business"):
+        raise HTTPException(status_code=400, detail="Error al cancelar cita")
+
+    # Aviso al paciente solo si la cita es a futuro (no si ya pasó)
+    if apt:
+        _notificar_cancelacion_whatsapp(apt)
+    return {"status": "cancelled", "message": "Cita cancelada"}
 
 @app.get("/api/appointments/token/{token}")
 async def get_appointment_by_token(token: str):
