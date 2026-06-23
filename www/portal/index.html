@@ -219,6 +219,9 @@
             <option value="confirmed">Confirmadas</option>
             <option value="cancelled">Canceladas</option>
           </select>
+          <button class="btn-primary btn-sm" id="btn-nueva-cita">
+            <i class="fas fa-plus"></i> Nueva Cita
+          </button>
         </div>
       </div>
       <div class="card">
@@ -373,6 +376,63 @@
     </section>
 
   </main>
+</div>
+
+<!-- ==============================================
+     MODAL: NUEVA CITA (alta manual + WhatsApp)
+=============================================== -->
+<div id="nueva-cita-modal" class="portal-modal" style="display:none">
+  <div class="portal-modal-backdrop" id="nueva-cita-backdrop"></div>
+  <div class="portal-modal-card">
+    <div class="portal-modal-header">
+      <h3><i class="fas fa-calendar-plus" style="color:var(--primary)"></i> Nueva Cita</h3>
+      <button class="portal-modal-close" id="btn-close-nueva-cita" aria-label="Cerrar">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+    <div class="portal-modal-body">
+      <div class="form-group">
+        <label for="nc-name">Nombre del paciente *</label>
+        <input type="text" id="nc-name" placeholder="Ej. María López" autocomplete="off" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="nc-phone">Teléfono (WhatsApp) *</label>
+          <input type="tel" id="nc-phone" placeholder="10 dígitos" inputmode="numeric" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="nc-email">Email (opcional)</label>
+          <input type="email" id="nc-email" placeholder="correo@ejemplo.com" autocomplete="off" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="nc-date">Fecha *</label>
+          <input type="date" id="nc-date" />
+        </div>
+        <div class="form-group">
+          <label for="nc-time">Hora *</label>
+          <input type="time" id="nc-time" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="nc-notes">Motivo / notas (opcional)</label>
+        <textarea id="nc-notes" rows="2" placeholder="Ej. Primera consulta, ansiedad..."></textarea>
+      </div>
+      <p class="nc-hint">
+        <i class="fab fa-whatsapp" style="color:#25d366"></i>
+        Al guardar, se enviará un WhatsApp al paciente con los detalles de su cita.
+      </p>
+      <p id="nc-error" class="nc-error" style="display:none"></p>
+    </div>
+    <div class="portal-modal-footer">
+      <button class="btn-secondary" id="btn-cancel-nueva-cita">Cancelar</button>
+      <button class="btn-primary" id="btn-save-nueva-cita">
+        <span id="nc-save-text"><i class="fas fa-paper-plane"></i> Guardar y notificar</span>
+        <i id="nc-save-spin" class="fas fa-spinner fa-spin" style="display:none"></i>
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Toast -->

@@ -42,6 +42,7 @@ except ImportError:
 from . import database
 from .services import whatsapp_service
 from .services.gemini_service import GeminiEngine
+from .rate_limiter import check as rate_limit
 
 # Load configuration
 load_dotenv()
@@ -299,10 +300,11 @@ async def test_whatsapp(to: str = "523123173431", current_user: str = Depends(ge
 
 @app.post("/api/auth/login")
 async def login(request: Request):
+    rate_limit(request, "login", max_req=5, window="15 m", window_sec=900)
     data = await request.json()
     email = data.get("email")
     password = data.get("password")
-    
+
     admin_password = os.getenv("ADMIN_PASSWORD")
     if not admin_password:
         raise HTTPException(status_code=500, detail="Configuración del servidor incompleta")
@@ -419,6 +421,7 @@ async def verify_webhook(request: Request):
 
 @app.post("/webhook")
 async def recibir_mensaje(request: Request):
+    rate_limit(request, "webhook", max_req=60, window="60 s", window_sec=60)
     body = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
     if not verify_whatsapp_signature(body, signature):
@@ -1674,6 +1677,8 @@ async def get_settings(request: Request, current_user: str = Depends(get_current
 @app.post("/api/clients/{client_id}/upload-pdf")
 async def upload_pdf(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     """Endpoint para subir un PDF, extraer su texto y guardarlo en la base de conocimientos."""
+    rate_limit(request, "upload_pdf", max_req=10, window="24 h", window_sec=86400,
+               identifier=f"client:{client_id}")
     global PdfReader
     import sys
 
@@ -1989,6 +1994,7 @@ async def get_client_appointments(client_id: str, status: str = None,
 
 @app.post("/api/widget/chat")
 async def widget_chat(request: Request):
+    rate_limit(request, "widget_chat", max_req=20, window="1 h", window_sec=3600)
     try:
         data = await request.json()
         client_id = data.get("client_id")
@@ -2210,10 +2216,21 @@ async def create_appointment_api(client_id: str, request: Request):
     data = await request.json()
     client_id_value = int(client_id) if client_id.isdigit() else client_id
 
-    # Obtener datos del cliente (para credenciales de WhatsApp)
+    # Obtener datos del cliente (para credenciales de WhatsApp y su límite de citas)
     client_data = database.get_client_by_id(client_id_value)
     if not client_data:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    # Rate limit POR CLIENTE y configurable: cada cliente tiene su propio cupo/hora,
+    # definido en la columna `appointment_rate_limit` de la tabla clients (default 10).
+    # Se keyea por client_id (no por IP) para que un consultorio no comparta el límite
+    # con el formulario público ni con otros clientes en la misma red.
+    try:
+        _max_appts = int(client_data.get("appointment_rate_limit") or 10)
+    except (TypeError, ValueError):
+        _max_appts = 10
+    rate_limit(request, "create_appointment", max_req=_max_appts, window="1 h",
+               window_sec=3600, identifier=f"appt-create:{client_id_value}")
 
     # Validar y normalizar número de teléfono (agregar +52 si falta)
     raw_phone = data.get('phone_number') or data.get('phone', '')

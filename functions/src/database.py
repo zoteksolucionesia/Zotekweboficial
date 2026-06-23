@@ -93,9 +93,17 @@ def init_db():
                 plan TEXT DEFAULT 'free',
                 email TEXT DEFAULT '',
                 calendly_url TEXT DEFAULT '',
+                appointment_rate_limit INTEGER DEFAULT 10,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
+        ''')
+
+        # Migración idempotente: agregar columna de límite de citas/hora a tablas ya existentes.
+        # (init_db no corre en producción al arrancar; ejecutar manualmente o vía scripts/migrate.)
+        cursor.execute('''
+            ALTER TABLE clients
+            ADD COLUMN IF NOT EXISTS appointment_rate_limit INTEGER DEFAULT 10
         ''')
 
         # Tabla de Base de Conocimientos
@@ -745,7 +753,7 @@ _ALLOWED_UPDATE_FIELDS = {
     'name', 'system_instruction', 'email', 'calendly_url', 'menu_json',
     'plan', 'is_active', 'bank_name', 'beneficiary_name',
     'whatsapp_token', 'phone_number_id', 'verify_token', 'stripe_api_key', 'clabe',
-    'email_password',
+    'email_password', 'appointment_rate_limit',
 }
 
 def update_client(client_id, data):
