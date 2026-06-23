@@ -665,10 +665,8 @@ async function saveClient(event) {
         console.log("Response text:", responseText);
 
         if (response.ok) {
-            // Save schedules if there are any
-            if (currentClientSchedules && currentClientSchedules.length > 0) {
-                await saveClientSchedules(id);
-            }
+            // Nota: los horarios se guardan por separado desde la pestaña "Horarios"
+            // (scheduleState + botón "Guardar Horarios"), no aquí.
             closeModal();
             fetchClients();
             showToast('Cambios guardados con éxito', 'success');
