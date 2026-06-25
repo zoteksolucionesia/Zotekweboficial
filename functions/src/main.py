@@ -2393,7 +2393,7 @@ def _notificar_cancelacion_whatsapp(apt: dict):
                 phone_number_id=_wa_phone_id,
                 whatsapp_token=_wa_token,
                 to_phone=to_phone_meta,
-                template_name="zotek_cancelacion_cita",
+                template_name="zotek_cancelacin_cita",  # nombre tal cual quedó en Meta (sin la 'o')
                 variables=_vars,
                 language=_lang,
             )
