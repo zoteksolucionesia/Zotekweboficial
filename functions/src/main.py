@@ -1,3 +1,4 @@
+# deploy-marker: 2026-06-26 redeploy forzado (cancelación WhatsApp + cancelled_by)
 from psycopg2.extras import RealDictCursor
 import os
 import hmac
