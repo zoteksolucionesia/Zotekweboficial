@@ -1,3 +1,4 @@
+# deploy-marker: 2026-06-26 redeploy forzado (cancelación WhatsApp + cancelled_by)
 from psycopg2.extras import RealDictCursor
 import os
 import hmac
@@ -6,8 +7,10 @@ import logging
 import random
 import threading
 import smtplib
+import unicodedata
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from collections import deque
 import sys
 import json
@@ -40,6 +43,7 @@ except ImportError:
 from . import database
 from .services import whatsapp_service
 from .services.gemini_service import GeminiEngine
+from .rate_limiter import check as rate_limit
 
 # Load configuration
 load_dotenv()
@@ -47,16 +51,17 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
+# Secreto COMPARTIDO con el CRM de terapeutas para el SSO de entrada al portal.
+# Distinto de SECRET_KEY (que firma las sesiones internas del portal).
+PORTAL_SSO_SECRET = os.getenv("PORTAL_SSO_SECRET")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 
 if not SECRET_KEY:
     raise ValueError("SECRET_KEY no definida en variables de entorno")
 if not ADMIN_EMAIL:
     raise ValueError("ADMIN_EMAIL no definida en variables de entorno")
-ADMIN_EMAILS = [
-    ADMIN_EMAIL,
-    "morentinomar@gmail.com"
-]
+_extra_admins = [e.strip() for e in os.getenv("ADMIN_EMAILS_EXTRA", "").split(",") if e.strip()]
+ADMIN_EMAILS = list({ADMIN_EMAIL} | set(_extra_admins))
 EMAIL_PASSWORD = os.getenv("EMAIL_APP_PASSWORD")
 WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")
 
@@ -91,9 +96,11 @@ app.add_middleware(
     allow_origins=[
         "https://zotek-ia.web.app",
         "https://zotek-ia.firebaseapp.com",
+        "https://lilibauza.web.app",
+        "https://lilibauza.firebaseapp.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        "*"
+        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -221,57 +228,6 @@ def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_
 async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
-@app.get("/api/test-whatsapp")
-async def test_whatsapp(to: str = "523123173431"):
-    """Diagnostic endpoint: tests WhatsApp API send capability."""
-    import sys
-    results = {"steps": [], "target": to}
-
-    try:
-        # Step 1: Get first client
-        clients = database.list_clients()
-        if not clients:
-            return {"error": "No clients in PostgreSQL database", "steps": results["steps"]}
-        client = clients[0]
-        results["steps"].append(f"1. Client found: {client.get('name')}")
-        
-        # Step 2: Check token
-        token = client.get('whatsapp_token', '')
-        phone_id = client.get('phone_number_id', '')
-        results["steps"].append(f"2. Token present: {bool(token)}")
-        results["steps"].append(f"3. phone_number_id: {phone_id}")
-        
-        # Step 4: Test WhatsApp API - Send Message
-        import requests as req
-        url = f"https://graph.facebook.com/v22.0/{phone_id}/messages"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "messaging_product": "whatsapp",
-            "to": to,
-            "type": "text",
-            "text": {"body": "Test diagnostic message from Bot server"}
-        }
-        
-        results["steps"].append(f"4. Attempting send to {to}...")
-        resp = req.post(url, headers=headers, json=data)
-        results["status_code"] = resp.status_code
-        results["response_body"] = resp.json() if resp.status_code != 204 else {}
-        
-        if resp.status_code == 200:
-            results["result"] = "SUCCESS"
-        else:
-            results["result"] = "FAILED"
-            
-    except Exception as e:
-        import traceback
-        results["error"] = f"{type(e).__name__}: {e}"
-        results["traceback"] = traceback.format_exc()
-    
-    return results
-
 # === SECURITY HELPERS ===
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
@@ -290,14 +246,66 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+@app.get("/api/test-whatsapp")
+async def test_whatsapp(to: str = "523123173431", current_user: str = Depends(get_current_user)):
+    """Diagnostic endpoint: tests WhatsApp API send capability."""
+    import sys
+    results = {"steps": [], "target": to}
+
+    try:
+        # Step 1: Get first client
+        clients = database.list_clients()
+        if not clients:
+            return {"error": "No clients in PostgreSQL database", "steps": results["steps"]}
+        client = clients[0]
+        results["steps"].append(f"1. Client found: {client.get('name')}")
+
+        # Step 2: Check token
+        token = client.get('whatsapp_token', '')
+        phone_id = client.get('phone_number_id', '')
+        results["steps"].append(f"2. Token present: {bool(token)}")
+        results["steps"].append(f"3. phone_number_id: {phone_id}")
+
+        # Step 4: Test WhatsApp API - Send Message
+        import requests as req
+        url = f"https://graph.facebook.com/v22.0/{phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"body": "Test diagnostic message from Bot server"}
+        }
+
+        results["steps"].append(f"4. Attempting send to {to}...")
+        resp = req.post(url, headers=headers, json=data)
+        results["status_code"] = resp.status_code
+        results["response_body"] = resp.json() if resp.status_code != 204 else {}
+
+        if resp.status_code == 200:
+            results["result"] = "SUCCESS"
+        else:
+            results["result"] = "FAILED"
+
+    except Exception as e:
+        import traceback
+        results["error"] = f"{type(e).__name__}: {e}"
+        results["traceback"] = traceback.format_exc()
+
+    return results
+
 # === AUTH API ===
 
 @app.post("/api/auth/login")
 async def login(request: Request):
+    rate_limit(request, "login", max_req=5, window="15 m", window_sec=900)
     data = await request.json()
     email = data.get("email")
     password = data.get("password")
-    
+
     admin_password = os.getenv("ADMIN_PASSWORD")
     if not admin_password:
         raise HTTPException(status_code=500, detail="Configuración del servidor incompleta")
@@ -414,6 +422,7 @@ async def verify_webhook(request: Request):
 
 @app.post("/webhook")
 async def recibir_mensaje(request: Request):
+    rate_limit(request, "webhook", max_req=60, window="60 s", window_sec=60)
     body = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
     if not verify_whatsapp_signature(body, signature):
@@ -422,20 +431,21 @@ async def recibir_mensaje(request: Request):
     try:
         data = await request.json()
         logger.debug(f"DEBUG: Webhook data received: {data}")
-        
+
         # Guardar en logs recientes
         timestamp_str = datetime.now().isoformat()
         RECENT_LOGS.append({"time": timestamp_str, "payload": data})
-        
+
         if data.get('object') == 'whatsapp_business_account':
             for entry in data.get('entry', []):
                 for change in entry.get('changes', []):
                     value = change.get('value', {})
                     if 'statuses' in value:
                         for st in value['statuses']:
-                            logger.debug(
+                            logger.info(
                                 f"[Webhook] Status update: {st.get('status')} "
-                                f"for msg {st.get('id')} to {st.get('recipient_id')}"
+                                f"for msg {st.get('id')} to {st.get('recipient_id')} "
+                                f"errors={st.get('errors')}"
                             )
                         continue
 
@@ -466,12 +476,13 @@ async def recibir_mensaje(request: Request):
                         demo_client_id = None
                         if session and session.get('demo_mode'):
                             demo_mode = session['demo_mode']
-                            # IDs deben coincidir con los de database.py
-                            if demo_mode == "Restaurante": demo_client_id = "demo_restaurant"
-                            elif demo_mode == "Dental": demo_client_id = "demo_dental"
-                            elif demo_mode == "Psicólogo" or demo_mode == "Psicología": demo_client_id = "demo_psychology"
-                            elif demo_mode == "Salon" or demo_mode == "Salón": demo_client_id = "demo_salon"
-                            elif demo_mode == "Retail" or demo_mode == "Tienda": demo_client_id = "demo_retail"
+                            # Normalizar: lower, sin prefijo "demo_", sin acentos
+                            _dm = demo_mode.lower().replace("demo_", "").replace("é", "e").replace("ó", "o").replace("á", "a").replace("í", "i").replace("ú", "u")
+                            if "restaurant" in _dm:    demo_client_id = "demo_restaurant"
+                            elif "dental" in _dm or "clinica" in _dm or "clinic" in _dm: demo_client_id = "demo_dental"
+                            elif "psicolog" in _dm or "psychology" in _dm or "mental" in _dm: demo_client_id = "demo_psychology"
+                            elif "salon" in _dm or "belleza" in _dm or "glamour" in _dm: demo_client_id = "demo_salon"
+                            elif "retail" in _dm or "tienda" in _dm or "moda" in _dm or "urban" in _dm: demo_client_id = "demo_retail"
                         
                         # Obtener siempre el cliente real primero (propietario del número base)
                         real_client = database.get_client_by_phone_id(phone_number_id)
@@ -490,8 +501,12 @@ async def recibir_mensaje(request: Request):
                             client_data = real_client
                             
                         if not client_data:
-                            logger.error(f"❌ ERROR: No client found for phoneID {phone_number_id}")
-                            return {"status": "error", "message": "Client not found"}
+                            # Fallback a Zotek Soluciones IA por defecto
+                            logger.info(f"⚠️ No client found for phoneID {phone_number_id}, usando Zotek como fallback")
+                            client_data = database.get_client_by_phone_id("980996958435648")
+                            if not client_data:
+                                logger.error(f"❌ ERROR: No client found and Zotek fallback also failed")
+                                return {"status": "error", "message": "Client not found"}
                         
                         logger.info(f"✅ Client Found: {client_data.get('name')} (ID: {client_data.get('id')})")
 
@@ -527,10 +542,18 @@ async def recibir_mensaje(request: Request):
                         logger.debug(f"[DEBUG] texto_usuario DESPUES de extraer: '{texto_usuario}'")
                         logger.debug(f"[DEBUG] message_type: {message_type}")
 
+                        # Salida de demo universal — funciona aunque haya sesión activa
+                        texto_lower = texto_usuario.lower().strip()
+                        universal_exit_keywords = ["hola", "inicio", "start", "reiniciar",
+                                                   "salir", "terminar", "terminar demo", "salir demo", "volver", "regresar"]
+                        if demo_client_id and texto_lower in universal_exit_keywords:
+                            database.delete_user_session(numero_usuario, phone_number_id)
+                            logger.info(f"[Demo] Salida de demo universal vía '{texto_lower}' para {numero_usuario}")
+                            demo_client_id = None
+                            client_data = real_client  # volver al cliente real (Zotek)
+
                         # Verificar si el usuario quiere iniciar UNA NUEVA demo (no viene de sesión)
                         if not demo_client_id:
-                            texto_lower = texto_usuario.lower().strip()
-
                             demo_keyword_map = {
                                 "restaurante": "demo_restaurant",
                                 "tienda": "demo_retail",
@@ -538,18 +561,27 @@ async def recibir_mensaje(request: Request):
                                 "psicologo": "demo_psychology",
                                 "psicólogo": "demo_psychology",
                                 "salon": "demo_salon",
-                                "belleza": "demo_salon"
+                                "belleza": "demo_salon",
+                                "zotek": "980996958435648",
+                                "zotek ia": "980996958435648",
+                                "soluciones ia": "980996958435648",
                             }
 
                             demo_phone_id = None
                             for keyword, phone_id in demo_keyword_map.items():
-                                if keyword in texto_lower:
+                                if re.search(r'\b' + re.escape(keyword) + r'\b', texto_lower):
                                     demo_phone_id = phone_id
                                     break
 
                             if demo_phone_id:
                                 # Usuario quiere iniciar una demo nueva
-                                demo_client = database.get_client_by_phone_id(demo_phone_id)
+                                # Para IDs demo_* usar siempre el dict hardcodeado (tiene response fields)
+                                if demo_phone_id.startswith('demo_'):
+                                    demo_client = database.get_client_by_id(demo_phone_id)
+                                else:
+                                    demo_client = database.get_client_by_phone_id(demo_phone_id)
+                                    if not demo_client:
+                                        demo_client = database.get_client_by_id(demo_phone_id)
 
                                 if demo_client:
                                     tipo_demo = demo_phone_id.replace("demo_", "")
@@ -601,15 +633,6 @@ async def recibir_mensaje(request: Request):
                                     return {"status": "demo_started"}
                                 else:
                                     logger.info(f"[Demo] Bot demo '{demo_phone_id}' no encontrado")
-
-                            # Si es mensaje de salir de demo
-                            if texto_lower in ["salir", "terminar", "terminar demo", "salir demo"]:
-                                if session and session.get("demo_mode"):
-                                    database.delete_user_session(numero_usuario, phone_number_id)
-                                    logger.info(f"[Demo] Terminando sesión de demo para {numero_usuario}")
-                                    msg_salida = "Has salido del modo demo. Ahora vuelvo a ser el asistente general de Zotek Soluciones IA. En que mas puedo ayudarte?"
-                                    whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, client_data['whatsapp_token'], client_data['phone_number_id'])
-                                    return {"status": "demo_ended"}
 
                         # ============================================
                         # FLUJO DE RESERVA INTERACTIVA (Restaurante)
@@ -740,15 +763,22 @@ async def recibir_mensaje(request: Request):
                         session_data_dict = session.get('session_data', {}) if session else {}
                         demo_phone_id_from_session = session_data_dict.get('demo_phone_id') if session_is_demo else None
 
-                        logger.debug(f"[DEBUG] session_is_demo: {session_is_demo}")
-                        logger.debug(f"[DEBUG] demo_phone_id_from_session: {demo_phone_id_from_session}")
+                        logger.info(f"[DEMO_TRACE] session_is_demo={session_is_demo} demo_phone_id={demo_phone_id_from_session} demo_client_id={demo_client_id} texto='{texto_usuario[:40]}'")
+
 
                         menu_data = None
                         try:
                             # Si es demo, cargar el menú del demo
                             if session_is_demo and demo_phone_id_from_session:
                                 logger.debug(f"[DEBUG] Loading demo menu for: {demo_phone_id_from_session}")
-                                demo_client_for_menu = database.get_client_by_phone_id(demo_phone_id_from_session)
+                                # Para IDs demo_* usar siempre el dict hardcodeado (tiene response fields completos)
+                                if demo_phone_id_from_session.startswith('demo_'):
+                                    demo_client_for_menu = database.get_client_by_id(demo_phone_id_from_session)
+                                else:
+                                    demo_client_for_menu = database.get_client_by_phone_id(demo_phone_id_from_session)
+                                if not demo_client_for_menu:
+                                    # Fallback: client_data ya es el demo client (cargado via get_client_by_id)
+                                    demo_client_for_menu = client_data
                                 logger.debug(f"[DEBUG] demo_client_for_menu: {bool(demo_client_for_menu)}")
                                 if demo_client_for_menu and demo_client_for_menu.get('menu_json'):
                                     menu_json_str = demo_client_for_menu.get('menu_json')
@@ -775,11 +805,11 @@ async def recibir_mensaje(request: Request):
 
                             def clean_string(s):
                                 if not s: return ""
-                                # Eliminar emojis, caracteres especiales y acentos
+                                # NFD decompose so accented chars become base+combining mark
+                                s = unicodedata.normalize('NFD', s)
+                                # Remove non-word chars (removes emoji AND combining accent marks)
                                 s = re.sub(r'[^\w\s]', '', s)
-                                # Normalizar: eliminar acentos y convertir a lowercase
                                 s = s.lower().strip()
-                                # Eliminar espacios multiples
                                 s = re.sub(r'\s+', ' ', s)
                                 return s
 
@@ -830,15 +860,28 @@ async def recibir_mensaje(request: Request):
                                         if found: return found
                                 return None
 
+                            logger.info(f"[DEMO_TRACE] menu_data loaded={bool(menu_data)} options={len(menu_data.get('options',[]) if menu_data else [])}")
                             match = buscar_opcion(menu_data.get('options', []), texto_usuario)
                             if not match and 'opciones' in menu_data:
                                 match = buscar_opcion(menu_data['opciones'], texto_usuario)
+                            logger.info(f"[DEMO_TRACE] match='{match.get('title') if match else None}' has_response={bool(match.get('response') if match else False)}")
 
                             if match and isinstance(match, dict):
                                 # ============================================
-                                # INICIAR FLUJO DE RESERVA (Restaurante)
+                                # SALIR DE DEMO (botón "Salir" en menú demo)
                                 # ============================================
                                 titulo_match = str(match.get('title', '')).lower()
+                                if session_is_demo and 'salir' in titulo_match:
+                                    database.delete_user_session(numero_usuario, phone_number_id)
+                                    logger.info(f"[Demo] Salida vía botón Salir del menú demo para {numero_usuario}")
+                                    if not skip_whatsapp and real_client:
+                                        msg_salida = "Has salido del modo demo. ¡Bienvenido de vuelta a Zotek SolucionesIA! 🚀\n\nEscribe *menú* para ver nuestras opciones."
+                                        whatsapp_service.enviar_mensaje_whatsapp(numero_usuario, msg_salida, real_client['whatsapp_token'], real_client['phone_number_id'])
+                                    return {"status": "demo_ended"}
+
+                                # ============================================
+                                # INICIAR FLUJO DE RESERVA (Restaurante)
+                                # ============================================
                                 if 'reserva' in titulo_match and 'hacer' in titulo_match:
                                     logger.info(f"[Reserva] Iniciando flujo de reserva para {numero_usuario}")
 
@@ -1000,33 +1043,19 @@ async def recibir_mensaje(request: Request):
                                 logger.info(f"[Webhook] Fallback has 0 options. Allowing Gemini to handle.")
                                 # Let Gemini handle it
 
-                        # --- INYECCIÓN DE CONTEXTO DEMO ---
-                        session = database.get_user_session(numero_usuario, phone_number_id)
-                        if session and session.get('demo_mode'):
-                            demo_mode = session['demo_mode']
-                            demo_phone_id = session.get('demo_phone_id')
-
-                            # Cargar el bot demo desde la base de datos si tenemos el phone_id
-                            if demo_phone_id:
-                                demo_client = database.get_client_by_phone_id(demo_phone_id)
-                                if demo_client:
-                                    # Reemplazar client_data con el bot demo completo
-                                    client_data = demo_client
-                                    logger.info(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos.")
-                            else:
-                                # Fallback: intentar encontrar el demo por modo (solo si no hay phone_id)
-                                demo_phone_ids = {
-                                    "restaurante": "demo_restaurant",
-                                    "tienda": "demo_retail",
-                                    "dental": "demo_dental",
-                                    "psicologo": "demo_psychology",
-                                    "salon": "demo_salon"
-                                }
-                                if demo_mode in demo_phone_ids:
-                                    demo_client = database.get_client_by_phone_id(demo_phone_ids[demo_mode])
-                                    if demo_client:
-                                        client_data = demo_client
-                                        logger.info(f"[Demo] Usando bot '{client_data.get('name')}' desde la base de datos.")
+                        # --- SAFETY NET: garantizar client_data es el demo correcto ---
+                        # Si demo_client_id está activo pero client_data se desincronizó
+                        # (ej. timeout de DB al leer sesión en el paso anterior), recargarlo.
+                        if demo_client_id and str(client_data.get('id', '')) != demo_client_id:
+                            logger.warning(f"[Demo] client_data drift: esperado '{demo_client_id}', "
+                                           f"encontrado '{client_data.get('id')}'. Recargando.")
+                            _demo_reload = database.get_client_by_id(demo_client_id)
+                            if _demo_reload:
+                                client_data = _demo_reload
+                                if real_client:
+                                    client_data['whatsapp_token'] = real_client.get('whatsapp_token')
+                                    client_data['phone_number_id'] = real_client.get('phone_number_id')
+                                logger.info(f"[Demo] client_data restaurado: {client_data.get('name')}")
                         
                         prompt = texto_usuario
                         if message.get('type') == 'interactive':
@@ -1251,12 +1280,57 @@ async def verify_code(request: Request):
 
     access_token = create_access_token(data={"sub": email, "role": role, "client_id": client_id})
     return {
-        "access_token": access_token, 
-        "token_type": "bearer", 
-        "role": role, 
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": role,
         "client_id": client_id,
         "client_name": client_name
     }
+
+
+@app.post("/api/auth/sso")
+async def sso_login(request: Request):
+    """SSO de entrada: el CRM de terapeutas firma un token corto con el email del
+    terapeuta (usando PORTAL_SSO_SECRET, compartido). Aquí se valida y, si el email
+    corresponde a un cliente registrado, se emite el access_token normal del portal
+    sin pedir código OTP."""
+    if not PORTAL_SSO_SECRET:
+        raise HTTPException(status_code=500, detail="PORTAL_SSO_SECRET no configurado")
+
+    data = await request.json()
+    sso_token = data.get("sso_token")
+    if not sso_token:
+        raise HTTPException(status_code=400, detail="Token SSO requerido")
+
+    try:
+        payload = jwt.decode(sso_token, PORTAL_SSO_SECRET, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token SSO inválido o expirado")
+
+    email = (payload.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Token SSO sin email")
+
+    is_admin = email in [e.lower().strip() for e in ADMIN_EMAILS]
+    role = "admin" if is_admin else "client"
+
+    client = database.get_client_by_email(email)
+    if not client and not is_admin:
+        raise HTTPException(status_code=403, detail=f"Email {email} no registrado en el portal")
+
+    client_id = str(client['id']) if client else "13"
+    client_name = client['name'] if client else "Usuario Admin"
+
+    access_token = create_access_token(data={"sub": email, "role": role, "client_id": client_id})
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": role,
+        "client_id": client_id,
+        "client_name": client_name,
+        "email": email
+    }
+
 
 @app.get("/api/me")
 async def get_me(token: str = Depends(oauth2_scheme)):
@@ -1604,6 +1678,8 @@ async def get_settings(request: Request, current_user: str = Depends(get_current
 @app.post("/api/clients/{client_id}/upload-pdf")
 async def upload_pdf(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
     """Endpoint para subir un PDF, extraer su texto y guardarlo en la base de conocimientos."""
+    rate_limit(request, "upload_pdf", max_req=10, window="24 h", window_sec=86400,
+               identifier=f"client:{client_id}")
     global PdfReader
     import sys
 
@@ -1886,6 +1962,7 @@ async def get_client_appointments(client_id: str, status: str = None,
             cursor.execute("""
                 SELECT * FROM appointments
                 WHERE client_id = %s AND status = %s
+                  AND COALESCE(archived, FALSE) = FALSE
                 ORDER BY date_time ASC
             """, (client_id_value, status))
             appointments = cursor.fetchall()
@@ -1905,6 +1982,7 @@ async def get_client_appointments(client_id: str, status: str = None,
                 FROM appointments a
                 LEFT JOIN clients c ON a.client_id = c.id
                 WHERE a.client_id = %s
+                  AND COALESCE(a.archived, FALSE) = FALSE
                 ORDER BY a.date_time DESC
             """, (client_id_value,))
             appointments = [dict(apt) for apt in cursor.fetchall()]
@@ -1919,6 +1997,7 @@ async def get_client_appointments(client_id: str, status: str = None,
 
 @app.post("/api/widget/chat")
 async def widget_chat(request: Request):
+    rate_limit(request, "widget_chat", max_req=20, window="1 h", window_sec=3600)
     try:
         data = await request.json()
         client_id = data.get("client_id")
@@ -1964,14 +2043,92 @@ async def widget_chat(request: Request):
                     except:
                         dt_obj = datetime.now()
 
-                    appointment_service.create_appointment(
+                    apt_result = appointment_service.create_appointment(
                         client_id=client_id,
                         name=args.get("nombre_cliente", "Web User"),
                         phone=args.get("telefono_contacto", ""),
                         email=args.get("email_cliente", ""),
                         date_time=dt_obj
                     )
-                    confirmation_msg = f"¡Perfecto! He agendado tu cita para el {appointment_date} a las {start_time}. ¿Hay algo más en lo que pueda ayudarte?"
+                    nombre_cliente = args.get("nombre_cliente", "")
+                    business_name = client_data.get("name", "")
+                    try:
+                        DAYS_ES = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+                        dia_semana = DAYS_ES[datetime.strptime(appointment_date, "%Y-%m-%d").weekday()]
+                    except Exception:
+                        dia_semana = ""
+                    if apt_result["id"] > 0 and apt_result["token"]:
+                        token = apt_result["token"]
+                        cita_url = f"https://zotek-ia.web.app/cita?t={token}"
+                        saludo = f"¡Listo, {nombre_cliente}! " if nombre_cliente else "¡Listo! "
+                        confirmation_msg = (
+                            f"{saludo}Tu cita quedó reservada.\n\n"
+                            f"📍 *{business_name}*\n"
+                            f"📅 Fecha: {appointment_date} ({dia_semana})\n"
+                            f"🕐 Hora: {start_time}\n"
+                            + (f"👤 Nombre: {nombre_cliente}\n" if nombre_cliente else "")
+                            + f"🔗 {cita_url}\n\n"
+                            f"¿Necesitás algo más?"
+                        )
+                        # --- Pieza 4A: WhatsApp proactivo ---
+                        # IMPORTANTE: Siempre se envía desde el número oficial de Zotek (phone_id=980996958435648),
+                        # nunca desde el número del cliente. Las plantillas están aprobadas en la cuenta de Zotek.
+                        _phone = args.get("telefono_contacto", "").strip()
+                        logger.info(f"[Pieza 4A] telefono_contacto={_phone}")
+                        if _phone:
+                            # Normalizar: agregar +52 si falta
+                            if not _phone.startswith("+"):
+                                _phone = ("+" + _phone) if _phone.startswith("52") else ("+52" + _phone)
+                            # Siempre usar credenciales de Zotek (no las del cliente)
+                            _zotek = database.get_client_by_phone_id("980996958435648")
+                            _wa_token = _zotek.get("whatsapp_token", "") if _zotek else ""
+                            _wa_phone_id = _zotek.get("phone_number_id", "") if _zotek else ""
+                            logger.info(f"[Pieza 4A] Credenciales Zotek: token_present={bool(_wa_token)}, phone_id={_wa_phone_id}")
+                            if _wa_token and _wa_phone_id:
+                                dia_long = f"{dia_semana}, {appointment_date}"
+                                # Meta espera el número sin "+"
+                                to_phone_meta = _phone.lstrip("+")
+                                _vars = [nombre_cliente or "Cliente", business_name, dia_long, start_time]
+                                result = False
+                                for _lang in ["es_MX", "es", "es_LA"]:
+                                    logger.info(f"[Pieza 4A] Enviando template a {to_phone_meta}, lang={_lang}")
+                                    result = whatsapp_service.enviar_template_whatsapp(
+                                        phone_number_id=_wa_phone_id,
+                                        whatsapp_token=_wa_token,
+                                        to_phone=to_phone_meta,
+                                        template_name="zotek_confirmacion_cita_v2",
+                                        variables=_vars,
+                                        language=_lang,
+                                        url_suffix=f"cita?t={token}",
+                                    )
+                                    if result:
+                                        logger.info(f"[Pieza 4A] Enviado OK con lang={_lang}")
+                                        break
+                                logger.info(f"[Pieza 4A] Resultado final: {result}")
+                            else:
+                                logger.warning(f"[Pieza 4A] No se encontraron credenciales de Zotek en BD")
+                        # --- Pieza 4B: Email de confirmación ---
+                        _email = args.get("email_cliente", "").strip()
+                        if _email:
+                            from .services.email_service import get_email_service_for_client
+                            email_svc = get_email_service_for_client(client_data)
+                            if email_svc:
+                                email_svc.send_email(
+                                    to=_email,
+                                    subject=f"✅ Cita confirmada — {business_name}",
+                                    body=(
+                                        f"Hola {nombre_cliente or 'Cliente'},\n\n"
+                                        f"Tu cita ha sido agendada exitosamente.\n\n"
+                                        f"📍 {business_name}\n"
+                                        f"📅 Fecha: {appointment_date} ({dia_semana})\n"
+                                        f"🕐 Hora: {start_time}\n"
+                                        f"🔗 Ver detalles: {cita_url}\n\n"
+                                        f"¡Te esperamos!\n\n"
+                                        f"— {business_name}"
+                                    )
+                                )
+                    else:
+                        confirmation_msg = f"¡Perfecto! He agendado tu cita para el {appointment_date} a las {start_time}. ¿Hay algo más en lo que pueda ayudarte?"
                 elif name == "registrar_cliente_potencial":
                     from .services.lead_service import save_lead
                     save_lead(
@@ -2014,12 +2171,18 @@ async def get_schedules(client_id: str, week_start: str = None):
     client_id_int = int(client_id) if str(client_id).isdigit() else client_id
     session_duration = database.get_client_session_duration(client_id_int)
 
+    mexico_tz = ZoneInfo("America/Mexico_City")
     booked_list = []
     for b in booked:
         dt = b['date_time']
         if not hasattr(dt, 'strftime'):
             dt = _dt.fromisoformat(str(dt))
-        booked_list.append({"date": dt.strftime('%Y-%m-%d'), "time": dt.strftime('%H:%M')})
+        # Si el datetime es naive, asumimos UTC (postgres con timestamp without tz lo devuelve así)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        # Convertir a hora de México para que coincida con los slots locales del frontend
+        dt_local = dt.astimezone(mexico_tz)
+        booked_list.append({"date": dt_local.strftime('%Y-%m-%d'), "time": dt_local.strftime('%H:%M')})
 
     return {
         "schedules": schedules,
@@ -2056,6 +2219,34 @@ async def create_appointment_api(client_id: str, request: Request):
     data = await request.json()
     client_id_value = int(client_id) if client_id.isdigit() else client_id
 
+    # Obtener datos del cliente (para credenciales de WhatsApp y su límite de citas)
+    client_data = database.get_client_by_id(client_id_value)
+    if not client_data:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    # Rate limit POR CLIENTE y configurable: cada cliente tiene su propio cupo/hora,
+    # definido en la columna `appointment_rate_limit` de la tabla clients (default 10).
+    # Se keyea por client_id (no por IP) para que un consultorio no comparta el límite
+    # con el formulario público ni con otros clientes en la misma red.
+    try:
+        _max_appts = int(client_data.get("appointment_rate_limit") or 10)
+    except (TypeError, ValueError):
+        _max_appts = 10
+    rate_limit(request, "create_appointment", max_req=_max_appts, window="1 h",
+               window_sec=3600, identifier=f"appt-create:{client_id_value}")
+
+    # Validar y normalizar número de teléfono (agregar +52 si falta)
+    raw_phone = data.get('phone_number') or data.get('phone', '')
+    phone_number = raw_phone
+    if phone_number:
+        phone_number = phone_number.strip()
+        if not phone_number.startswith('+'):
+            if phone_number.startswith('52'):
+                phone_number = '+' + phone_number
+            else:
+                phone_number = '+52' + phone_number
+    logger.info(f"[API-Citas] Phone normalize: raw='{raw_phone}' -> normalized='{phone_number}'")
+
     # Parsear fecha
     try:
         # Intentar parsear fecha y hora combinados o separados
@@ -2065,25 +2256,157 @@ async def create_appointment_api(client_id: str, request: Request):
                 dt_obj = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
             else:
                 hr_str = data.get('appointment_time', '00:00')
-                dt_obj = datetime.strptime(f"{dt_str} {hr_str}", "%Y-%m-%d %H:%M")
+                # Parsear como hora local de México (UTC-6)
+                dt_naive = datetime.strptime(f"{dt_str} {hr_str}", "%Y-%m-%d %H:%M")
+                mexico_tz = ZoneInfo("America/Mexico_City")
+                dt_obj = dt_naive.replace(tzinfo=mexico_tz)
+                # Convertir a UTC para almacenar en BD
+                dt_obj = dt_obj.astimezone(ZoneInfo("UTC"))
         else:
             raise ValueError("Falta fecha de cita")
     except Exception as e:
         logger.info(f"Error parsing date: {e}")
         raise HTTPException(status_code=400, detail="Fecha inválida. Usa formato YYYY-MM-DD e incluye appointment_time.")
 
-    appointment_id = appointment_service.create_appointment(
+    apt_result = appointment_service.create_appointment(
         client_id=client_id_value,
-        phone=data.get('phone_number') or data.get('phone', ''),
+        phone=phone_number,
         date_time=dt_obj,
         name=data.get('customer_name') or data.get('name', ''),
         email=data.get('email', ''),
         notes=data.get('notes', '')
     )
 
-    if appointment_id > 0:
-        return {"status": "created", "appointment_id": appointment_id}
+    if apt_result["id"] > 0:
+        # Enviar plantilla de confirmación de Meta (Pieza 4)
+        # IMPORTANTE: Siempre se envía desde el número oficial de Zotek (phone_id=980996958435648),
+        # nunca desde el número del cliente. Las plantillas están aprobadas en la cuenta de Zotek.
+        import sys
+        print(f"[API-Pieza4] Inicio envío template para appointment {apt_result['id']}, phone={phone_number}"); sys.stdout.flush()
+        try:
+            _phone = phone_number
+            _zotek = database.get_client_by_phone_id("980996958435648")
+            if not _zotek:
+                print("[API-Pieza4] No se encontró cliente Zotek en BD (phone_id=980996958435648)"); sys.stdout.flush()
+                _wa_token = ""
+                _wa_phone_id = ""
+            else:
+                _wa_token = _zotek.get("whatsapp_token", "") or ""
+                _wa_phone_id = _zotek.get("phone_number_id", "") or ""
+            # Diagnóstico: longitud y prefijo del token para detectar si quedó cifrado
+            token_len = len(_wa_token)
+            token_prefix = _wa_token[:6] if _wa_token else ""
+            print(f"[API-Pieza4] Credenciales Zotek: token_len={token_len}, token_prefix='{token_prefix}', phone_id={_wa_phone_id}"); sys.stdout.flush()
+
+            if _wa_token and _wa_phone_id:
+                # Formatear fecha y hora para el mensaje
+                dt_mexico = dt_obj.astimezone(ZoneInfo("America/Mexico_City"))
+                appointment_date_str = dt_mexico.strftime("%d/%m/%Y")
+                appointment_time_str = dt_mexico.strftime("%H:%M")
+                dia_semana = {0:'Lunes',1:'Martes',2:'Miércoles',3:'Jueves',4:'Viernes',5:'Sábado',6:'Domingo'}[dt_mexico.weekday()]
+
+                # Token de la cita pública (se usa como sufijo dinámico del botón WhatsApp)
+                token = apt_result["token"]
+
+                # whatsapp_service ya está importado a nivel de módulo (línea 43)
+                # Quitamos el "+" porque Meta espera el número sin "+"
+                to_phone_meta = _phone.lstrip("+")
+                _vars = [
+                    data.get('customer_name') or data.get('name', 'Cliente'),
+                    client_data.get('name', 'Mi negocio'),
+                    f"{dia_semana}, {appointment_date_str}",
+                    appointment_time_str,
+                ]
+                # Intentar varios códigos de idioma — Meta a veces usa código distinto al label
+                result = False
+                for _lang in ["es_MX", "es", "es_LA"]:
+                    print(f"[API-Pieza4] Enviando a {to_phone_meta}, template=zotek_confirmacion_cita_v2, lang={_lang}"); sys.stdout.flush()
+                    result = whatsapp_service.enviar_template_whatsapp(
+                        phone_number_id=_wa_phone_id,
+                        whatsapp_token=_wa_token,
+                        to_phone=to_phone_meta,
+                        template_name="zotek_confirmacion_cita_v2",
+                        variables=_vars,
+                        language=_lang,
+                        url_suffix=f"cita?t={token}",
+                    )
+                    if result:
+                        print(f"[API-Pieza4] Enviado OK con lang={_lang}"); sys.stdout.flush()
+                        break
+                print(f"[API-Pieza4] Resultado final: {result}"); sys.stdout.flush()
+            else:
+                logger.warning(f"[API-Pieza4] Sin credenciales WhatsApp para client_id {client_id_value}")
+        except Exception as e:
+            import traceback
+            logger.error(f"[API-Pieza4] Error enviando confirmación: {e}\n{traceback.format_exc()}")
+            # No fallar la creación si hay error en el mensaje
+
+        return {"status": "created", "appointment_id": apt_result["id"], "token": apt_result["token"]}
     raise HTTPException(status_code=400, detail="Error al crear cita en la base de datos")
+
+def _notificar_cancelacion_whatsapp(apt: dict):
+    """Best-effort: avisa al paciente por WhatsApp que su cita fue cancelada.
+
+    Solo se envía si la cita es a FUTURO (no tiene sentido avisar de una cita
+    que ya pasó). Usa la plantilla HSM 'zotek_cancelacion_cita' desde el número
+    oficial de Zotek (phone_id=980996958435648), igual que la confirmación.
+    Nunca lanza: si algo falla, solo se registra en logs.
+    """
+    try:
+        dt = apt.get("date_time")
+        if not dt:
+            return
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        # Gate: si la cita ya pasó, no se notifica
+        if dt <= datetime.now(timezone.utc):
+            logger.info(f"[Cancel-WA] Cita {apt.get('id')} es pasada; no se notifica al paciente")
+            return
+
+        phone = (apt.get("phone") or "").strip()
+        if not phone:
+            return
+
+        _zotek = database.get_client_by_phone_id("980996958435648")
+        if not _zotek:
+            logger.warning("[Cancel-WA] No se encontró cliente Zotek central (phone_id=980996958435648)")
+            return
+        _wa_token = _zotek.get("whatsapp_token", "") or ""
+        _wa_phone_id = _zotek.get("phone_number_id", "") or ""
+        if not (_wa_token and _wa_phone_id):
+            logger.warning("[Cancel-WA] Sin credenciales WhatsApp de Zotek")
+            return
+
+        dt_mexico = dt.astimezone(ZoneInfo("America/Mexico_City"))
+        fecha_str = dt_mexico.strftime("%d/%m/%Y")
+        hora_str = dt_mexico.strftime("%H:%M")
+        dia_semana = {0: 'Lunes', 1: 'Martes', 2: 'Miércoles', 3: 'Jueves',
+                      4: 'Viernes', 5: 'Sábado', 6: 'Domingo'}[dt_mexico.weekday()]
+
+        _vars = [
+            apt.get("name") or "Cliente",
+            apt.get("client_name") or "Mi negocio",
+            f"{dia_semana}, {fecha_str}",
+            hora_str,
+        ]
+        to_phone_meta = phone.lstrip("+")
+        for _lang in ["es_MX", "es", "es_LA"]:
+            ok = whatsapp_service.enviar_template_whatsapp(
+                phone_number_id=_wa_phone_id,
+                whatsapp_token=_wa_token,
+                to_phone=to_phone_meta,
+                template_name="zotek_cancelacin_cita",  # nombre tal cual quedó en Meta (sin la 'o')
+                variables=_vars,
+                language=_lang,
+            )
+            if ok:
+                logger.info(f"[Cancel-WA] Aviso de cancelación enviado a {to_phone_meta} (lang={_lang})")
+                break
+    except Exception as e:
+        import traceback
+        logger.error(f"[Cancel-WA] Error notificando cancelación: {e}\n{traceback.format_exc()}")
+
 
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/confirm")
 async def confirm_appointment(client_id: str, appointment_id: int,
@@ -2099,13 +2422,143 @@ async def confirm_appointment(client_id: str, appointment_id: int,
 @app.post("/api/clients/{client_id}/appointments/{appointment_id}/cancel")
 async def cancel_appointment(client_id: str, appointment_id: int,
                             current_user: str = Depends(get_current_user)):
-    """Cancela una cita"""
+    """Cancela una cita (la cancela el negocio desde el admin/portal).
+    Si la cita es a futuro, avisa al paciente por WhatsApp (best-effort)."""
     from .services.appointment_service import AppointmentService
     apt_service = AppointmentService()
 
-    if apt_service.cancel_appointment(appointment_id):
+    # Datos de la cita ANTES de cancelar (para el aviso por WhatsApp)
+    apt = apt_service.get_appointment_by_id(appointment_id)
+
+    if not apt_service.cancel_appointment(appointment_id, cancelled_by="business"):
+        raise HTTPException(status_code=400, detail="Error al cancelar cita")
+
+    # Aviso al paciente solo si la cita es a futuro (no si ya pasó)
+    if apt:
+        _notificar_cancelacion_whatsapp(apt)
+    return {"status": "cancelled", "message": "Cita cancelada"}
+
+@app.post("/api/clients/{client_id}/appointments/{appointment_id}/archive")
+async def archive_appointment_endpoint(client_id: str, appointment_id: int,
+                                       current_user: str = Depends(get_current_user)):
+    """Archiva (soft-delete) una cita. Solo permitido si está Confirmada o Cancelada."""
+    from .services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    apt = apt_service.get_appointment_by_id(appointment_id)
+    if not apt:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+    if apt.get("status") not in ("confirmed", "cancelled"):
+        raise HTTPException(status_code=400,
+                            detail="Solo se puede eliminar una cita que esté Confirmada o Cancelada")
+
+    if apt_service.archive_appointment(appointment_id):
+        return {"status": "archived", "message": "Cita eliminada"}
+    raise HTTPException(status_code=400, detail="Error al eliminar la cita")
+
+@app.get("/api/appointments/token/{token}")
+async def get_appointment_by_token(token: str):
+    """Endpoint público para obtener detalles de una cita por token UUID (sin auth)."""
+    apt = database.get_appointment_by_token(token)
+    if not apt:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+    # Serializar campos no-JSON-serializables (convertir naive UTC a America/Mexico_City)
+    if apt.get("date_time"):
+        dt = apt["date_time"]
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        mexico_tz = ZoneInfo("America/Mexico_City")
+        dt_local = dt.astimezone(mexico_tz)
+        apt["date_time"] = dt_local.isoformat()
+    if apt.get("token"):
+        apt["token"] = str(apt["token"])
+
+    # Extraer información del negocio de system_instruction y otros campos
+    import re
+    system_instruction = apt.get("system_instruction") or ""
+    email_user = apt.get("email_user") or ""
+    email_login = apt.get("business_email") or ""
+    vapi_phone = apt.get("vapi_professional_phone") or ""
+
+    address = ""
+    phone = vapi_phone or ""
+    whatsapp = ""
+    email = email_user or email_login or ""
+
+    if system_instruction:
+        # Extraer dirección
+        addr_match = re.search(r'(?:Ubicación|Ubicacion):\s*(.*?)(?:\n|\||$)', system_instruction, re.IGNORECASE)
+        if addr_match:
+            address = addr_match.group(1).strip()
+            
+        # Extraer teléfono si no está en vapi_phone
+        if not phone:
+            phone_match = re.search(r'(?:Teléfono|Telefono|Tel|Phone):\s*([0-9\s+-]+)', system_instruction, re.IGNORECASE)
+            if phone_match:
+                phone = phone_match.group(1).strip()
+                
+        # Extraer WhatsApp
+        wa_match = re.search(r'(?:WhatsApp):\s*(https?://[^\s|]+)', system_instruction, re.IGNORECASE)
+        if wa_match:
+            whatsapp = wa_match.group(1).strip()
+            
+        # Extraer Email si no está en email_user
+        if not email_user:
+            email_match = re.search(r'Email:\s*([^\s|\n\r]+)', system_instruction, re.IGNORECASE)
+            if email_match:
+                email = email_match.group(1).strip()
+
+    # Formatear link de WhatsApp si no se encontró un link explícito
+    if phone and not whatsapp:
+        clean_phone = re.sub(r'\D', '', phone)
+        if len(clean_phone) == 10:
+            clean_phone = "52" + clean_phone
+        whatsapp = f"https://wa.me/{clean_phone}"
+
+    # Extraer especialidad / rubro
+    specialty = "Especialista"
+    if system_instruction:
+        spec_match = re.search(r'(?:Especialidad|Rubro):\s*(.*?)(?:\n|\||$)', system_instruction, re.IGNORECASE)
+        if spec_match:
+            specialty = spec_match.group(1).strip()
+        else:
+            for kw in ["Psicóloga Clínica", "Psicólogo Clínico", "Psicóloga", "Psicólogo", "Nutrióloga", "Nutriólogo", "Dentista", "Terapeuta", "Consultoría"]:
+                if kw.lower() in system_instruction.lower():
+                    specialty = kw
+                    break
+
+    apt["business_address"] = address
+    apt["business_phone"] = phone
+    apt["business_whatsapp"] = whatsapp
+    apt["business_email"] = email
+    apt["business_subtitle"] = specialty
+
+    # Remover campos internos por seguridad
+    apt.pop("system_instruction", None)
+    apt.pop("vapi_professional_phone", None)
+    apt.pop("email_user", None)
+
+    return apt
+
+
+@app.post("/api/appointments/token/{token}/cancel")
+async def cancel_appointment_by_token(token: str):
+    """Endpoint público para cancelar una cita por token UUID (sin auth).
+    El token UUID actúa como autenticación implícita: solo quien lo posee puede cancelar."""
+    apt = database.get_appointment_by_token(token)
+    if not apt:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+
+    if apt.get("status") in ("cancelled", "completed"):
+        raise HTTPException(status_code=400, detail=f"La cita ya está {apt.get('status')}")
+
+    from .services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    if apt_service.cancel_appointment(apt["id"], cancelled_by="patient"):
         return {"status": "cancelled", "message": "Cita cancelada"}
     raise HTTPException(status_code=400, detail="Error al cancelar cita")
+
 
 # === STATIC FILES (LOCAL DEV) ===
 # Firebase Hosting maneja los estáticos en producción, pero aquí

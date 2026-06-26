@@ -32,6 +32,7 @@ from . import database
 from .config import Config
 from .services import whatsapp_service
 from .services.gemini_service import GeminiEngine
+from .rate_limiter import check as rate_limit
 
 # Load configuration (already loaded in config.py, but keeping for backward compatibility)
 load_dotenv()
@@ -224,18 +225,8 @@ async def recibir_mensaje(request: Request):
             logger.warning("Firma de WhatsApp inválida — webhook rechazado")
             raise HTTPException(status_code=401, detail="Invalid signature")
     
-    # ============================================
-    # RATE LIMITING: Prevenir abuso
-    # ============================================
-    client_ip = request.client.host if request.client else "unknown"
-    if not rate_limiter.is_allowed(
-        f"webhook:{client_ip}", 
-        Config.RATE_LIMIT_MESSAGES_PER_MINUTE, 
-        60
-    ):
-        metrics['rate_limited_requests'] += 1
-        logger.warning(f"Rate limit excedido para IP: {client_ip}")
-        return {"status": "rate_limited"}, 429
+    # Rate limiting — webhook SaaS
+    rate_limit(request, "webhook_saas", max_req=60, window="60 s", window_sec=60)
     
     try:
         data = await request.json()
@@ -537,10 +528,11 @@ async def get_usage_metrics(client_id: int = None, current_user: str = Depends(g
 
 @app.post("/api/auth/login")
 async def login(request: Request):
+    rate_limit(request, "login_saas", max_req=5, window="15 m", window_sec=900)
     data = await request.json()
     email = data.get("email")
     password = data.get("password")
-    
+
     if email != ADMIN_EMAIL or password != getattr(Config, 'ADMIN_PASSWORD', None):
         logger.warning(f"Login fallido para: {email}")
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
@@ -973,7 +965,7 @@ async def cancel_appointment(client_id: int, appointment_id: int,
 # ============================================
 
 @app.post("/api/reminders/run")
-async def run_reminder_job(current_user: str = Depends(get_current_user)):
+async def run_reminder_job(request: Request, current_user: str = Depends(get_current_user)):
     """
     Ejecuta el trabajo de recordatorios: busca citas próximas (24h) y
     llama a los pacientes usando VAPI en nombre del cliente profesional.
@@ -984,6 +976,7 @@ async def run_reminder_job(current_user: str = Depends(get_current_user)):
     
     Solo aplica a clientes con plan 'pro' o 'enterprise'.
     """
+    rate_limit(request, "reminders_run", max_req=5, window="1 h", window_sec=3600)
     from .services.vapi_service import vapi
     from .services.calendar_service import (
         get_upcoming_appointments_for_reminders,
@@ -1055,9 +1048,10 @@ async def vapi_webhook(request: Request):
     """
     Webhook que VAPI llama cuando termina una llamada.
     Actualiza el estado final de la cita en la base de datos.
-    
+
     VAPI envía: call_id, status ('ended', 'failed'), summary, transcript, etc.
     """
+    rate_limit(request, "vapi_webhook", max_req=100, window="60 s", window_sec=60)
     if VAPI_WEBHOOK_SECRET:
         auth = request.headers.get("x-vapi-secret", "")
         if not hmac.compare_digest(auth, VAPI_WEBHOOK_SECRET):

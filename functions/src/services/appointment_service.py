@@ -24,43 +24,37 @@ class AppointmentService:
     
     def create_appointment(self, client_id: int, phone: str,
                           date_time: datetime, name: str = None,
-                          email: str = '', notes: str = None) -> int:
+                          email: str = '', notes: str = None) -> dict:
         """
-        Crea una nueva cita
-        
-        Args:
-            client_id: ID del cliente (negocio)
-            phone: Teléfono del cliente
-            date_time: Fecha y hora de la cita
-            name: Nombre del cliente (opcional)
-            email: Email del cliente (opcional)
-            notes: Notas adicionales
-            
+        Crea una nueva cita.
+
         Returns:
-            ID de la cita creada
+            {"id": int, "token": str} o {"id": -1, "token": None} en error
         """
         try:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
+
             cursor.execute("""
                 INSERT INTO appointments
                 (client_id, phone, date_time, name, email, notes)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id
+                RETURNING id, token
             """, (client_id, phone, date_time, name, email or '', notes or ''))
-            
-            appointment_id = cursor.fetchone()['id']
+
+            row = cursor.fetchone()
+            appointment_id = row['id']
+            token = str(row['token'])
             conn.commit()
             cursor.close()
             conn.close()
-            
+
             print(f"[Appointment] Created appointment {appointment_id} for {phone}")
-            return appointment_id
-            
+            return {"id": appointment_id, "token": token}
+
         except Exception as e:
             print(f"[Appointment] Error creating appointment: {e}")
-            return -1
+            return {"id": -1, "token": None}
     
     def confirm_appointment(self, appointment_id: int) -> bool:
         """
@@ -93,37 +87,58 @@ class AppointmentService:
             print(f"[Appointment] Error confirming appointment: {e}")
             return False
     
-    def cancel_appointment(self, appointment_id: int) -> bool:
+    def cancel_appointment(self, appointment_id: int, cancelled_by: str = None) -> bool:
         """
         Cancela una cita
-        
+
         Args:
             appointment_id: ID de la cita
-            
+            cancelled_by: quién canceló — 'business' (negocio desde admin/portal)
+                          o 'patient' (paciente desde el link público). Opcional.
+
         Returns:
             True si se canceló correctamente
         """
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute("""
                 UPDATE appointments
-                SET status = 'cancelled'
+                SET status = 'cancelled', cancelled_by = %s
                 WHERE id = %s
-            """, (appointment_id,))
-            
+            """, (cancelled_by, appointment_id))
+
             conn.commit()
             cursor.close()
             conn.close()
-            
-            print(f"[Appointment] Cancelled appointment {appointment_id}")
+
+            print(f"[Appointment] Cancelled appointment {appointment_id} by {cancelled_by}")
             return True
-            
+
         except Exception as e:
             print(f"[Appointment] Error cancelling appointment: {e}")
             return False
     
+    def archive_appointment(self, appointment_id: int) -> bool:
+        """Archiva (soft-delete) una cita: la oculta del listado sin borrarla de la BD."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE appointments
+                SET archived = TRUE
+                WHERE id = %s
+            """, (appointment_id,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            print(f"[Appointment] Archived appointment {appointment_id}")
+            return True
+        except Exception as e:
+            print(f"[Appointment] Error archiving appointment: {e}")
+            return False
+
     def get_tomorrow_appointments(self, client_id: int) -> List[Dict[str, Any]]:
         """
         Obtiene las citas de mañana para un cliente

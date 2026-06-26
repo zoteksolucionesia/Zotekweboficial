@@ -14,12 +14,17 @@
   "hosting": {
     "site": "zotek-ia",
     "public": "www",
+    "predeploy": ["npm run minify"],
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [
+      {
+        "source": "/cita",
+        "destination": "/cita/index.html"
+      },
       {
         "source": "/login",
         "destination": "/admin/login.html"

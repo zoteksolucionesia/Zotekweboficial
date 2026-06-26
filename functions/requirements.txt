@@ -1,3 +1,5 @@
+upstash-ratelimit>=1.0.0
+upstash-redis>=1.0.0
 firebase-functions>=0.1.0
 firebase-admin>=6.2.0
 fastapi>=0.100.0

@@ -49,6 +49,12 @@ function setLoading(btnId, spinId, loading) {
   if (spin) spin.style.display = loading ? 'inline-block' : 'none';
 }
 
+function hideSSOMLoadingSpinner() {
+  const spinner = document.getElementById('sso-loading');
+  if (spinner) spinner.style.display = 'none';
+  document.body.style.visibility = 'visible';
+}
+
 // ===========================================
 // TEMA CLARO / OSCURO
 // ===========================================
@@ -75,6 +81,28 @@ applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 document.getElementById('btn-theme-login')?.addEventListener('click', toggleTheme);
 document.getElementById('btn-theme-sidebar')?.addEventListener('click', toggleTheme);
 document.getElementById('btn-theme-mobile')?.addEventListener('click', toggleTheme);
+
+// Sincronización en vivo del tema/acento cuando el portal va embebido en el CRM.
+// El CRM (lilibauza-admin) envía un postMessage cada vez que el terapeuta cambia
+// el modo claro/oscuro o el color de marca, para que el portal lo refleje al instante.
+// Firebase sirve el CRM en .web.app y .firebaseapp.com: aceptamos ambos orígenes.
+const CRM_ORIGINS = [
+  'https://lilibauza-admin.web.app',
+  'https://lilibauza-admin.firebaseapp.com',
+];
+window.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== 'zotek-brand') return;
+  console.log('[brand] mensaje recibido de', event.origin, data);
+  if (!CRM_ORIGINS.includes(event.origin)) {
+    console.warn('[brand] origin no permitido, ignorado:', event.origin);
+    return;
+  }
+  if (data.theme === 'light' || data.theme === 'dark') applyTheme(data.theme);
+  if (typeof data.accent === 'string' && /^#[0-9a-fA-F]{6}$/.test(data.accent)) {
+    document.documentElement.style.setProperty('--primary', data.accent);
+  }
+});
 
 // ===========================================
 // AUTH — LOGIN
@@ -364,6 +392,7 @@ function renderCitasTable() {
           <option value="pending"${st === 'pending' ? ' selected' : ''}>⏳ Pendiente</option>
           <option value="confirmed"${st === 'confirmed' ? ' selected' : ''}>✅ Confirmada</option>
           <option value="cancelled"${st === 'cancelled' ? ' selected' : ''}>❌ Cancelada</option>
+          <option value="__delete__">🗑️ Eliminar</option>
         </select>
       </td>
     </tr>`;
@@ -373,8 +402,27 @@ document.getElementById('filter-citas-status').addEventListener('change', render
 
 async function changeAppointmentStatus(appointmentId, newStatus, selectEl) {
   if (!clientData?.id) return;
+  const cita = allCitas.find(c => c.id === appointmentId);
+  const currentStatus = cita?.status || 'pending';
+
+  // Opción "Eliminar" (soft-delete): solo si la cita está confirmada o cancelada
+  if (newStatus === '__delete__') {
+    selectEl.value = currentStatus; // el combo nunca queda en "Eliminar"
+    if (currentStatus !== 'confirmed' && currentStatus !== 'cancelled') {
+      showToast('Solo puedes eliminar una cita que esté Confirmada o Cancelada', 'error');
+      return;
+    }
+    showConfirm(
+      'Eliminar cita',
+      `¿Seguro que deseas eliminar la cita de ${cita?.name || 'este paciente'}? Dejará de aparecer en tu lista.`,
+      'Sí, eliminar',
+      () => deleteAppointment(appointmentId)
+    );
+    return;
+  }
+
   const action = newStatus === 'confirmed' ? 'confirm' : newStatus === 'cancelled' ? 'cancel' : null;
-  if (!action) { showToast('Solo puedes confirmar o cancelar', 'error'); const cita = allCitas.find(c => c.id === appointmentId); selectEl.value = cita?.status || 'pending'; return; }
+  if (!action) { showToast('Solo puedes confirmar o cancelar', 'error'); selectEl.value = currentStatus; return; }
 
   selectEl.disabled = true;
   try {
@@ -401,6 +449,169 @@ async function changeAppointmentStatus(appointmentId, newStatus, selectEl) {
     selectEl.disabled = false;
   }
 }
+
+// ===========================================
+// NUEVA CITA (alta manual + WhatsApp)
+// ===========================================
+function openNuevaCita() {
+  ['nc-name', 'nc-phone', 'nc-email', 'nc-date', 'nc-time', 'nc-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  const err = document.getElementById('nc-error');
+  err.style.display = 'none'; err.textContent = '';
+  // No permitir agendar en fechas pasadas
+  document.getElementById('nc-date').min = new Date().toISOString().slice(0, 10);
+  document.getElementById('nueva-cita-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('nc-name').focus(), 80);
+}
+
+function closeNuevaCita() {
+  document.getElementById('nueva-cita-modal').style.display = 'none';
+}
+
+function showNcError(msg) {
+  const err = document.getElementById('nc-error');
+  err.textContent = msg; err.style.display = 'block';
+}
+
+async function submitNuevaCita() {
+  if (!clientData?.id) return;
+  const name  = document.getElementById('nc-name').value.trim();
+  const phone = document.getElementById('nc-phone').value.trim();
+  const email = document.getElementById('nc-email').value.trim();
+  const date  = document.getElementById('nc-date').value;
+  const time  = document.getElementById('nc-time').value;
+  const notes = document.getElementById('nc-notes').value.trim();
+
+  showNcError('');
+  document.getElementById('nc-error').style.display = 'none';
+  if (!name) return showNcError('Ingresa el nombre del paciente.');
+  if (phone.replace(/\D/g, '').length < 10) return showNcError('Ingresa un teléfono válido de 10 dígitos.');
+  if (!date) return showNcError('Selecciona la fecha.');
+  if (!time) return showNcError('Selecciona la hora.');
+
+  const btn = document.getElementById('btn-save-nueva-cita');
+  btn.disabled = true;
+  document.getElementById('nc-save-text').style.display = 'none';
+  document.getElementById('nc-save-spin').style.display = 'inline-block';
+
+  try {
+    // El backend crea la cita y envía la plantilla de WhatsApp al paciente automáticamente
+    const res = await fetch(`${API}/api/clients/${clientData.id}/appointments`, {
+      method: 'POST', headers: authHeader(),
+      body: JSON.stringify({
+        customer_name:    name,
+        phone_number:     phone,
+        email:            email,
+        appointment_date: date,
+        appointment_time: time,
+        notes:            notes,
+      }),
+    });
+    if (res.status === 401) { showToast('Sesión expirada. Inicia sesión nuevamente.', 'error'); logout(); return; }
+    if (res.ok) {
+      closeNuevaCita();
+      showToast('Cita creada. Se notificó al paciente por WhatsApp.', 'success');
+      await reloadCitas();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showNcError(data.detail || 'No se pudo crear la cita.');
+    }
+  } catch (e) {
+    showNcError('Error de conexión. Intenta de nuevo.');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('nc-save-text').style.display = '';
+    document.getElementById('nc-save-spin').style.display = 'none';
+  }
+}
+
+async function reloadCitas() {
+  if (!clientData?.id) return;
+  try {
+    const res = await fetch(`${API}/api/clients/${clientData.id}/appointments`, { headers: authHeader() });
+    if (res.ok) {
+      const data = await res.json();
+      allCitas = Array.isArray(data) ? data : (data.appointments || data.citas || []);
+      updateCitasKPIs(); renderProximasCitas(); renderCitasTable();
+    }
+  } catch (e) { console.error('Error recargando citas:', e); }
+}
+
+document.getElementById('btn-nueva-cita')?.addEventListener('click', openNuevaCita);
+document.getElementById('btn-close-nueva-cita')?.addEventListener('click', closeNuevaCita);
+document.getElementById('btn-cancel-nueva-cita')?.addEventListener('click', closeNuevaCita);
+document.getElementById('nueva-cita-backdrop')?.addEventListener('click', closeNuevaCita);
+document.getElementById('btn-save-nueva-cita')?.addEventListener('click', submitNuevaCita);
+
+// ===========================================
+// ELIMINAR (soft-delete) + EXPORTAR + CONFIRM
+// ===========================================
+async function deleteAppointment(appointmentId) {
+  if (!clientData?.id) return;
+  try {
+    const res = await fetch(`${API}/api/clients/${clientData.id}/appointments/${appointmentId}/archive`, {
+      method: 'POST', headers: authHeader()
+    });
+    if (res.ok) {
+      allCitas = allCitas.filter(c => c.id !== appointmentId);
+      updateCitasKPIs(); renderProximasCitas(); renderCitasTable();
+      showToast('Cita eliminada', 'success');
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.detail || 'No se pudo eliminar la cita', 'error');
+    }
+  } catch (e) { showToast('Error de conexión', 'error'); }
+}
+
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportCitasCSV() {
+  const filterStatus = document.getElementById('filter-citas-status').value;
+  let citas = [...allCitas];
+  if (filterStatus) citas = citas.filter(c => (c.status || 'pending') === filterStatus);
+  citas.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  if (!citas.length) { showToast('No hay citas para exportar', 'error'); return; }
+
+  const STATUS_ES = { pending: 'Pendiente', confirmed: 'Confirmada', cancelled: 'Cancelada', completed: 'Completada' };
+  const headers = ['Paciente', 'Teléfono', 'Email', 'Fecha y hora', 'Estado', 'Notas'];
+  const rows = citas.map(c => [
+    c.name || c.paciente_nombre || c.customer_name || '',
+    c.phone || c.cliente_telefono || c.phone_number || '',
+    c.email || '',
+    formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '',
+    STATUS_ES[c.status || 'pending'] || (c.status || ''),
+    c.notes || '',
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `citas_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`${citas.length} cita(s) exportada(s)`, 'success');
+}
+
+let _confirmCb = null;
+function showConfirm(title, message, okLabel, onOk) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-message').textContent = message;
+  document.getElementById('confirm-ok').textContent = okLabel || 'Confirmar';
+  _confirmCb = onOk;
+  document.getElementById('confirm-modal').style.display = 'flex';
+}
+function hideConfirm() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  _confirmCb = null;
+}
+document.getElementById('btn-export-citas')?.addEventListener('click', exportCitasCSV);
+document.getElementById('confirm-cancel')?.addEventListener('click', hideConfirm);
+document.getElementById('confirm-backdrop')?.addEventListener('click', hideConfirm);
+document.getElementById('confirm-ok')?.addEventListener('click', () => { const cb = _confirmCb; hideConfirm(); if (cb) cb(); });
 
 // ===========================================
 // TABLA LEADS
@@ -1082,6 +1293,84 @@ document.getElementById('btn-save-schedule')?.addEventListener('click', async ()
 // ===========================================
 // INIT
 // ===========================================
-(function init() {
-  if (authToken && clientData) showDashboard();
+(async function init() {
+  // SSO de entrada desde el CRM de terapeutas: si llega ?sso=<token>, lo canjeamos
+  // por una sesión del portal sin pedir login. El token es de un solo uso y corto.
+  const params = new URLSearchParams(window.location.search);
+
+  // Branding heredado del CRM cuando el portal se embebe en /admin/citas:
+  //   ?accent=<hex>  → tiñe los acentos (botones, nav activo, foco) con el color
+  //                    de marca del terapeuta, para que el portal se sienta parte
+  //                    del CRM. El degradado violeta-cian de FONDO se mantiene (es
+  //                    la identidad del SaaS Zotek).
+  //   ?theme=light|dark → sincroniza el modo claro/oscuro con el del CRM.
+  const accent = params.get('accent');
+  if (accent && /^#[0-9a-fA-F]{6}$/.test(accent)) {
+    document.documentElement.style.setProperty('--primary', accent);
+  }
+  const themeParam = params.get('theme');
+  if (themeParam === 'light' || themeParam === 'dark') {
+    applyTheme(themeParam);
+  }
+
+  const ssoToken = params.get('sso');
+
+  // Quitar de la URL los parámetros efímeros/sensibles (no dejarlos en el historial).
+  if (ssoToken || accent || themeParam) {
+    params.delete('sso'); params.delete('accent'); params.delete('theme');
+    const clean = window.location.pathname + (params.toString() ? `?${params.toString()}` : '');
+    window.history.replaceState({}, document.title, clean);
+  }
+
+  if (ssoToken) {
+    (async () => {
+      try {
+        console.log('[SSO] Token recibido del CRM, intercambiando por access_token...');
+        const ssoResp = await fetch(`${API}/api/auth/sso`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sso_token: ssoToken })
+        });
+        if (ssoResp.ok) {
+          const ssoData = await ssoResp.json();
+          console.log('[SSO] Autenticación exitosa:', ssoData);
+          authToken = ssoData.access_token;
+          clientData = {
+            id: ssoData.client_id,
+            name: ssoData.client_name || 'Usuario',
+            email: ssoData.email || ''
+          };
+          localStorage.setItem(TOKEN_KEY,  authToken);
+          localStorage.setItem(CLIENT_KEY, JSON.stringify(clientData));
+          showDashboard();
+          hideSSOMLoadingSpinner();
+          return;
+        } else {
+          console.error('[SSO] Error del servidor:', ssoResp.status, await ssoResp.text());
+        }
+      } catch (err) {
+        console.error('[SSO] Error intercambiando token:', err);
+      }
+    })();
+  }
+
+  if (authToken && clientData) {
+    showDashboard();
+    hideSSOMLoadingSpinner();
+  } else {
+    hideSSOMLoadingSpinner();
+  }
 })();
+
+// ===========================================
+// EFECTO "LINTERNA" EN TARJETAS (igual que el landing)
+// Una luz cyan sigue el cursor sobre .card / .kpi-card. Delegado en document
+// para cubrir también las tarjetas que se renderizan dinámicamente.
+// ===========================================
+document.addEventListener('mousemove', (e) => {
+  const card = e.target.closest('.card, .kpi-card');
+  if (!card) return;
+  const rect = card.getBoundingClientRect();
+  card.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+  card.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+});

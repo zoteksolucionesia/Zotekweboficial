@@ -665,10 +665,8 @@ async function saveClient(event) {
         console.log("Response text:", responseText);
 
         if (response.ok) {
-            // Save schedules if there are any
-            if (currentClientSchedules && currentClientSchedules.length > 0) {
-                await saveClientSchedules(id);
-            }
+            // Nota: los horarios se guardan por separado desde la pestaña "Horarios"
+            // (scheduleState + botón "Guardar Horarios"), no aquí.
             closeModal();
             fetchClients();
             showToast('Cambios guardados con éxito', 'success');
@@ -2093,9 +2091,17 @@ function escHtmlAdmin(str) {
 
 function formatDateTimeAdmin(dt) {
     if (!dt) return '—';
-    const d = new Date(dt);
+    // Supabase devuelve timestamps sin sufijo de timezone; forzar interpretación UTC
+    const dtUtc = (dt.endsWith('Z') || dt.includes('+') || dt.includes('-', 10))
+        ? dt
+        : dt.replace(' ', 'T') + 'Z';
+    const d = new Date(dtUtc);
     if (isNaN(d)) return dt;
-    return d.toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+    return d.toLocaleString('es-MX', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'America/Mexico_City'
+    });
 }
 
 function renderCitasTableAdmin() {
@@ -2140,6 +2146,7 @@ function renderCitasTableAdmin() {
                         <option value="pending"${st === 'pending' ? ' selected' : ''}>⏳ Pendiente</option>
                         <option value="confirmed"${st === 'confirmed' ? ' selected' : ''}>✅ Confirmada</option>
                         <option value="cancelled"${st === 'cancelled' ? ' selected' : ''}>❌ Cancelada</option>
+                        <option value="__delete__">🗑️ Eliminar</option>
                     </select>
                 </td>
             </tr>`;
@@ -2150,11 +2157,29 @@ function renderCitasTableAdmin() {
 
 async function changeAppointmentStatusAdmin(appointmentId, newStatus, selectEl) {
     if (!currentClientId) return;
+    const cita = allCitasAdmin.find(c => c.id === appointmentId);
+    const currentStatus = cita?.status || 'pending';
+
+    // Opción "Eliminar" (soft-delete): solo si la cita está confirmada o cancelada
+    if (newStatus === '__delete__') {
+        if (selectEl) selectEl.value = currentStatus; // el combo nunca queda en "Eliminar"
+        if (currentStatus !== 'confirmed' && currentStatus !== 'cancelled') {
+            showToast('Solo puedes eliminar una cita que esté Confirmada o Cancelada', 'error');
+            return;
+        }
+        showConfirmDelete({
+            title: 'Eliminar cita',
+            message: `¿Seguro que deseas eliminar la cita de ${cita?.name || 'este paciente'}? Dejará de aparecer en la lista.`,
+            confirmText: 'Sí, eliminar',
+            onConfirm: () => deleteAppointmentAdmin(appointmentId),
+        });
+        return;
+    }
+
     const action = newStatus === 'confirmed' ? 'confirm' : newStatus === 'cancelled' ? 'cancel' : null;
     if (!action) {
         showToast('Solo puedes confirmar o cancelar', 'error');
-        const cita = allCitasAdmin.find(c => c.id === appointmentId);
-        if (selectEl) selectEl.value = cita?.status || 'pending';
+        if (selectEl) selectEl.value = currentStatus;
         return;
     }
 
@@ -2186,6 +2211,58 @@ async function changeAppointmentStatusAdmin(appointmentId, newStatus, selectEl) 
     }
 }
 
+async function deleteAppointmentAdmin(appointmentId) {
+    if (!currentClientId) return;
+    try {
+        const res = await fetch(`/api/clients/${currentClientId}/appointments/${appointmentId}/archive`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            allCitasAdmin = allCitasAdmin.filter(c => c.id !== appointmentId);
+            renderCitasTableAdmin();
+            showToast('Cita eliminada', 'success');
+        } else {
+            const data = await res.json().catch(() => ({}));
+            showToast(data.detail || 'No se pudo eliminar la cita', 'error');
+        }
+    } catch {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+function csvCellAdmin(v) {
+    const s = String(v == null ? '' : v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportCitasCSVAdmin() {
+    const filterStatus = (document.getElementById('admin-filter-citas-status')?.value) || '';
+    let citas = [...allCitasAdmin];
+    if (filterStatus) citas = citas.filter(c => (c.status || 'pending') === filterStatus);
+    citas.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    if (!citas.length) { showToast('No hay citas para exportar', 'error'); return; }
+
+    const STATUS_ES = { pending: 'Pendiente', confirmed: 'Confirmada', cancelled: 'Cancelada', completed: 'Completada' };
+    const headers = ['Paciente', 'Teléfono', 'Email', 'Fecha y hora', 'Estado', 'Notas'];
+    const rows = citas.map(c => [
+        c.name || c.paciente_nombre || c.customer_name || '',
+        c.phone || c.cliente_telefono || c.phone_number || '',
+        c.email || '',
+        formatDateTimeAdmin(c.date_time || c.fecha_hora || c.appointment_date) || '',
+        STATUS_ES[c.status || 'pending'] || (c.status || ''),
+        c.notes || '',
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(csvCellAdmin).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `citas_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`${citas.length} cita(s) exportada(s)`, 'success');
+}
+
 async function loadAppointmentsAdmin(clientId = currentClientId) {
     const container = document.getElementById('admin-citas-table-wrap');
     if (!container) return;
@@ -2215,6 +2292,81 @@ async function initCitasSection(clientId = currentClientId) {
     const filterEl = document.getElementById('admin-filter-citas-status');
     if (filterEl) filterEl.value = '';
     await loadAppointmentsAdmin(clientId);
+}
+
+// ===========================================
+// NUEVA CITA (alta manual + WhatsApp) — Admin
+// ===========================================
+function openNuevaCitaAdmin() {
+    if (!currentClientId) { showToast('Selecciona un cliente primero', 'error'); return; }
+    ['nca-name', 'nca-phone', 'nca-email', 'nca-date', 'nca-time', 'nca-notes'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const err = document.getElementById('nca-error');
+    if (err) { err.style.display = 'none'; err.textContent = ''; }
+    const dateEl = document.getElementById('nca-date');
+    if (dateEl) dateEl.min = new Date().toISOString().slice(0, 10);
+    document.getElementById('nca-modal').classList.add('active');
+    setTimeout(() => document.getElementById('nca-name')?.focus(), 80);
+}
+
+function closeNuevaCitaAdmin() {
+    document.getElementById('nca-modal')?.classList.remove('active');
+}
+
+function showNcaError(msg) {
+    const err = document.getElementById('nca-error');
+    if (err) { err.textContent = msg; err.style.display = 'block'; }
+}
+
+async function submitNuevaCitaAdmin() {
+    if (!currentClientId) return;
+    const name  = document.getElementById('nca-name').value.trim();
+    const phone = document.getElementById('nca-phone').value.trim();
+    const email = document.getElementById('nca-email').value.trim();
+    const date  = document.getElementById('nca-date').value;
+    const time  = document.getElementById('nca-time').value;
+    const notes = document.getElementById('nca-notes').value.trim();
+
+    document.getElementById('nca-error').style.display = 'none';
+    if (!name) return showNcaError('Ingresa el nombre del paciente.');
+    if (phone.replace(/\D/g, '').length < 10) return showNcaError('Ingresa un teléfono válido de 10 dígitos.');
+    if (!date) return showNcaError('Selecciona la fecha.');
+    if (!time) return showNcaError('Selecciona la hora.');
+
+    const btn = document.getElementById('nca-save');
+    btn.disabled = true;
+    const prevHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+
+    try {
+        // El backend crea la cita y envía la plantilla de WhatsApp al paciente automáticamente
+        const res = await fetch(`/api/clients/${currentClientId}/appointments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+                customer_name:    name,
+                phone_number:     phone,
+                email:            email,
+                appointment_date: date,
+                appointment_time: time,
+                notes:            notes,
+            }),
+        });
+        if (res.ok) {
+            closeNuevaCitaAdmin();
+            showToast('Cita creada. Se notificó al paciente por WhatsApp.', 'success');
+            await loadAppointmentsAdmin();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            showNcaError(data.detail || 'No se pudo crear la cita.');
+        }
+    } catch (e) {
+        showNcaError('Error de conexión. Intenta de nuevo.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = prevHtml;
+    }
 }
 
 // Initial load

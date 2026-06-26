@@ -25,6 +25,10 @@ Thumbs.db
 # Secrets
 service-account-key*.json
 migration_data.json
+functions/GUIA_MIGRACION.md
+
+# VS Code workspace personal (rutas locales fuera del repo)
+*.code-workspace
 
 # Large files / binaries
 *.pdf

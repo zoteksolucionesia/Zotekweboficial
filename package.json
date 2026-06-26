@@ -1,0 +1,12 @@
+{
+  "name": "zotek-ia-www",
+  "private": true,
+  "scripts": {
+    "minify": "node scripts/minify.js",
+    "restore": "git checkout -- www/"
+  },
+  "devDependencies": {
+    "clean-css": "^5.3.3",
+    "terser": "^5.37.0"
+  }
+}
