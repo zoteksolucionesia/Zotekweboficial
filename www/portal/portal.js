@@ -392,6 +392,7 @@ function renderCitasTable() {
           <option value="pending"${st === 'pending' ? ' selected' : ''}>⏳ Pendiente</option>
           <option value="confirmed"${st === 'confirmed' ? ' selected' : ''}>✅ Confirmada</option>
           <option value="cancelled"${st === 'cancelled' ? ' selected' : ''}>❌ Cancelada</option>
+          <option value="__delete__">🗑️ Eliminar</option>
         </select>
       </td>
     </tr>`;
@@ -401,8 +402,27 @@ document.getElementById('filter-citas-status').addEventListener('change', render
 
 async function changeAppointmentStatus(appointmentId, newStatus, selectEl) {
   if (!clientData?.id) return;
+  const cita = allCitas.find(c => c.id === appointmentId);
+  const currentStatus = cita?.status || 'pending';
+
+  // Opción "Eliminar" (soft-delete): solo si la cita está confirmada o cancelada
+  if (newStatus === '__delete__') {
+    selectEl.value = currentStatus; // el combo nunca queda en "Eliminar"
+    if (currentStatus !== 'confirmed' && currentStatus !== 'cancelled') {
+      showToast('Solo puedes eliminar una cita que esté Confirmada o Cancelada', 'error');
+      return;
+    }
+    showConfirm(
+      'Eliminar cita',
+      `¿Seguro que deseas eliminar la cita de ${cita?.name || 'este paciente'}? Dejará de aparecer en tu lista.`,
+      'Sí, eliminar',
+      () => deleteAppointment(appointmentId)
+    );
+    return;
+  }
+
   const action = newStatus === 'confirmed' ? 'confirm' : newStatus === 'cancelled' ? 'cancel' : null;
-  if (!action) { showToast('Solo puedes confirmar o cancelar', 'error'); const cita = allCitas.find(c => c.id === appointmentId); selectEl.value = cita?.status || 'pending'; return; }
+  if (!action) { showToast('Solo puedes confirmar o cancelar', 'error'); selectEl.value = currentStatus; return; }
 
   selectEl.disabled = true;
   try {
@@ -523,6 +543,75 @@ document.getElementById('btn-close-nueva-cita')?.addEventListener('click', close
 document.getElementById('btn-cancel-nueva-cita')?.addEventListener('click', closeNuevaCita);
 document.getElementById('nueva-cita-backdrop')?.addEventListener('click', closeNuevaCita);
 document.getElementById('btn-save-nueva-cita')?.addEventListener('click', submitNuevaCita);
+
+// ===========================================
+// ELIMINAR (soft-delete) + EXPORTAR + CONFIRM
+// ===========================================
+async function deleteAppointment(appointmentId) {
+  if (!clientData?.id) return;
+  try {
+    const res = await fetch(`${API}/api/clients/${clientData.id}/appointments/${appointmentId}/archive`, {
+      method: 'POST', headers: authHeader()
+    });
+    if (res.ok) {
+      allCitas = allCitas.filter(c => c.id !== appointmentId);
+      updateCitasKPIs(); renderProximasCitas(); renderCitasTable();
+      showToast('Cita eliminada', 'success');
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.detail || 'No se pudo eliminar la cita', 'error');
+    }
+  } catch (e) { showToast('Error de conexión', 'error'); }
+}
+
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportCitasCSV() {
+  const filterStatus = document.getElementById('filter-citas-status').value;
+  let citas = [...allCitas];
+  if (filterStatus) citas = citas.filter(c => (c.status || 'pending') === filterStatus);
+  citas.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  if (!citas.length) { showToast('No hay citas para exportar', 'error'); return; }
+
+  const STATUS_ES = { pending: 'Pendiente', confirmed: 'Confirmada', cancelled: 'Cancelada', completed: 'Completada' };
+  const headers = ['Paciente', 'Teléfono', 'Email', 'Fecha y hora', 'Estado', 'Notas'];
+  const rows = citas.map(c => [
+    c.name || c.paciente_nombre || c.customer_name || '',
+    c.phone || c.cliente_telefono || c.phone_number || '',
+    c.email || '',
+    formatDateTime(c.date_time) || c.fecha_hora || c.appointment_date || '',
+    STATUS_ES[c.status || 'pending'] || (c.status || ''),
+    c.notes || '',
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `citas_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`${citas.length} cita(s) exportada(s)`, 'success');
+}
+
+let _confirmCb = null;
+function showConfirm(title, message, okLabel, onOk) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-message').textContent = message;
+  document.getElementById('confirm-ok').textContent = okLabel || 'Confirmar';
+  _confirmCb = onOk;
+  document.getElementById('confirm-modal').style.display = 'flex';
+}
+function hideConfirm() {
+  document.getElementById('confirm-modal').style.display = 'none';
+  _confirmCb = null;
+}
+document.getElementById('btn-export-citas')?.addEventListener('click', exportCitasCSV);
+document.getElementById('confirm-cancel')?.addEventListener('click', hideConfirm);
+document.getElementById('confirm-backdrop')?.addEventListener('click', hideConfirm);
+document.getElementById('confirm-ok')?.addEventListener('click', () => { const cb = _confirmCb; hideConfirm(); if (cb) cb(); });
 
 // ===========================================
 // TABLA LEADS

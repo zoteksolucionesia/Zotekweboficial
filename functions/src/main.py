@@ -1962,6 +1962,7 @@ async def get_client_appointments(client_id: str, status: str = None,
             cursor.execute("""
                 SELECT * FROM appointments
                 WHERE client_id = %s AND status = %s
+                  AND COALESCE(archived, FALSE) = FALSE
                 ORDER BY date_time ASC
             """, (client_id_value, status))
             appointments = cursor.fetchall()
@@ -1981,6 +1982,7 @@ async def get_client_appointments(client_id: str, status: str = None,
                 FROM appointments a
                 LEFT JOIN clients c ON a.client_id = c.id
                 WHERE a.client_id = %s
+                  AND COALESCE(a.archived, FALSE) = FALSE
                 ORDER BY a.date_time DESC
             """, (client_id_value,))
             appointments = [dict(apt) for apt in cursor.fetchall()]
@@ -2435,6 +2437,24 @@ async def cancel_appointment(client_id: str, appointment_id: int,
     if apt:
         _notificar_cancelacion_whatsapp(apt)
     return {"status": "cancelled", "message": "Cita cancelada"}
+
+@app.post("/api/clients/{client_id}/appointments/{appointment_id}/archive")
+async def archive_appointment_endpoint(client_id: str, appointment_id: int,
+                                       current_user: str = Depends(get_current_user)):
+    """Archiva (soft-delete) una cita. Solo permitido si está Confirmada o Cancelada."""
+    from .services.appointment_service import AppointmentService
+    apt_service = AppointmentService()
+
+    apt = apt_service.get_appointment_by_id(appointment_id)
+    if not apt:
+        raise HTTPException(status_code=404, detail="Cita no encontrada")
+    if apt.get("status") not in ("confirmed", "cancelled"):
+        raise HTTPException(status_code=400,
+                            detail="Solo se puede eliminar una cita que esté Confirmada o Cancelada")
+
+    if apt_service.archive_appointment(appointment_id):
+        return {"status": "archived", "message": "Cita eliminada"}
+    raise HTTPException(status_code=400, detail="Error al eliminar la cita")
 
 @app.get("/api/appointments/token/{token}")
 async def get_appointment_by_token(token: str):

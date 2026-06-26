@@ -120,6 +120,25 @@ class AppointmentService:
             print(f"[Appointment] Error cancelling appointment: {e}")
             return False
     
+    def archive_appointment(self, appointment_id: int) -> bool:
+        """Archiva (soft-delete) una cita: la oculta del listado sin borrarla de la BD."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE appointments
+                SET archived = TRUE
+                WHERE id = %s
+            """, (appointment_id,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+            print(f"[Appointment] Archived appointment {appointment_id}")
+            return True
+        except Exception as e:
+            print(f"[Appointment] Error archiving appointment: {e}")
+            return False
+
     def get_tomorrow_appointments(self, client_id: int) -> List[Dict[str, Any]]:
         """
         Obtiene las citas de mañana para un cliente
