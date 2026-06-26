@@ -14,6 +14,7 @@
   "hosting": {
     "site": "zotek-ia",
     "public": "www",
+    "predeploy": ["npm run minify"],
     "ignore": [
       "firebase.json",
       "**/.*",
