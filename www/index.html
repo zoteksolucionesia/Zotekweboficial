@@ -8,66 +8,100 @@
     <meta name="description"
         content="Construimos IA que resuelve problemas reales: consultoría, agentes para WhatsApp, desarrollo de software y sistemas de recordatorios y agendamiento.">
 
-    <!-- Anti-FOUC: aplica el tema antes del render. Default = dark; solo cambia si el usuario lo eligió manualmente. -->
+    <!-- Anti-FOUC: aplica el tema antes del render. Usa la elección guardada o, si no hay, la preferencia del sistema. -->
     <script>
         (function() {
+            var theme = 'light';
             try {
                 var saved = localStorage.getItem('zotek-theme');
-                var initial = saved || 'dark';
-                document.documentElement.setAttribute('data-theme', initial);
-            } catch (e) {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
+                if (saved === 'dark' || saved === 'light') {
+                    theme = saved;
+                } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    theme = 'dark';
+                }
+            } catch (e) {}
+            document.documentElement.setAttribute('data-theme', theme);
         })();
     </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
-    <link rel="stylesheet" href="style.css?v=3.2">
+    <link rel="stylesheet" href="landing.css?v=4.0">
 </head>
 
 <body>
     <script>
         // Force cleanup of stale admin sessions on landing page
         if (localStorage.getItem('zotek_token')) {
-            console.log("🧹 Cleaning stale admin session...");
+            console.log("Cleaning stale admin session...");
             localStorage.removeItem('zotek_token');
             sessionStorage.clear();
         }
     </script>
 
-    <div class="bg-blobs">
+    <!-- Iconos SVG (sprite) -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+        <symbol id="i-cal" viewBox="0 0 24 24"><path d="M8 2v4M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></symbol>
+        <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+        <symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></symbol>
+        <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></symbol>
+        <symbol id="i-fork" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></symbol>
+        <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></symbol>
+        <symbol id="i-bag" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></symbol>
+        <symbol id="i-brief" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    </svg>
+
+    <div class="bg-blobs" aria-hidden="true">
         <div class="blob blob-1"></div>
         <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+        <div class="blob blob-4"></div>
     </div>
 
-    <header>
-        <a href="/" class="logo-container">
-            <img src="/Logo-zotek_animado.svg" alt="Zotek Logo" class="logo-login" style="height: 60px;">
+    <header class="site-header">
+        <a href="/" class="logo-container" aria-label="ZØtek Soluciones - inicio">
+            <svg class="logo-svg" viewBox="0 0 400 80" aria-hidden="true">
+                <text x="0" y="40" class="t">ZØtek</text>
+                <text x="120" y="40" class="t">Soluciones</text>
+                <g transform="translate(320,30)">
+                    <circle r="10" cx="0" cy="0" class="dot circle-main"/>
+                    <g class="dot-group">
+                        <circle r="3" cx="-12" cy="-12" class="dot" fill-opacity="0.6"/>
+                        <circle r="3" cx="12" cy="-12" class="dot" fill-opacity="0.6"/>
+                        <circle r="3" cx="-12" cy="12" class="dot" fill-opacity="0.6"/>
+                        <circle r="3" cx="12" cy="12" class="dot" fill-opacity="0.6"/>
+                    </g>
+                    <line x1="-12" y1="-12" x2="0" y2="0" class="ln"/>
+                    <line x1="12" y1="-12" x2="0" y2="0" class="ln"/>
+                    <line x1="-12" y1="12" x2="0" y2="0" class="ln"/>
+                    <line x1="12" y1="12" x2="0" y2="0" class="ln"/>
+                </g>
+            </svg>
         </a>
 
-        <nav class="nav-links">
+        <nav class="nav-links" aria-label="Principal">
             <a href="#servicios" class="nav-link">Servicios</a>
             <a href="#proceso" class="nav-link">Cómo trabajamos</a>
             <a href="#industrias" class="nav-link">Industrias</a>
             <a href="#contacto" class="nav-link">Contacto</a>
         </nav>
 
-        <div style="display: flex; gap: 1rem; align-items: center;">
-            <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema claro/oscuro" title="Cambiar tema">
+        <div class="header-actions">
+            <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Cambiar tema claro/oscuro" title="Cambiar tema">
                 <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                 <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
             </button>
-            <a href="/admin/login.html" class="nav-btn">
-                Dashboard
-            </a>
-            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20mi%20diagnóstico%20gratis%20de%2030%20minutos" target="_blank" class="nav-btn primary-outline">
-                Diagnóstico gratis
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            <a href="/admin/login.html" class="nav-btn ghost">Dashboard</a>
+            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20mi%20diagnóstico%20gratis%20de%2030%20minutos" target="_blank" rel="noopener" class="nav-btn cta">
+                Diagnóstico<span class="cta-extra">&nbsp;gratis</span>
+                <svg class="ic" style="width:16px;height:16px"><use href="#i-arrow"/></svg>
             </a>
         </div>
     </header>
@@ -81,7 +115,7 @@
             </div>
 
             <h1 class="font-display">
-                <span class="text-gradient">Construimos IA que</span><br>
+                <span class="text-gradient">Construimos IA que</span>
                 <span class="text-gradient-primary">resuelve problemas reales.</span>
             </h1>
 
@@ -90,13 +124,41 @@
             </p>
 
             <div class="hero-cta">
-                <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20hablar%20con%20un%20consultor" target="_blank" class="btn-primary">
+                <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20hablar%20con%20un%20consultor" target="_blank" rel="noopener" class="btn-primary">
                     Hablar con un consultor
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    <svg class="ic" style="width:20px;height:20px"><use href="#i-arrow"/></svg>
                 </a>
                 <a href="#servicios" class="btn-secondary">
                     Ver servicios
                 </a>
+            </div>
+        </section>
+
+        <!-- DEMO DEL PRODUCTO -->
+        <section class="demo-section" id="demo">
+            <div class="demo-grid">
+                <div class="demo-copy">
+                    <h2 class="font-display">Tu agente atiende y agenda por WhatsApp, 24/7</h2>
+                    <p>Responde dudas, califica clientes y confirma citas sin que tengas que estar pendiente del teléfono.</p>
+                    <ul class="demo-points">
+                        <li><svg class="ic"><use href="#i-check"/></svg><span>Agenda y confirma citas automáticamente</span></li>
+                        <li><svg class="ic"><use href="#i-check"/></svg><span>Recordatorios para que tus clientes no falten</span></li>
+                        <li><svg class="ic"><use href="#i-check"/></svg><span>Derivación a una persona cuando hace falta</span></li>
+                    </ul>
+                </div>
+                <div class="phone" role="img" aria-label="Ejemplo de conversación de WhatsApp con un agente de IA que agenda una cita">
+                    <div class="phone-head">
+                        <div class="phone-avatar"><svg class="ic"><use href="#i-bot"/></svg></div>
+                        <div><strong>Asistente de tu negocio</strong><small>en línea</small></div>
+                    </div>
+                    <div class="chat">
+                        <div class="msg out">Hola, quiero una cita para mañana</div>
+                        <div class="msg in">¡Claro! Tengo libre a las 10:00 y a las 16:30. ¿Cuál prefieres?</div>
+                        <div class="msg out">A las 16:30</div>
+                        <div class="confirm"><svg class="ic"><use href="#i-cal"/></svg><span><strong>Cita confirmada</strong><br>Mañana · 16:30</span></div>
+                        <div class="typing" aria-hidden="true"><i></i><i></i><i></i></div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -142,29 +204,29 @@
                     <div class="demo-dock">
                         <div class="demo-title">Pruébalos ahora en WhatsApp</div>
                         <div class="demo-list">
-                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20información%20sobre%20tus%20servicios" target="_blank" class="demo-item featured">
-                                <div><span class="emoji">🤖</span> Agente Maestro Zotek</div>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20información%20sobre%20tus%20servicios" target="_blank" rel="noopener" class="demo-item featured">
+                                <div><svg class="ic"><use href="#i-bot"/></svg> Agente Maestro Zotek</div>
                                 <span class="badge-new">OFICIAL</span>
                                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             </a>
-                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Clínica%20Dental" target="_blank" class="demo-item">
-                                <div><span class="emoji">🏥</span> SonrisaPerfecta IA</div>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Clínica%20Dental" target="_blank" rel="noopener" class="demo-item">
+                                <div><svg class="ic"><use href="#i-plus"/></svg> SonrisaPerfecta IA</div>
                                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             </a>
-                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Psicólogo" target="_blank" class="demo-item">
-                                <div><span class="emoji">🧠</span> MenteSana Bot</div>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Psicólogo" target="_blank" rel="noopener" class="demo-item">
+                                <div><svg class="ic"><use href="#i-heart"/></svg> MenteSana Bot</div>
                                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             </a>
-                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Restaurante" target="_blank" class="demo-item">
-                                <div><span class="emoji">🍕</span> GourmetBot 2026</div>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Restaurante" target="_blank" rel="noopener" class="demo-item">
+                                <div><svg class="ic"><use href="#i-fork"/></svg> GourmetBot 2026</div>
                                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             </a>
-                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Salón%20de%20Belleza" target="_blank" class="demo-item">
-                                <div><span class="emoji">💇‍♀️</span> GlamourBot 2026</div>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Salón%20de%20Belleza" target="_blank" rel="noopener" class="demo-item">
+                                <div><svg class="ic"><use href="#i-scissors"/></svg> GlamourBot 2026</div>
                                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             </a>
-                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Tienda%20de%20Ropa" target="_blank" class="demo-item">
-                                <div><span class="emoji">🛍️</span> StyleBot 2026</div>
+                            <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20quiero%20probar%20la%20demo%20de%20Tienda%20de%20Ropa" target="_blank" rel="noopener" class="demo-item">
+                                <div><svg class="ic"><use href="#i-bag"/></svg> StyleBot 2026</div>
                                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             </a>
                         </div>
@@ -258,32 +320,32 @@
 
             <div class="industries-grid">
                 <div class="industry-card">
-                    <span class="industry-emoji">🧠</span>
+                    <div class="industry-icon"><svg class="ic"><use href="#i-heart"/></svg></div>
                     <h4>Psicología y terapia</h4>
                     <p>Agendamiento, recordatorios, gestión de pacientes y notas de sesión.</p>
                 </div>
                 <div class="industry-card">
-                    <span class="industry-emoji">🏥</span>
+                    <div class="industry-icon"><svg class="ic"><use href="#i-plus"/></svg></div>
                     <h4>Clínicas dentales y médicas</h4>
                     <p>Citas, expedientes, recordatorios y triaje inicial por WhatsApp.</p>
                 </div>
                 <div class="industry-card">
-                    <span class="industry-emoji">🍕</span>
+                    <div class="industry-icon"><svg class="ic"><use href="#i-fork"/></svg></div>
                     <h4>Restaurantes</h4>
                     <p>Reservas, menús dinámicos, pedidos y atención automatizada.</p>
                 </div>
                 <div class="industry-card">
-                    <span class="industry-emoji">💇‍♀️</span>
+                    <div class="industry-icon"><svg class="ic"><use href="#i-scissors"/></svg></div>
                     <h4>Belleza y wellness</h4>
                     <p>Citas con tu estilista preferido, recordatorios y promociones.</p>
                 </div>
                 <div class="industry-card">
-                    <span class="industry-emoji">🛍️</span>
+                    <div class="industry-icon"><svg class="ic"><use href="#i-bag"/></svg></div>
                     <h4>Retail y e-commerce</h4>
                     <p>Asistentes de venta, catálogo conversacional y postventa.</p>
                 </div>
                 <div class="industry-card">
-                    <span class="industry-emoji">💼</span>
+                    <div class="industry-icon"><svg class="ic"><use href="#i-brief"/></svg></div>
                     <h4>Servicios profesionales</h4>
                     <p>Consultores, despachos y profesionistas independientes.</p>
                 </div>
@@ -296,9 +358,9 @@
                 <h2 class="font-display">Cuéntanos tu problema en 2 minutos</h2>
                 <p>Sin formulario, sin compromiso. Te respondemos por WhatsApp con un diagnóstico inicial gratis.</p>
                 <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20necesito%20ayuda%20con%20una%20implementación%20de%20IA"
-                   target="_blank" class="btn-primary cta-btn">
+                   target="_blank" rel="noopener" class="btn-primary cta-btn">
                     Escribir por WhatsApp
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                    <svg class="ic" style="width:20px;height:20px"><use href="#i-msg"/></svg>
                 </a>
             </div>
         </section>
@@ -307,7 +369,23 @@
         <footer class="site-footer">
             <div class="footer-content">
                 <div class="footer-brand">
-                    <img src="/Logo-zotek_animado.svg" alt="Zotek Logo" style="height: 50px;">
+                    <svg class="logo-svg" viewBox="0 0 400 80" role="img" aria-label="ZØtek Soluciones">
+                        <text x="0" y="40" class="t">ZØtek</text>
+                        <text x="120" y="40" class="t">Soluciones</text>
+                        <g transform="translate(320,30)">
+                            <circle r="10" cx="0" cy="0" class="dot circle-main"/>
+                            <g class="dot-group">
+                                <circle r="3" cx="-12" cy="-12" class="dot" fill-opacity="0.6"/>
+                                <circle r="3" cx="12" cy="-12" class="dot" fill-opacity="0.6"/>
+                                <circle r="3" cx="-12" cy="12" class="dot" fill-opacity="0.6"/>
+                                <circle r="3" cx="12" cy="12" class="dot" fill-opacity="0.6"/>
+                            </g>
+                            <line x1="-12" y1="-12" x2="0" y2="0" class="ln"/>
+                            <line x1="12" y1="-12" x2="0" y2="0" class="ln"/>
+                            <line x1="-12" y1="12" x2="0" y2="0" class="ln"/>
+                            <line x1="12" y1="12" x2="0" y2="0" class="ln"/>
+                        </g>
+                    </svg>
                     <p>IA y software a medida para que tu negocio crezca sin contratar más personal.</p>
                 </div>
                 <div class="footer-links">
@@ -326,7 +404,7 @@
                     </div>
                     <div>
                         <h5>Contacto</h5>
-                        <a href="https://wa.me/523123775877" target="_blank">WhatsApp</a>
+                        <a href="https://wa.me/523123775877" target="_blank" rel="noopener">WhatsApp</a>
                         <a href="mailto:zoteksolucionesia@gmail.com">zoteksolucionesia@gmail.com</a>
                     </div>
                 </div>
@@ -338,35 +416,30 @@
     </main>
 
     <a href="https://wa.me/523123775877?text=Hola%20Zotek,%20necesito%20ayuda%20con%20una%20implementación%20de%20IA"
-       target="_blank" class="whatsapp-float" title="Habla con un experto">
-        <i class="fab fa-whatsapp"></i>
-        <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp" width="35">
-        <span class="whatsapp-tooltip">¿Hablamos por WhatsApp? 🚀</span>
+       target="_blank" rel="noopener" class="whatsapp-float" title="Habla con un experto" aria-label="Hablar por WhatsApp">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="" width="35">
+        <span class="whatsapp-tooltip">¿Hablamos por WhatsApp?</span>
     </a>
 
-
-    <script src="script.js?v=3.2"></script>
+    <script src="script.js?v=4.0"></script>
     <script>
-        // Efecto hover brillante en las tarjetas (Glassmorphism avanzado)
+        // Efecto de brillo que sigue al cursor en las tarjetas de cristal
         document.querySelectorAll('.service-card, .process-step, .industry-card').forEach(card => {
             card.addEventListener('mousemove', e => {
                 const rect = card.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                card.style.setProperty('--mouse-x', `${x}px`);
-                card.style.setProperty('--mouse-y', `${y}px`);
+                card.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+                card.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
             });
         });
 
-        // Toggle de tema claro/oscuro (default = dark; respeta solo elección manual del usuario)
+        // Toggle de tema claro/oscuro (guarda la elección manual del usuario)
         (function() {
             const root = document.documentElement;
             const toggle = document.getElementById('theme-toggle');
             if (!toggle) return;
 
             toggle.addEventListener('click', () => {
-                const current = root.getAttribute('data-theme');
-                const next = current === 'dark' ? 'light' : 'dark';
+                const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
                 root.setAttribute('data-theme', next);
                 try { localStorage.setItem('zotek-theme', next); } catch (e) {}
             });
