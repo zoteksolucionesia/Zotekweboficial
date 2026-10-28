@@ -16,26 +16,56 @@
 
 ### Color Palette
 
-| Role | Hex | CSS Variable |
-|------|-----|--------------|
-| Primary | `#7C3AED` | `--color-primary` |
-| On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#A78BFA` | `--color-secondary` |
-| On Secondary | `#0F172A` | `--color-on-secondary` |
-| Accent/CTA | `#0891B2` | `--color-accent` |
-| On Accent/CTA | `#000000` | `--color-on-accent` |
-| Background | `#FAF5FF` | `--color-background` |
-| Foreground | `#1E1B4B` | `--color-foreground` |
-| Card | `#FFFFFF` | `--color-card` |
-| Card Foreground | `#1E1B4B` | `--color-card-foreground` |
-| Muted | `#ECEEF9` | `--color-muted` |
-| Muted Foreground | `#475569` | `--color-muted-foreground` |
-| Border | `#DDD6FE` | `--color-border` |
-| Destructive | `#DC2626` | `--color-destructive` |
-| On Destructive | `#FFFFFF` | `--color-on-destructive` |
-| Ring | `#7C3AED` | `--color-ring` |
+> **BRAND OVERRIDE (decisión del proyecto):** la paleta que genera la skill (violeta + cian) se
+> reemplazó por los colores del logo de Zotek. Esta tabla es la fuente de verdad. El estilo de la
+> skill (AI-Native UI), la tipografía y los patrones se mantienen.
 
-**Color Notes:** AI purple + cyan interactions [Accent adjusted from #06B6D4]
+Colores del logo: azul rey `#004080` (texto "ZØtek Soluciones"), azul `#1565C0` (logo principal),
+cian `#00BCD4` (círculo del logo principal), rosa neón `#FF0066` (puntos del logo).
+
+| Role | Light | Dark | CSS Variable |
+|------|-------|------|--------------|
+| Primary | `#004080` | `#4D94E8` | `--color-primary` |
+| On Primary | `#FFFFFF` | `#071426` | `--color-on-primary` |
+| Highlight (texto destacado) | `#1565C0` | `#6AB0FF` | `--color-highlight` |
+| Secondary | `#00BCD4` | `#00BCD4` | `--color-secondary` |
+| Cyan para texto | `#00828F` | `#22D3EE` | `--color-cyan-text` |
+| Accent/CTA | `#E6005C` * | `#FF0066` | `--color-accent` |
+| On Accent/CTA | `#FFFFFF` | `#071426` | `--color-on-accent` |
+| Background | `#F3F7FC` | `#071426` | `--color-background` |
+| Foreground | `#0B1B3A` | `#EAF2FF` | `--color-foreground` |
+| Card (cristal) | `rgba(255,255,255,.55)` | `rgba(15,36,66,.50)` | `--glass-bg` |
+| Muted | `#E6EEF8` | `#0F2442` | `--color-muted` |
+| Muted Foreground | `#475569` | `#9DB2D0` | `--color-muted-foreground` |
+| Border | `#C9D8EC` | `#1F3A63` | `--color-border` |
+| Ring (foco) | `#1565C0` | `#6AB0FF` | `--color-ring` |
+| Logo text | `#004080` | `#8CBBFF` | `--logo-text` |
+
+\* El rosa del logo (`#FF0066`) con texto blanco da 3.9:1, por debajo de 4.5:1. En modo claro el
+botón usa `#E6005C` (4.6:1). `#FF0066` exacto se usa en detalles decorativos (punto del logo,
+manchas de fondo, resplandor).
+
+**Color Notes:** marca Zotek (azul + cian + rosa) sobre el estilo AI-Native UI de la skill.
+
+### Efecto de cristal (Liquid Glass + Glassmorphism)
+
+- **Liquid Glass** solo en navegación y controles (header flotante tipo píldora, botones, toggle).
+- **Glassmorphism** en tarjetas: `backdrop-filter: blur(18px) saturate(170%)`, fondo translúcido,
+  borde 1px claro y brillo interior superior.
+- Requiere manchas de color de la marca detrás (azul, cian y un toque de rosa) para que el
+  desenfoque tenga qué difuminar.
+- Respaldo obligatorio: `prefers-reduced-transparency` y `@supports not (backdrop-filter)` pasan a
+  fondos opacos; `prefers-reduced-motion` desactiva animaciones.
+
+### Dónde se aplica
+
+| Página | Archivo de estilos | Nota |
+|--------|--------------------|------|
+| Landing | `www/landing.css` | Rediseño completo; tokens `--color-*` / `--glass-*` |
+| Login admin | `www/admin/login.html` | Usa los tokens de `landing.css` |
+| Panel admin | `www/admin/zotek_v9.css` (+ `www/style.css` para el fondo) | Cambio por tokens; modo claro propio (`body.light-mode`) |
+| Portal clientes | `www/portal/portal.css` | Tokens propios; respeta `?accent=` y `?theme=` del CRM |
+| Citas (público) | `www/cita/index.html` (CSS en línea) | Solo modo claro; conserva nombres `--zotek-*` |
 
 ### Typography
 

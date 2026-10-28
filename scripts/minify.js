@@ -18,6 +18,7 @@ const CSS_FILES = [
   'www/admin/zotek_v9.css',
   'www/portal/portal.css',
   'www/style.css',
+  'www/landing.css',
 ];
 
 function kb(bytes) {
