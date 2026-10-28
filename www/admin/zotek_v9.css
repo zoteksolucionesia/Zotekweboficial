@@ -2246,3 +2246,88 @@ body.light-mode .client-tab-nav {
 @media (max-width: 480px) {
     .nca-row { flex-direction: column; gap: 0; }
 }
+
+/* ============================================================
+   CAPA DE CRISTAL (Liquid Glass en navegación + Glassmorphism en tarjetas)
+   Sistema de diseño: design-system/zotek-soluciones-ia/MASTER.md
+   Va al final para ganar a las reglas anteriores de cada superficie.
+   ============================================================ */
+:root {
+    --glass-bg: rgba(15, 36, 66, 0.50);
+    --glass-bg-strong: rgba(15, 36, 66, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --glass-blur: blur(18px) saturate(170%);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+body.light-mode {
+    --glass-bg: rgba(255, 255, 255, 0.58);
+    --glass-bg-strong: rgba(255, 255, 255, 0.82);
+    --glass-border: rgba(255, 255, 255, 0.85);
+    --glass-shadow: 0 8px 32px rgba(0, 64, 128, 0.14), 0 0 0 1px rgba(0, 64, 128, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+/* Manchas de color detrás del cristal (marca: azul, cian y un toque de rosa) */
+.bg-blobs .blob { opacity: 0.55; filter: blur(90px); }
+.bg-blobs .blob-1 { width: 560px; height: 560px; top: 6%; left: 14%; }
+.bg-blobs .blob-2 { width: 520px; height: 520px; bottom: 2%; right: 6%; }
+.bg-blobs::before,
+.bg-blobs::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
+.bg-blobs::before { width: 380px; height: 380px; background: #00BCD4; opacity: 0.28; filter: blur(90px); top: 30%; right: 22%; }
+.bg-blobs::after { width: 420px; height: 420px; background: #FF0066; opacity: 0.18; filter: blur(100px); bottom: 8%; left: 22%; }
+body.light-mode .bg-blobs .blob { opacity: 0.42; }
+body.light-mode .bg-blobs::before { opacity: 0.30; }
+body.light-mode .bg-blobs::after { opacity: 0.20; }
+
+/* Tarjetas, paneles y tablas: glassmorphism */
+.settings-card,
+.action-card,
+.chat-card,
+.dashboard-card,
+.table-container,
+body.light-mode .settings-card,
+body.light-mode .action-card,
+body.light-mode .chat-card,
+body.light-mode .dashboard-card,
+body.light-mode .table-container {
+    background: var(--glass-bg) !important;
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: var(--glass-shadow) !important;
+}
+
+/* Cabeceras de tabla translúcidas para no tapar el cristal */
+.table-container th { background: color-mix(in srgb, var(--glass-bg-strong) 80%, transparent) !important; }
+.table-container tbody tr:hover td { background: color-mix(in srgb, var(--primary) 8%, transparent) !important; }
+
+/* Barra lateral: píldora flotante de Liquid Glass (solo en escritorio) */
+.sidebar,
+body.light-mode .sidebar {
+    background: var(--glass-bg) !important;
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border) !important;
+    box-shadow: var(--glass-shadow) !important;
+}
+
+@media (min-width: 901px) {
+    .sidebar,
+    body.light-mode .sidebar {
+        position: sticky;
+        top: 12px;
+        align-self: flex-start;
+        height: calc(100vh - 24px);
+        margin: 12px;
+        border-radius: 24px;
+        overflow: auto;
+    }
+}
+
+/* Accesibilidad: sin transparencia ni movimiento si el usuario lo pide */
+@media (prefers-reduced-transparency: reduce) {
+    :root, body.light-mode { --glass-bg: var(--card-bg); --glass-bg-strong: var(--card-bg); --glass-blur: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .bg-blobs .blob { animation: none; }
+}
