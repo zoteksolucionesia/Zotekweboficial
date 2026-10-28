@@ -1783,7 +1783,7 @@ function renderDurationSelector() {
     if (!container) return;
     container.innerHTML = DURATION_OPTIONS.map(d => `
         <button type="button" onclick="setSessionDuration(${d})"
-                style="padding:5px 14px;border-radius:20px;border:1px solid ${d === sessionDuration ? 'var(--primary)' : 'rgba(88,166,255,0.3)'};
+                style="padding:5px 14px;border-radius:20px;border:1px solid ${d === sessionDuration ? 'var(--primary)' : 'rgba(77, 148, 232, 0.3)'};
                        background:${d === sessionDuration ? 'var(--primary)' : 'transparent'};
                        color:${d === sessionDuration ? '#fff' : 'var(--text)'};
                        cursor:pointer;font-size:0.85rem;font-weight:${d === sessionDuration ? '600' : '400'};">
@@ -1837,7 +1837,7 @@ function renderScheduleEditor() {
             const slots = generateSlotsAdmin(f.start, f.end, sessionDuration);
             const slotsPreview = slots.length
                 ? `<div style="margin-top:4px;margin-left:24px;display:flex;flex-wrap:wrap;gap:4px;">
-                    ${slots.map(s => `<span style="background:rgba(88,166,255,0.12);border:1px solid rgba(88,166,255,0.25);border-radius:12px;padding:2px 8px;font-size:0.75rem;color:var(--primary);">${s}</span>`).join('')}
+                    ${slots.map(s => `<span style="background:rgba(77, 148, 232, 0.12);border:1px solid rgba(77, 148, 232, 0.25);border-radius:12px;padding:2px 8px;font-size:0.75rem;color:var(--primary);">${s}</span>`).join('')}
                    </div>`
                 : '';
             return `
@@ -1867,11 +1867,11 @@ function renderScheduleEditor() {
                 ${isActive ? `
                     <div style="display:flex;gap:6px;">
                         <button type="button" onclick="addScheduleFranja('${day.date}')"
-                            style="background:rgba(88,166,255,0.15);border:1px solid rgba(88,166,255,0.3);color:var(--primary);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
+                            style="background:rgba(77, 148, 232, 0.15);border:1px solid rgba(77, 148, 232, 0.3);color:var(--primary);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;">
                             + Franja</button>
                         <button type="button" onclick="copyDayScheduleAdmin('${day.date}')"
                             title="Copiar este día a otro"
-                            style="background:rgba(88,166,255,0.1);border:1px solid rgba(88,166,255,0.25);color:var(--primary);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.8rem;">
+                            style="background:rgba(77, 148, 232, 0.1);border:1px solid rgba(77, 148, 232, 0.25);color:var(--primary);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:0.8rem;">
                             📋</button>
                     </div>` : ''}
             </div>

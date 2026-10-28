@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
         rel="stylesheet">
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -45,7 +45,7 @@
         <div class="logo-container"
             style="margin-bottom: 2.5rem; display: flex; justify-content: center; align-items: center; gap: 10px;">
             <svg width="160" height="60" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg" id="sidebar-logo"
-                style="height: 50px; filter: drop-shadow(0 0 10px rgba(88, 166, 255, 0.3)); transition: all 0.3s ease;">
+                style="height: 50px; filter: drop-shadow(0 0 10px rgba(77, 148, 232, 0.3)); transition: all 0.3s ease;">
                 <style>
                     /* Animación para el círculo principal */
                     @keyframes pulse {
@@ -149,9 +149,9 @@
         </nav>
         <div style="margin-top: auto; padding-top: 2rem; border-top: 1px solid var(--border-color);">
             <button class="btn btn-secondary" onclick="toggleTheme()"
-                style="width: 100%; margin-bottom: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #e6edf3; padding: 10px;">🌓
+                style="width: 100%; margin-bottom: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #e6edf3; padding: 10px;"><i class="fas fa-circle-half-stroke" aria-hidden="true"></i>
                 Cambiar Tema</button>
-            <button class="btn btn-logout" onclick="logout()">🚪 Cerrar Sesión</button>
+            <button class="btn btn-logout" onclick="logout()"><i class="fas fa-right-from-bracket" aria-hidden="true"></i> Cerrar Sesión</button>
         </div>
     </div>
 
@@ -189,7 +189,7 @@
                     <select id="doc-client-selector" class="btn" onchange="loadDocuments()">
                         <option value="">Selecciona un cliente...</option>
                     </select>
-                    <button type="button" class="btn btn-primary" id="btnSubirPdf" onclick="triggerPdfUpload()">📄 Subir
+                    <button type="button" class="btn btn-primary" id="btnSubirPdf" onclick="triggerPdfUpload()"><i class="fas fa-file-pdf" aria-hidden="true"></i> Subir
                         PDF</button>
                 </div>
             </div>
@@ -216,16 +216,16 @@
         <!-- Chats Section -->
         <section id="section-chats" class="hidden">
             <div class="header">
-                <h1>💬 Historial de conversaciones</h1>
+                <h1><i class="fas fa-comments" aria-hidden="true"></i> Historial de conversaciones</h1>
                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                     <select id="chat-client-selector" class="btn" onchange="loadChats()">
                         <option value="">Selecciona un cliente...</option>
                     </select>
                     <input type="number" id="chat-limit" value="50" min="10" max="500" placeholder="Límite"
                         style="width: 80px; padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
-                    <button class="btn" onclick="loadChats()">🔄 Actualizar</button>
-                    <button class="btn btn-warning" onclick="exportChats()">📤 Exportar CSV</button>
-                    <button class="btn btn-danger" onclick="clearChats()">🗑️ Vaciar Chats</button>
+                    <button class="btn" onclick="loadChats()"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
+                    <button class="btn btn-warning" onclick="exportChats()"><i class="fas fa-file-export" aria-hidden="true"></i> Exportar CSV</button>
+                    <button class="btn btn-danger" onclick="clearChats()"><i class="fas fa-trash" aria-hidden="true"></i> Vaciar Chats</button>
                 </div>
             </div>
             <div id="chat-history-list" class="chat-history-list">
@@ -237,14 +237,14 @@
         <!-- Email & Leads Section -->
         <section id="section-email-leads" class="hidden">
             <div class="header">
-                <h1>📧 Email & Leads</h1>
+                <h1><i class="fas fa-envelope" aria-hidden="true"></i> Email & Leads</h1>
             </div>
 
             <div class="settings-grid">
                 <!-- Email Configuration Card -->
                 <div class="settings-card" style="grid-column: span 2;">
                     <div class="settings-card-header">
-                        <h3>⚙️ Configuración de Email</h3>
+                        <h3><i class="fas fa-gear" aria-hidden="true"></i> Configuración de Email</h3>
                     </div>
                     <div class="settings-card-body">
                         <div class="form-group">
@@ -296,9 +296,9 @@
                             </div>
 
                             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                                <button class="btn btn-primary" onclick="saveEmailConfig()">💾 Guardar
+                                <button class="btn btn-primary" onclick="saveEmailConfig()"><i class="fas fa-floppy-disk" aria-hidden="true"></i> Guardar
                                     Configuración</button>
-                                <button class="btn btn-secondary" onclick="testEmailConfig()">📧 Enviar Email de
+                                <button class="btn btn-secondary" onclick="testEmailConfig()"><i class="fas fa-envelope" aria-hidden="true"></i> Enviar Email de
                                     Prueba</button>
                             </div>
 
@@ -310,7 +310,7 @@
                 <!-- Cold Leads Card -->
                 <div class="settings-card" style="grid-column: span 2;">
                     <div class="settings-card-header">
-                        <h3>🥶 Leads Fríos</h3>
+                        <h3><i class="fas fa-snowflake" aria-hidden="true"></i> Leads Fríos</h3>
                         <small style="color: var(--text-muted);">Leads que no responden en las últimas 24 horas</small>
                     </div>
                     <div class="settings-card-body">
@@ -323,7 +323,7 @@
                                 <option value="48">Últimas 48 horas</option>
                                 <option value="72">Últimas 72 horas</option>
                             </select>
-                            <button class="btn btn-primary" onclick="loadColdLeads()">🔄 Actualizar</button>
+                            <button class="btn btn-primary" onclick="loadColdLeads()"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
                         </div>
 
                         <div id="cold-leads-list">
@@ -335,7 +335,7 @@
                 <!-- Appointments Card -->
                 <div class="settings-card" style="grid-column: span 2;">
                     <div class="settings-card-header">
-                        <h3>📅 Citas de Mañana</h3>
+                        <h3><i class="fas fa-calendar-days" aria-hidden="true"></i> Citas de Mañana</h3>
                         <small style="color: var(--text-muted);">Recordatorios automáticos</small>
                     </div>
                     <div class="settings-card-body">
@@ -343,7 +343,7 @@
                             <select id="appointments-client-selector" class="btn" onchange="loadAppointments()">
                                 <option value="">Selecciona un cliente...</option>
                             </select>
-                            <button class="btn btn-primary" onclick="loadAppointments()">🔄 Actualizar</button>
+                            <button class="btn btn-primary" onclick="loadAppointments()"><i class="fas fa-rotate" aria-hidden="true"></i> Actualizar</button>
                         </div>
 
                         <div id="appointments-list">
@@ -357,14 +357,14 @@
         <!-- Automations Section -->
         <section id="section-automations" class="hidden">
             <div class="header">
-                <h1>🤖 Automatizaciones</h1>
+                <h1><i class="fas fa-robot" aria-hidden="true"></i> Automatizaciones</h1>
                 <small style="color: var(--text-muted);">Follow-ups y recordatorios automáticos</small>
             </div>
 
             <div class="settings-grid">
                 <div class="settings-card" style="grid-column: span 2;">
                     <div class="settings-card-header">
-                        <h3>📊 Estado de Automatizaciones</h3>
+                        <h3><i class="fas fa-chart-column" aria-hidden="true"></i> Estado de Automatizaciones</h3>
                     </div>
                     <div class="settings-card-body">
                         <div id="automation-status-list">
@@ -430,7 +430,7 @@
         <!-- Settings Section -->
         <section id="section-settings" class="hidden">
             <div class="header">
-                <h1>⚙️ Configuración</h1>
+                <h1><i class="fas fa-gear" aria-hidden="true"></i> Configuración</h1>
                 <span id="settings-last-updated" style="color: var(--text-muted); font-size: 0.85rem;"></span>
             </div>
 
@@ -438,7 +438,7 @@
                 <!-- Security Card -->
                 <div class="settings-card">
                     <div class="settings-card-header">
-                        <h3>🔐 Seguridad</h3>
+                        <h3><i class="fas fa-lock" aria-hidden="true"></i> Seguridad</h3>
                     </div>
                     <div class="settings-card-body">
                         <div class="settings-row">
@@ -467,7 +467,7 @@
                 <!-- Webhook & Bot Config Card -->
                 <div class="settings-card">
                     <div class="settings-card-header">
-                        <h3>🤖 Configuración del Bot</h3>
+                        <h3><i class="fas fa-robot" aria-hidden="true"></i> Configuración del Bot</h3>
                     </div>
                     <div class="settings-card-body">
                         <div class="settings-row">
@@ -478,7 +478,7 @@
                                         style="background:var(--bg-color); padding: 0.3rem 0.6rem; border-radius:4px; word-break: break-all;">—</code>
                                 </div>
                             </div>
-                            <button class="btn" title="Copiar URL" onclick="copyWebhook()">📋</button>
+                            <button class="btn" title="Copiar URL" onclick="copyWebhook()"><i class="fas fa-clipboard" aria-hidden="true"></i></button>
                         </div>
                         <div class="settings-row">
                             <div>
