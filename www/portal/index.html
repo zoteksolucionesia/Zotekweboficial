@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zotek Portal — Mi Panel</title>
   <link rel="icon" href="/assets/logo.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="portal.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
@@ -19,7 +22,7 @@
 <!-- Loading: Spinner mientras se autentica SSO -->
 <div id="sso-loading">
   <div style="text-align:center;">
-    <i class="fas fa-spinner fa-spin" style="font-size:2.5rem;color:var(--primary,#00e5ff);margin-bottom:1rem;display:block;"></i>
+    <i class="fas fa-spinner fa-spin" style="font-size:2.5rem;color:var(--primary,#4D94E8);margin-bottom:1rem;display:block;"></i>
     <p style="color:var(--text,#ffffff);font-size:0.95rem;margin:0;">Autenticando...</p>
   </div>
 </div>
@@ -28,6 +31,7 @@
 <div class="bg-blobs">
   <div class="blob blob-1"></div>
   <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
 </div>
 
 <!-- ==============================================
@@ -36,7 +40,22 @@
 <div id="screen-login" class="screen">
   <div class="login-card">
     <div class="login-logo">
-      <img src="/assets/logo.svg" alt="Zotek" class="login-logo-img" />
+      <svg class="portal-logo" viewBox="0 0 160 60" role="img" aria-label="Zotek">
+        <g transform="translate(35,30)">
+          <circle r="14" cx="0" cy="0" fill="#00bcd4" class="circle-main"/>
+          <g class="dot-group">
+            <circle r="4" cx="-18" cy="-18" fill="#ff0066" fill-opacity="0.7"/>
+            <circle r="4" cx="18" cy="-18" fill="#ff0066" fill-opacity="0.7"/>
+            <circle r="4" cx="-18" cy="18" fill="#ff0066" fill-opacity="0.7"/>
+            <circle r="4" cx="18" cy="18" fill="#ff0066" fill-opacity="0.7"/>
+          </g>
+          <line x1="-18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+          <line x1="18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+          <line x1="-18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+          <line x1="18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+        </g>
+        <text x="65" y="38" class="pl-t">Zotek</text>
+      </svg>
     </div>
     <h1 class="login-title">Accede a tu panel</h1>
     <p class="login-subtitle">Ingresa el email con el que te registraste</p>
@@ -90,7 +109,22 @@
   <!-- Sidebar -->
   <nav class="sidebar">
     <div class="sidebar-brand">
-      <img src="/assets/logo.svg" alt="Zotek" class="sidebar-logo-img" />
+      <svg class="portal-logo" viewBox="0 0 160 60" role="img" aria-label="Zotek">
+        <g transform="translate(35,30)">
+          <circle r="14" cx="0" cy="0" fill="#00bcd4" class="circle-main"/>
+          <g class="dot-group">
+            <circle r="4" cx="-18" cy="-18" fill="#ff0066" fill-opacity="0.7"/>
+            <circle r="4" cx="18" cy="-18" fill="#ff0066" fill-opacity="0.7"/>
+            <circle r="4" cx="-18" cy="18" fill="#ff0066" fill-opacity="0.7"/>
+            <circle r="4" cx="18" cy="18" fill="#ff0066" fill-opacity="0.7"/>
+          </g>
+          <line x1="-18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+          <line x1="18" y1="-18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+          <line x1="-18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+          <line x1="18" y1="18" x2="0" y2="0" stroke="#00bcd4" stroke-width="1.5" stroke-opacity="0.5"/>
+        </g>
+        <text x="65" y="38" class="pl-t">Zotek</text>
+      </svg>
     </div>
     <ul class="sidebar-menu">
       <li><a href="#" class="nav-item active" data-section="resumen">

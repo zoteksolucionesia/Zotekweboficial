@@ -7,24 +7,27 @@
 /* —— Modo oscuro (default) ———————————————— */
 :root,
 [data-theme="dark"] {
-  /* Paleta de marca Zotek (igual que el landing www/style.css) */
-  --primary:      #00e5ff;                 /* cyan brillante = acento interactivo (links, nav, foco, iconos) */
+  /* Paleta de marca Zotek (design-system/zotek-soluciones-ia/MASTER.md):
+     azul rey #004080, azul #1565C0, cian #00BCD4, rosa #FF0066 */
+  --primary:      #4D94E8;                 /* azul de marca = acento interactivo (links, nav, foco, iconos) */
   --primary-dim:  color-mix(in srgb, var(--primary) 16%, transparent);
   --accent:       var(--primary);
-  --accent-cyan:  #00e5ff;
-  --brand-violet: #8b5cf6;
-  --brand-gradient: linear-gradient(135deg, #00e5ff 0%, #8b5cf6 100%);
-  --blob-opacity: 0.65;
-  --spotlight:    rgba(0,229,255,.10);     /* luz "linterna" que sigue el cursor en tarjetas */
-  --bg:           #0f172a;                 /* slate-900 */
-  --surface:      rgba(30,41,59,.55);      /* slate-800 translúcido (glass) */
-  --surface2:     rgba(51,65,85,.55);      /* slate-700 translúcido */
-  --border:       rgba(148,163,184,.15);
-  --text:         #f1f5f9;                 /* slate-100 */
-  --text-muted:   #94a3b8;                 /* slate-400 */
-  --text-inv:     #0f172a;
-  --input-bg:     rgba(15,23,42,.6);
-  --shadow:       rgba(0,0,0,.4);
+  --accent-cyan:  #00BCD4;
+  --brand-violet: #1565C0;                 /* (nombre heredado) azul de marca para la 2ª mancha de fondo */
+  --brand-pink:   #FF0066;
+  --logo-text:    #8CBBFF;
+  --brand-gradient: linear-gradient(135deg, #4D94E8 0%, #00BCD4 100%);
+  --blob-opacity: 0.45;
+  --spotlight:    rgba(77,148,232,.12);    /* luz "linterna" que sigue el cursor en tarjetas */
+  --bg:           #071426;                 /* azul marino de marca */
+  --surface:      rgba(15,36,66,.55);      /* glass azul marino */
+  --surface2:     rgba(25,52,92,.55);
+  --border:       rgba(255,255,255,.12);
+  --text:         #EAF2FF;
+  --text-muted:   #9DB2D0;
+  --text-inv:     #071426;
+  --input-bg:     rgba(7,20,38,.6);
+  --shadow:       rgba(0,0,0,.45);
   --chat-bg:      #1a1a1e;
   --chat-screen:  #f2f2f7;
   --chat-msg-bg:  #fff;
@@ -34,21 +37,23 @@
 
 /* —— Modo claro —————————————————————————— */
 [data-theme="light"] {
-  /* Paleta de marca Zotek en claro (igual que el landing www/style.css) */
-  --primary:      #0891b2;                 /* cyan-600 (mejor contraste en claro) = acento */
+  /* Paleta de marca Zotek en claro */
+  --primary:      #1565C0;                 /* azul de marca (contraste 5.3:1 sobre fondo claro) */
   --primary-dim:  color-mix(in srgb, var(--primary) 12%, transparent);
   --accent:       var(--primary);
-  --accent-cyan:  #0891b2;
-  --brand-violet: #7c3aed;
-  --brand-gradient: linear-gradient(135deg, #0891b2 0%, #7c3aed 100%);
-  --blob-opacity: 0.22;
-  --spotlight:    rgba(8,145,178,.10);
-  --bg:           #eef2f7;                 /* slate claro */
-  --surface:      rgba(255,255,255,.82);   /* glass claro */
-  --surface2:     rgba(241,245,249,.75);   /* slate-100 translúcido */
-  --border:       rgba(15,23,42,.1);
-  --text:         #0f172a;                 /* slate-900 */
-  --text-muted:   #475569;                 /* slate-600 */
+  --accent-cyan:  #00BCD4;
+  --brand-violet: #1565C0;
+  --brand-pink:   #FF0066;
+  --logo-text:    #1565C0;
+  --brand-gradient: linear-gradient(135deg, #1565C0 0%, #00BCD4 100%);
+  --blob-opacity: 0.38;
+  --spotlight:    rgba(21,101,192,.10);
+  --bg:           #F3F7FC;
+  --surface:      rgba(255,255,255,.78);   /* glass claro */
+  --surface2:     rgba(230,238,248,.75);
+  --border:       rgba(0,64,128,.12);
+  --text:         #0B1B3A;
+  --text-muted:   #475569;
   --text-inv:     #ffffff;
   --input-bg:     rgba(241,245,249,.85);
   --shadow:       rgba(0,0,0,.12);
@@ -61,7 +66,7 @@
 
 html, body {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -79,6 +84,21 @@ html, body {
 }
 .blob-1 { width: 760px; height: 760px; background: var(--accent-cyan); top: 8%; left: -14%; }
 .blob-2 { width: 520px; height: 520px; background: var(--brand-violet); bottom: -12%; right: -6%; animation-delay: -5s; }
+.blob-3 { width: 360px; height: 360px; background: var(--brand-pink); bottom: 4%; left: 8%; opacity: calc(var(--blob-opacity) * .45); animation-delay: -9s; }
+h1, h2, h3, .font-display { font-family: 'Space Grotesk', 'DM Sans', system-ui, sans-serif; letter-spacing: -0.01em; }
+/* El fondo opaco del body tapaba las manchas (z-index:-1): el color base vive en html */
+body { background: transparent; }
+
+/* Logo en línea: el texto cambia con el tema para mantener contraste */
+.portal-logo { width: 156px; height: auto; display: block; }
+.sidebar-brand .portal-logo { width: 144px; }
+.portal-logo .pl-t { fill: var(--logo-text); font-family: 'Space Grotesk', 'Segoe UI', sans-serif; font-size: 28px; font-weight: 600; dominant-baseline: middle; }
+.portal-logo .circle-main { animation: pulseLogo 2s infinite ease-in-out; transform-box: fill-box; transform-origin: center; }
+.portal-logo .dot-group { animation: rotateDots 5s linear infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes pulseLogo { 50% { transform: scale(1.1); } }
+@keyframes rotateDots { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .portal-logo .circle-main, .portal-logo .dot-group { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .blob { animation: none; } }
 @keyframes blob-float {
   0%   { transform: translate(0, 0) scale(1); }
   100% { transform: translate(50px, 80px) scale(1.1); }
@@ -135,9 +155,9 @@ html, body {
 .form-group input:focus { border-color: var(--primary); }
 
 /* —— Buttons ————————————————————————————— */
-/* Botón principal estilo Zotek: sólido claro con texto oscuro (como "Dashboard" del landing) */
+/* Botón principal: azul de marca (mismo criterio que el panel admin) */
 .btn-primary {
-  background: var(--text); color: var(--bg); border: none; border-radius: 10px;
+  background: var(--primary); color: var(--text-inv); border: none; border-radius: 10px;
   padding: 12px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
   font-family: inherit; transition: transform .2s, box-shadow .2s; display: inline-flex; align-items: center; gap: 8px;
 }
