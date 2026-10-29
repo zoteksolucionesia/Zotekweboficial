@@ -4,7 +4,7 @@
 > conexión, correos personales ni identificadores de proyectos. Los secretos viven en
 > `functions/.env` y `.env` (ignorados por git) y en la consola de cada servicio.
 
-Última actualización: 2026-10-28.
+Última actualización: 2026-10-28 (cutover de base de datos completado).
 
 ---
 
@@ -17,7 +17,7 @@
 | Backend SaaS | `src/` (FastAPI) con `Dockerfile` para Cloud Run | Segundo despliegue; ambos están en producción. |
 | Base de datos | PostgreSQL (Supabase) vía **una sola variable `DATABASE_URL`** (psycopg2) | Se lee de `functions/.env` en el bot. |
 | Mensajería | WhatsApp Cloud API (Meta); Instagram en preparación | Número oficial de Zotek. |
-| IA | Gemini | Ver notas de modelo en la memoria del proyecto. |
+| IA | Gemini | Ver notas de modelo en la memoria del proyecto. **Trampa:** si el bot contesta "El asistente está temporalmente saturado", `gemini_service.py` captura 429/RESOURCE_EXHAUSTED/quota; el 2026-10-28 la causa real fue `402 … prepayment credits are depleted` (saldo agotado en AI Studio), no saturación. Revisar Billing en `ai.studio/projects` y los logs de `api-handler`. |
 
 El panel admin **no usa usuarios en la base de datos**: ver sección 3.
 
@@ -58,12 +58,19 @@ Lo ocurrido después del 2026-08-06 no está en el backup.
    exists` y `permission denied to change default privileges` (ALTER DEFAULT PRIVILEGES de roles
    internos).
 
-### ⚠️ PENDIENTE CRÍTICO — cambiar la conexión del backend
+### ✅ Cutover de la conexión del backend — HECHO (2026-10-28)
 
-`functions/.env` **todavía apunta al proyecto antiguo, que ya no existe**. Mientras no se cambie:
-el panel admin no muestra registros y el bot de WhatsApp no puede leer su configuración.
+`functions/.env` ya apunta a la base nueva (variables `DATABASE_URL` **y** `DB_URL`, ambas con la misma
+cadena). Se probó `select count(*) from public.clients` = 8, se desplegaron las funciones
+(`api-handler`, revisión 00206, 100 % del tráfico en la última revisión) y el usuario verificó que el
+panel admin muestra los clientes y que el bot de WhatsApp responde.
 
-Pasos (el usuario edita el secreto; no pegarlo en chats ni en git):
+Quedan abiertos: el `.env` de la raíz (servicio `src/`) sigue con la cadena vieja, y ambas variables usan
+el Session pooler (puerto 5432); para Cloud Run conviene el Transaction pooler (6543) si aparecen errores
+de conexiones.
+
+Procedimiento seguido (repetible si hay que cambiar de base otra vez; el usuario edita el secreto, no
+pegarlo en chats ni en git). Un `$` en la contraseña funciona tal cual en la URL; `%24` también:
 1. En el proyecto nuevo: *Connect → Transaction pooler* (puerto **6543**, igual que el actual;
    funciona con IPv4 desde Cloud Run). Reemplazar la contraseña. Si tiene `$`, `@`, `#`, `/` o
    `:`, codificarlos en porcentaje (`$` → `%24`). **No** añadir `?pgbouncer`.
@@ -176,8 +183,7 @@ revisar en móvil de 375 px.
 
 ## 7. Lista de pendientes (por prioridad)
 
-1. **Cambiar `DATABASE_URL`** a la base nueva y redesplegar funciones (§2). Sin esto, el bot y el
-   panel no leen datos.
+1. ~~Cambiar `DATABASE_URL`~~ — hecho el 2026-10-28 (§2). Falta el `.env` de la raíz (servicio `src/`).
 2. Desplegar los 3 commits pendientes del rediseño y abrir el PR de `feature/ui-ux-pro-max` a `main`.
 3. Programar un *keep-alive* y backups periódicos (`pg_dump`) de la base.
 4. Programar el webhook de Instagram (`object == "instagram"`).
