@@ -17,7 +17,7 @@
 | Backend SaaS | `src/` (FastAPI) con `Dockerfile` para Cloud Run | Segundo despliegue; ambos están en producción. |
 | Base de datos | PostgreSQL (Supabase) vía **una sola variable `DATABASE_URL`** (psycopg2) | Se lee de `functions/.env` en el bot. |
 | Mensajería | WhatsApp Cloud API (Meta); Instagram en preparación | Número oficial de Zotek. |
-| IA | Gemini | Ver notas de modelo en la memoria del proyecto. **Trampa:** si el bot contesta "El asistente está temporalmente saturado", `gemini_service.py` captura 429/RESOURCE_EXHAUSTED/quota; el 2026-10-28 la causa real fue `402 … prepayment credits are depleted` (saldo agotado en AI Studio), no saturación. Revisar Billing en `ai.studio/projects` y los logs de `api-handler`. |
+| IA | Claude Haiku 5.5 (`claude-haiku-5-5`) en el bot (`functions/src/services/claude_service.py`, variable `ANTHROPIC_API_KEY` en `functions/.env`). El backend `src/` sigue con Gemini. | "El asistente está temporalmente saturado" = 429 de Claude. Saldo agotado llega como 400 `credit balance is too low` y el bot contesta "tuve un problema": revisar Billing en platform.claude.com y los logs de `api-handler` (`ERROR CLAUDE API`). |
 
 El panel admin **no usa usuarios en la base de datos**: ver sección 3.
 

@@ -42,12 +42,12 @@ except ImportError:
 # Local imports
 from . import database
 from .services import whatsapp_service
-from .services.gemini_service import GeminiEngine
+from .services.claude_service import ClaudeEngine
 from .rate_limiter import check as rate_limit
 
 # Load configuration
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
@@ -110,7 +110,7 @@ app.add_middleware(
 # --- PROCESAMIENTO DE AGENTES ---
 def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_number_id, whatsapp_token):
     """
-    Ejecuta las acciones autónomas solicitadas por el Agente Gemini.
+    Ejecuta las acciones autónomas solicitadas por el agente de IA.
     """
     for tool in tool_calls:
         name = tool.get('name')
@@ -397,15 +397,15 @@ RECENT_LOGS = deque(maxlen=50)
 # Las tablas ya existen en producción; init_db() solo se corre en migraciones manuales.
 # Llamarlo aquí causaba timeout en el healthcheck de Cloud Run por la conexión SSL a Supabase.
 
-# Initialize Gemini at module level
-gemini = None
-logger.info(f"GEMINI_API_KEY present: {bool(GEMINI_API_KEY)}")
+# Initialize the AI engine (Claude) at module level
+motor_ia = None
+logger.info(f"ANTHROPIC_API_KEY present: {bool(ANTHROPIC_API_KEY)}")
 try:
-    gemini = GeminiEngine(api_key=GEMINI_API_KEY)
-    logger.info("GeminiEngine initialized OK")
+    motor_ia = ClaudeEngine(api_key=ANTHROPIC_API_KEY)
+    logger.info("ClaudeEngine initialized OK")
 except Exception as e:
-    logger.error(f"GeminiEngine INIT FAILED: {e}")
-    gemini = None
+    logger.error(f"ClaudeEngine INIT FAILED: {e}")
+    motor_ia = None
 
 # === WEBHOOK ===
 
@@ -1097,16 +1097,16 @@ INSTRUCCIONES:
                         # ============================================
                         logger.info(f"[Webhook] Calling AI Engine for: '{prompt[:50]}...'")
 
-                        if gemini is None:
-                            logger.error(f"❌ ERROR: Gemini not initialized.")
-                            return {"status": "no_gemini"}
+                        if motor_ia is None:
+                            logger.error(f"❌ ERROR: AI engine not initialized.")
+                            return {"status": "no_ai_engine"}
 
                         # Si es el Bot Maestro de Zotek (ID 10), usar flujo de Agente Inteligente
                         es_zotek_maestro = str(client_data.get('id', '')) == '10'
                         
                         if es_zotek_maestro:
                             logger.info(f"🚀 INICIANDO FLUJO DE AGENTE PARA ZOTEK (ID 10)")
-                            agent_output = gemini.generar_respuesta_agente(prompt, client_data, numero_usuario)
+                            agent_output = motor_ia.generar_respuesta_agente(prompt, client_data, numero_usuario)
                             res_ai = agent_output.get('text', '')
                             tool_calls = agent_output.get('tool_calls', [])
                             
@@ -1121,7 +1121,7 @@ INSTRUCCIONES:
                                 )
                         else:
                             # Flujo tradicional para otros clientes
-                            res_ai = gemini.generar_respuesta(prompt, client_data, numero_usuario)
+                            res_ai = motor_ia.generar_respuesta(prompt, client_data, numero_usuario)
 
                         logger.info(f"[Webhook] AI response: {res_ai[:80]}...")
 
@@ -1665,7 +1665,8 @@ async def get_settings(request: Request, current_user: str = Depends(get_current
     return {
         "environment": "production" if is_production else "development",
         "webhook_url": f"{base_url}/webhook",
-        "gemini_api_key_set": bool(GEMINI_API_KEY),
+        # Conserva el nombre de la clave que lee el panel; ahora indica la llave de Claude
+        "gemini_api_key_set": bool(ANTHROPIC_API_KEY),
         "admin_email": ADMIN_EMAIL,
         "twofa_enabled": True,
         "api_version": "1.0.0",
@@ -2011,8 +2012,8 @@ async def widget_chat(request: Request):
         if not client_data:
             raise HTTPException(status_code=404, detail="Client not found")
         
-        # Obtenemos la respuesta del motor de Gemini (usamos el flujo de agente completo)
-        respuesta_json = gemini.generar_respuesta_agente(
+        # Obtenemos la respuesta del motor de IA (usamos el flujo de agente completo)
+        respuesta_json = motor_ia.generar_respuesta_agente(
             mensaje_usuario=message,
             client_data=client_data,
             numero_telefono=session_id
