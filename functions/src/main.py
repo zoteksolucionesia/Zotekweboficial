@@ -228,6 +228,31 @@ def ejecutar_herramientas_agente(tool_calls, numero_usuario, client_data, phone_
 async def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
+
+@app.get("/api/health/db")
+def health_db(request: Request):
+    """Consulta mínima a la base (SELECT 1) para que Supabase (plan gratuito) no pause el proyecto
+    por inactividad. La llama a diario .github/workflows/mantener-activa.yml. No devuelve detalles.
+    Es una ruta aparte de /api/health: ese no toca la base porque una conexión a Supabase en el
+    healthcheck de Cloud Run ya causó timeouts (ver functions/main.py)."""
+    rate_limit(request, "health_db", max_req=30, window="1 h", window_sec=3600)
+    conn = None
+    try:
+        conn = database.get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        return {"status": "ok"}
+    except Exception:
+        logger.exception("health_db: la base no respondió")
+        return JSONResponse(status_code=503, content={"status": "error"})
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 # === SECURITY HELPERS ===
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
