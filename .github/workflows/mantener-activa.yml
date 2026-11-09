@@ -1,0 +1,40 @@
+name: Mantener activa la base (Supabase)
+
+# El plan gratuito de Supabase pausa el proyecto tras 7 días sin actividad. Este trabajo llama a /api/health/db,
+# que hace una consulta mínima (SELECT 1) a la base, una vez al día. Si falla, el trabajo falla y GitHub avisa
+# por correo al dueño del repositorio: así se entera antes de que los clientes se queden sin servicio.
+#
+# Configuración (opcional): variable URL_PRODUCCION del repositorio (Settings > Secrets and variables > Actions >
+# Variables) si la dirección pública cambia. Por defecto: https://zotek-ia.web.app
+#
+# IMPORTANTE: el endpoint /api/health/db debe estar desplegado (firebase deploy --only functions) antes de que
+# este trabajo pase en verde.
+#
+# Ojo: GitHub desactiva los workflows programados tras 60 días sin actividad en el repositorio. Si pasa, se
+# reactiva desde la pestaña Actions (o con cualquier commit).
+on:
+  schedule:
+    - cron: "41 14 * * *" # todos los días a las 14:41 UTC (8:41 en Ciudad de México)
+  workflow_dispatch: # también se puede lanzar a mano desde la pestaña Actions
+
+permissions: {}
+
+jobs:
+  ping:
+    name: Consultar /api/health/db
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # Cloud Run puede tardar en arrancar en frío (y la conexión a Supabase también): se reintenta.
+      - name: Llamar a /api/health/db
+        env:
+          URL_PRODUCCION: ${{ vars.URL_PRODUCCION || 'https://zotek-ia.web.app' }}
+        run: |
+          url="${URL_PRODUCCION%/}/api/health/db"
+          echo "Consultando $url"
+          # Sin --location: no se sigue ninguna redirección.
+          curl --fail --silent --show-error \
+            --max-time 90 --retry 5 --retry-delay 30 --retry-all-errors \
+            "$url"
+          echo
